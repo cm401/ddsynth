@@ -29,3 +29,93 @@ check_scalar <- function(x, arg = deparse(substitute(x))) {
   }
   invisible(x)
 }
+
+
+# -------------------------- 
+# Function to compute predictive CDF
+# -------------------------- 
+
+compute_predictive_cdf <- function(fit, dist_name, x_seq = seq(0, 30, length.out = 500), 
+                                   n_draws = 500, L = 50) {
+  
+  # Extract posterior samples
+  sims <- rstan::extract(fit)
+  
+  # Sample from posterior
+  n_post <- length(sims$mu0)
+  draws_idx <- sample(1:n_post, min(n_draws, n_post))
+  
+  # Storage for CDF values
+  cdf_mat <- matrix(NA, nrow = length(draws_idx), ncol = length(x_seq))
+  
+  for (i in seq_along(draws_idx)) {
+    idx <- draws_idx[i]
+    mu0 <- sims$mu0[idx]
+    tau <- sims$tau[idx]  
+    phi <- sims$phi[idx]  
+    
+    # Integrate over L study-level locations
+    locs <- rnorm(L, mean = mu0, sd = tau)
+    
+    # Compute CDF for each location and average
+    cdf_l <- matrix(NA, nrow = L, ncol = length(x_seq))
+    
+    for (l in 1:L) {
+      loc_d <- locs[l]
+      
+      if (dist_name == "lognormal") {
+        cdf_l[l, ] <- plnorm(x_seq, meanlog = loc_d, sdlog = phi)
+        
+      } else if (dist_name == "gamma") {
+        mean_d <- exp(loc_d)
+        shape <- phi
+        rate <- shape / mean_d
+        cdf_l[l, ] <- pgamma(x_seq, shape = shape, rate = rate)
+        
+      } else if (dist_name == "weibull") {
+        scale <- exp(loc_d)
+        shape <- phi
+        cdf_l[l, ] <- pweibull(x_seq, shape = shape, scale = scale)
+      }
+    }
+    
+    # Average over study-level locations
+    cdf_mat[i, ] <- colMeans(cdf_l)
+  }
+  
+  # Compute summary statistics
+  data.frame(
+    x = x_seq,
+    median = apply(cdf_mat, 2, median, na.rm = TRUE),
+    mean = apply(cdf_mat, 2, mean, na.rm = TRUE),
+    low = apply(cdf_mat, 2, quantile, 0.025, na.rm = TRUE),
+    high = apply(cdf_mat, 2, quantile, 0.975, na.rm = TRUE),
+    model = dist_name
+  )
+}
+
+# -------------------------- 
+# Extract quantiles from CDF
+# -------------------------- 
+
+extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95)) {  # CHANGED: added 0.95
+  results <- list()
+  
+  for (p in probs) {
+    # Find x value where CDF crosses probability p
+    idx_median <- which.min(abs(cdf_summary$median - p))
+    idx_low <- which.min(abs(cdf_summary$low - p))
+    idx_high <- which.min(abs(cdf_summary$high - p))
+    
+    results[[paste0("q", p*100)]] <- data.frame(
+      quantile = p,
+      quantile_label = paste0("Q", p*100),  # NEW: for labeling
+      x_median = cdf_summary$x[idx_median],
+      x_low = cdf_summary$x[idx_low],
+      x_high = cdf_summary$x[idx_high]
+    )
+  }
+  
+  bind_rows(results)
+}
+
