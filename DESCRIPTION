@@ -9,6 +9,16 @@ Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.0.0
 Imports:
+    BSL,
+    bridgesampling,
+    coda,
+    doParallel,
+    dplyr,
+    foreach,
+    ggplot2,
+    ggsci,
+    MASS,
+    parallel,
     stats
 Suggests:
     knitr,
