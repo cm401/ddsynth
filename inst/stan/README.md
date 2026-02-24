@@ -8,9 +8,8 @@ Each Stan model should be a self-contained `.stan` file, for example:
 
 ```
 inst/stan/
-├── lognormal_fit.stan   # fit a log-normal delay distribution
-├── gamma_fit.stan       # fit a gamma delay distribution
-└── weibull_fit.stan     # fit a Weibull delay distribution
+├── ...                                              # 
+└── hierarchical_data_synthesis_order_stats.stan     # fit a delay distribution
 ```
 
 ## Accessing models at runtime
