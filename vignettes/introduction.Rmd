@@ -1,0 +1,41 @@
+---
+title: "Introduction to delaydistribution"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Introduction to delaydistribution}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(delaydistribution)
+```
+
+## Overview
+
+`delaydistribution` provides methods to compute delay distributions from
+summary statistics (e.g. a reported mean and standard deviation).
+
+This vignette is a **placeholder** that will be expanded once the main
+analysis functions have been added to the package.
+
+## Planned workflow
+
+1. Supply summary statistics describing the delay (mean, SD, or quantiles).
+2. Choose a parametric family (e.g. log-normal, gamma, Weibull).
+3. Fit the distribution — either analytically or via a Stan model stored in
+   `inst/stan/`.
+4. Inspect and use the fitted distribution.
+
+## Session info
+
+```{r session-info}
+sessionInfo()
+```
