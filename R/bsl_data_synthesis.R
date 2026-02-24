@@ -1,14 +1,3 @@
-library(BSL)
-library(parallel)
-library(doParallel)
-library(MASS)
-library(foreach)
-library(ggplot2)
-library(tidyverse)
-library(ggsci)
-library(coda)
-library(bridgesampling)
-
 # --------------------------
 # Bayesian Synthetic Likelihood for Data Synthesis based on this paper
 # https://www.tandfonline.com/doi/full/10.1080/10618600.2017.1302882?scroll=top&needAccess=true#d1e213
@@ -378,7 +367,6 @@ bsl_make_trace_df <- function(fits_multi) {
 
 # =============================== GET PARAMETERS FOR THE MODELS OUT
 summarise_parameters <- function(posterior_samples_list) {
-  require(dplyr)
   out_list <- lapply(names(posterior_samples_list), function(model_name) {
     post <- as.matrix(posterior_samples_list[[model_name]])
     if (ncol(post) < 3) stop("Posterior matrix must have 3 columns: mu0, log_tau, log_phi")
