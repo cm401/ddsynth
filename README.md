@@ -1,2 +1,2 @@
-# delay_distribution_data_synthesis
+# Delay distribution from summary statistics
 Methods to compute delay distributions from summary statistics
