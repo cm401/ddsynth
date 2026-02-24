@@ -119,3 +119,69 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95)) {  # CHANGED: a
   bind_rows(results)
 }
 
+
+prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
+                                            use_custom_priors = 0,
+                                            custom_priors = NULL) {
+  
+  n_datasets <- length(datasets)
+  
+  # Initialize vectors
+  n_obs_vec <- integer(n_datasets)
+  summary_type <- integer(n_datasets)
+  obs_stat1 <- numeric(n_datasets)
+  obs_stat2 <- numeric(n_datasets)
+  obs_stat3 <- numeric(n_datasets)
+  
+  # Process each dataset
+  for (i in seq_along(datasets)) {
+    d <- datasets[[i]]
+    n_obs_vec[i] <- d$n
+    
+    # Determine summary type and extract statistics
+    if (!is.null(d$median) && !is.null(d$min) && !is.null(d$max)) {
+      # Type 1: median + range (min, max)
+      summary_type[i] <- 1
+      obs_stat1[i] <- d$median
+      obs_stat2[i] <- d$min
+      obs_stat3[i] <- d$max
+      
+    } else if (!is.null(d$median) && !is.null(d$Q1) && !is.null(d$Q3)) {
+      # Type 2: median + IQR (Q1, Q3)
+      summary_type[i] <- 2
+      obs_stat1[i] <- d$median
+      obs_stat2[i] <- d$Q1
+      obs_stat3[i] <- d$Q3
+      
+    } else if (!is.null(d$mean) && !is.null(d$sd)) {
+      # Type 3: mean + sd
+      summary_type[i] <- 3
+      obs_stat1[i] <- d$mean
+      obs_stat2[i] <- d$sd
+      obs_stat3[i] <- 0  # placeholder
+      
+    } else {
+      stop(paste("Dataset", i, "does not have recognized summary statistics"))
+    }
+  }
+  
+  # Create base Stan data
+  stan_data <- list(
+    n_datasets   = n_datasets,
+    n_obs        = as.array(n_obs_vec),
+    summary_type = as.array(summary_type),
+    dist_type    = dist_type,
+    obs_stat1    = as.array(obs_stat1),
+    obs_stat2    = as.array(obs_stat2),
+    obs_stat3    = as.array(obs_stat3)
+  )
+  
+  stan_data$mu0_mean <- log(mean(obs_stat1))  # log of overall central estimates as prior mean for mu0
+  stan_data$mu0_sd <- 1.0
+  stan_data$log_tau_mean <- 0.2
+  stan_data$log_tau_sd <- 0.5
+  stan_data$log_phi_mean <- 0.2
+  stan_data$log_phi_sd <- 0.5
+  
+  return(stan_data)
+}
