@@ -1,0 +1,21 @@
+Package: delaydistributions
+Title: Compute Delay Distributions from Summary Statistics
+Version: 0.1.0
+Authors@R: 
+    person("First", "Last", email = "first.last@example.com", role = c("aut", "cre"))
+Description: Implements several methodologies for computing delay distributions
+    from summary statistics of previous observations. Methods include the method
+    of moments, maximum likelihood estimation from summary statistics, and a
+    Bayesian data synthesis approach.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Imports:
+    stats
+Suggests:
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown
+Config/testthat/edition: 3
+VignetteBuilder: knitr

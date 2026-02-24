@@ -1,0 +1,101 @@
+---
+title: "Introduction to delaydistributions"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Introduction to delaydistributions}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(delaydistributions)
+```
+
+## Overview
+
+The **delaydistributions** package provides three complementary approaches for
+synthesising a delay distribution from summary statistics of previously observed
+delays:
+
+| Function | Method |
+|---|---|
+| `fit_gamma_mom()`, `fit_lognormal_mom()`, `fit_weibull_mom()` | Method of moments |
+| `mle_from_summary()` | Maximum likelihood from summary statistics |
+| `bayesian_synthesis()` | Bayesian hierarchical synthesis |
+
+All methods take the **mean** and either the **variance** or **standard
+deviation** of previously observed delays as inputs.  Sample sizes (`n`) can
+optionally be supplied so that studies with more observations contribute more to
+the final estimate.
+
+---
+
+## Method of moments
+
+The method-of-moments estimators are closed-form expressions that match the
+distributional mean and variance to the observed values.
+
+```{r mom}
+# Fit a Gamma distribution to a mean of 5 days and variance of 4 days^2
+fit_g <- fit_gamma_mom(mean = 5, variance = 4)
+fit_g
+
+# Fit a Log-Normal distribution using the SD instead of the variance
+fit_ln <- fit_lognormal_mom(mean = 5, sd = 2)
+fit_ln
+
+# Fit a Weibull distribution (solved numerically)
+fit_w <- fit_weibull_mom(mean = 5, variance = 4)
+fit_w
+```
+
+---
+
+## Maximum likelihood from summary statistics
+
+When summary statistics from multiple studies are available, `mle_from_summary()`
+combines them by numerically maximising a log-likelihood that is constructed
+from the observed means and variances.
+
+```{r mle}
+fit_mle <- mle_from_summary(
+  mean         = c(5.0, 5.2, 4.8),
+  sd           = c(2.0, 1.8, 2.1),
+  n            = c(100L, 80L, 120L),
+  distribution = "gamma"
+)
+fit_mle$parameters
+fit_mle$loglik
+```
+
+---
+
+## Bayesian synthesis
+
+`bayesian_synthesis()` uses a conjugate Normal-Gamma model on the log scale to
+produce a full posterior distribution over the delay parameters.  The result
+includes a data frame of posterior samples that can be used for downstream
+uncertainty quantification.
+
+```{r bayesian}
+set.seed(42)
+result <- bayesian_synthesis(
+  mean = c(5.0, 5.2, 4.8),
+  sd   = c(2.0, 1.8, 2.1),
+  n    = c(100L, 80L, 120L)
+)
+
+# Posterior summary
+cat("Posterior mean of meanlog:", result$posterior_mean_meanlog, "\n")
+cat("Posterior mean of sdlog:  ", result$posterior_mean_sdlog, "\n")
+
+# First few posterior samples
+head(result$posterior_samples)
+```
