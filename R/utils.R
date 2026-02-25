@@ -145,7 +145,7 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95)) {  # CHANGED: a
     )
   }
   
-  bind_rows(results)
+  dplyr::bind_rows(results)
 }
 
 
