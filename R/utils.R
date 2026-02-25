@@ -35,6 +35,22 @@ check_scalar <- function(x, arg = deparse(substitute(x))) {
 # Function to compute predictive CDF
 # -------------------------- 
 
+#' Compute posterior predictive CDF from a fitted Stan model
+#'
+#' Integrates over posterior draws and between-study random effects to produce
+#' a predictive CDF with pointwise credible bands.
+#'
+#' @param fit A `stanfit` object returned by [rstan::sampling()].
+#' @param dist_name Character string: `"lognormal"`, `"gamma"`, or `"weibull"`.
+#' @param x_seq Numeric vector of evaluation points (default: 500 points on
+#'   `[0, 30]`).
+#' @param n_draws Number of posterior draws to use (default: 500).
+#' @param L Number of study-level locations to integrate over per draw
+#'   (default: 50).
+#'
+#' @return A data frame with columns `x`, `median`, `mean`, `low`, `high`, and
+#'   `model`.
+#' @export
 compute_predictive_cdf <- function(fit, dist_name, x_seq = seq(0, 30, length.out = 500), 
                                    n_draws = 500, L = 50) {
   
@@ -98,6 +114,19 @@ compute_predictive_cdf <- function(fit, dist_name, x_seq = seq(0, 30, length.out
 # Extract quantiles from CDF
 # -------------------------- 
 
+#' Extract quantiles from a predictive CDF summary
+#'
+#' For each requested probability, finds the x value where the CDF (and its
+#' credible bounds) crosses that probability.
+#'
+#' @param cdf_summary A data frame produced by [compute_predictive_cdf()],
+#'   with columns `x`, `median`, `low`, and `high`.
+#' @param probs Numeric vector of probabilities to extract (default:
+#'   `c(0.5, 0.95)`).
+#'
+#' @return A data frame with columns `quantile`, `quantile_label`, `x_median`,
+#'   `x_low`, and `x_high`.
+#' @export
 extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95)) {  # CHANGED: added 0.95
   results <- list()
   
@@ -120,6 +149,28 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95)) {  # CHANGED: a
 }
 
 
+#' Prepare Stan data from a list of dataset summaries
+#'
+#' Converts a list of dataset descriptors (each providing summary statistics
+#' and a sample size) into the named list expected by the
+#' `hierarchical_data_synthesis_summary_stats` Stan model.
+#'
+#' @param datasets A named list of lists.  Each element must contain `n` (sample
+#'   size) and one of the following combinations of summary statistics:
+#'   \describe{
+#'     \item{`median`, `min`, `max`}{Median and range (summary type 1).}
+#'     \item{`median`, `Q1`, `Q3`}{Median and inter-quartile range (summary type 2).}
+#'     \item{`mean`, `sd`}{Mean and standard deviation (summary type 3).}
+#'   }
+#' @param dist_type Integer distribution code: `1` = log-normal, `2` = gamma,
+#'   `3` = Weibull. Defaults to `1`.
+#' @param use_custom_priors Integer flag (0 or 1) for custom prior use.
+#'   Currently unused; reserved for future extension. Defaults to `0`.
+#' @param custom_priors Optional list of custom prior values. Currently unused.
+#'
+#' @return A named list suitable for passing to [rstan::sampling()] as the
+#'   `data` argument.
+#' @export
 prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
                                             use_custom_priors = 0,
                                             custom_priors = NULL) {
