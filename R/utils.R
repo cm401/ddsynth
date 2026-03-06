@@ -1011,3 +1011,126 @@ run_simulation_study_generalized_non_parallel <- function(n_sim,
   # Combine results
   dplyr::bind_rows(results)
 }
+
+#' Generate data from hierarchical model with mixed summary types and sample sizes
+#'
+#' @param n_datasets Number of datasets to generate
+#' @param n_obs Vector of sample sizes for each dataset (can vary)
+#' @param dist_type Distribution type: "lognormal", "gamma", or "weibull"
+#' @param mu0 Population mean (location parameter)
+#' @param tau Between-study standard deviation
+#' @param phi Distribution-specific shape/scale parameter
+#' @param summary_type Vector of summary types for each dataset (can vary)
+#' @return List containing true parameters and observed summary statistics
+generate_hierarchical_data_mixed <- function(n_datasets, 
+                                             n_obs, 
+                                             dist_type = c("lognormal", "gamma", "weibull"),
+                                             mu0, 
+                                             tau, 
+                                             phi,
+                                             summary_type = NULL) {
+  
+  dist_type <- match.arg(dist_type)
+  
+  # If n_obs is a single value, replicate it
+  if (length(n_obs) == 1) {
+    n_obs <- rep(n_obs, n_datasets)
+  }
+  
+  # Validate n_obs length
+  if (length(n_obs) != n_datasets) {
+    stop("Length of n_obs must equal n_datasets or be a single value")
+  }
+  
+  # If summary_type is NULL or single value, handle appropriately
+  if (is.null(summary_type)) {
+    # Default: random mix of all three types
+    summary_type <- sample(1:3, n_datasets, replace = TRUE)
+  } else if(length(summary_type) == 3) {
+    summary_type <- sample(1:3, n_datasets, replace = TRUE, prob = summary_type)
+  } else if (length(summary_type) == 1) {
+    summary_type <- rep(summary_type, n_datasets)
+  }
+  
+  # Validate summary_type length
+  if (length(summary_type) != n_datasets) {
+    stop("Length of summary_type must equal n_datasets or be a single value")
+  }
+  
+  # Generate study-specific location parameters
+  loc_d <- rnorm(n_datasets, mean = mu0, sd = tau)
+  
+  # Initialize storage
+  obs_stat1 <- numeric(n_datasets)
+  obs_stat2 <- numeric(n_datasets)
+  obs_stat3 <- numeric(n_datasets)
+  
+  # Generate data for each dataset
+  for (d in 1:n_datasets) {
+    n <- n_obs[d]
+    loc <- loc_d[d]
+    st <- summary_type[d]
+    
+    # Generate raw data based on distribution type
+    if (dist_type == "lognormal") {
+      data_d <- rlnorm(n, meanlog = loc, sdlog = phi)
+      
+    } else if (dist_type == "gamma") {
+      mean_d <- exp(loc)
+      shape <- phi
+      rate <- shape / mean_d
+      data_d <- rgamma(n, shape = shape, rate = rate)
+      
+    } else if (dist_type == "weibull") {
+      scale <- exp(loc)
+      shape <- phi
+      data_d <- rweibull(n, shape = shape, scale = scale)
+    }
+    
+    # Compute summary statistics based on type for this specific dataset
+    if (st == 1) {  # median + range
+      obs_stat1[d] <- median(data_d)
+      obs_stat2[d] <- min(data_d)
+      obs_stat3[d] <- max(data_d)
+      
+    } else if (st == 2) {  # median + IQR
+      obs_stat1[d] <- median(data_d)
+      obs_stat2[d] <- quantile(data_d, 0.25)
+      obs_stat3[d] <- quantile(data_d, 0.75)
+      
+    } else if (st == 3) {  # mean + sd
+      obs_stat1[d] <- mean(data_d)
+      obs_stat2[d] <- sd(data_d)
+      obs_stat3[d] <- 0  # placeholder
+    }
+  }
+  
+  list(
+    true_params = list(
+      mu0 = mu0,
+      tau = tau,
+      phi = phi,
+      loc_d = loc_d
+    ),
+    obs_data = list(
+      n_datasets = n_datasets,
+      n_obs = n_obs,
+      summary_type = summary_type,
+      dist_type = switch(dist_type,
+                         "lognormal" = 1,
+                         "gamma" = 2,
+                         "weibull" = 3),
+      obs_stat1 = obs_stat1,
+      obs_stat2 = obs_stat2,
+      obs_stat3 = obs_stat3,
+      # Default priors
+      mu0_mean = 1,
+      mu0_sd = 2,
+      log_tau_mean = 0.2,
+      log_tau_sd = 0.5,
+      log_phi_mean = ifelse(dist_type == "lognormal", 0.2,
+                            ifelse(dist_type == "gamma", 1.0, 1.0)),        # might need to make this a function of the distribution...
+      log_phi_sd = 1
+    )
+  )
+}
