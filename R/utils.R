@@ -251,10 +251,13 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
 #' @param n_obs_values Custom vector of sample sizes (if n_obs_config = "custom")
 #' @param summary_config Configuration for summary types: "fixed", "mixed_balanced", "mixed_random", "custom"
 #' @param summary_values Custom vector of summary types (if summary_config = "custom")
+#' @param fixed_summary_type Summary type to use when summary_config = "fixed" (default 1).
+#' @param fixed_n_obs Sample size to use when n_obs_config = "fixed" (default 14).
 #' @param mu0 Population mean
 #' @param tau Between-study SD
 #' @param phi Distribution-specific parameter
 #' @return Scenario specification list
+#' @export
 create_scenario <- function(scenario_name,
                             dist_type,
                             n_datasets,
@@ -276,7 +279,7 @@ create_scenario <- function(scenario_name,
     n_obs <- rep(fixed_n_obs, n_datasets)
     
   } else if (n_obs_config == "small_var") {
-    # Small variation: ±20% around mean
+    # Small variation: +/-20% around mean
     mean_n <- fixed_n_obs
     n_obs <- round(runif(n_datasets, mean_n * 0.6, mean_n * 1.4))
     n_obs <- pmax(n_obs, 5)  # Minimum of 10
@@ -343,6 +346,7 @@ create_scenario <- function(scenario_name,
 #' @param include_mixed Include scenarios with mixed summary types
 #' @param include_varied_n Include scenarios with varied sample sizes
 #' @return Data frame of scenarios
+#' @export
 generate_scenario_library <- function(include_homogeneous = TRUE,
                                       include_mixed = TRUE,
                                       include_varied_n = TRUE) {
@@ -439,7 +443,7 @@ generate_scenario_library <- function(include_homogeneous = TRUE,
   }
   
   # Convert to data frame for easier handling
-  scenarios_df <- bind_rows(lapply(scenarios, function(s) {
+  scenarios_df <- dplyr::bind_rows(lapply(scenarios, function(s) {
     data.frame(
       scenario_name = s$scenario_name,
       dist_type = s$dist_type,
@@ -468,15 +472,17 @@ generate_scenario_library <- function(include_homogeneous = TRUE,
 #'
 #' @param sim_data Simulated data from generate_hierarchical_data
 #' @param stan_model Compiled Stan model
-#' @param... Additional arguments to pass to sampling()
+#' @param ... Additional arguments to pass to sampling()
 #' @return Stan fit object
-fit_model <- function(sim_data, stan_model,...) {
-  sampling(
+#' @export
+fit_model <- function(sim_data, stan_model, ...) {
+  rstan::sampling(
     stan_model,
     data = sim_data$obs_data,
     chains = 4,
     iter = 10000,
-    warmup = 1000
+    warmup = 1000,
+    ...
   )
 }
 
@@ -487,8 +493,9 @@ fit_model <- function(sim_data, stan_model,...) {
 #' @param true_value True parameter value
 #' @param level Credible interval level (default 0.95)
 #' @return Logical indicating whether true value is in credible interval
+#' @export
 check_coverage <- function(fit, param_name, true_value, level = 0.95) {
-  draws <- as_draws_df(fit)
+  draws <- rstan::extract(fit)
   
   if (param_name %in% names(draws)) {
     param_draws <- draws[[param_name]]
@@ -506,8 +513,9 @@ check_coverage <- function(fit, param_name, true_value, level = 0.95) {
 #' @param param_name Parameter name
 #' @param true_value True parameter value
 #' @return Median bias (median estimate - true value)
+#' @export
 compute_median_bias <- function(fit, param_name, true_value) {
-  draws <- as_draws_df(fit)
+  draws <- rstan::extract(fit)
   
   if (param_name %in% names(draws)) {
     param_draws <- draws[[param_name]]
@@ -525,9 +533,10 @@ compute_median_bias <- function(fit, param_name, true_value) {
 #' @param dist_type Distribution type
 #' @param x_grid Grid of x values for integration
 #' @return IQD value
+#' @export
 compute_iqd <- function(fit, true_params, dist_type, x_grid = NULL) {
-  
-  draws <- as_draws_df(fit)
+
+  draws <- rstan::extract(fit)
   
   # Extract posterior samples
   mu0_samples <- draws$mu0
@@ -632,9 +641,11 @@ compute_iqd <- function(fit, true_params, dist_type, x_grid = NULL) {
 #' @param scenarios_df Data frame from generate_scenario_library()
 #' @param stan_model Compiled Stan model
 #' @param seed Random seed
+#' @param save_name File path for intermediate RDS save after each scenario.
 #' @param parallel Use parallel processing (requires future package)
-#' @return Data frame with results
-
+#' @return Data frame with one row per simulation replicate and columns for
+#'   scenario metadata, true parameter values, coverage, bias, and IQD metrics.
+#' @export
 run_simulation_study_generalized <- function(n_sim, 
                                              scenarios_df, 
                                              stan_model, 
@@ -654,7 +665,7 @@ run_simulation_study_generalized <- function(n_sim,
   results <- list()
   result_idx <- 1
   
-  for (scenario_idx in 1:length(scenarios_df)) {
+  for (scenario_idx in seq_len(nrow(scenarios_df))) {
     
     scenario <- scenarios_df[scenario_idx,] #full_scenarios[[scenario_idx]]
     
@@ -672,7 +683,7 @@ run_simulation_study_generalized <- function(n_sim,
       
       cat("  Simulation", sim, "of", n_sim, "\n")
       
-      if( str_starts(scenario$scenario_name,"VarN"))
+      if (startsWith(scenario$scenario_name, "VarN"))
       {
         n_obs_in <- pmax(pmin(round(rnorm( scenario$n_datasets, scenario$n_obs_mean, scenario$n_obs_sd )),scenario$n_obs_max),scenario$n_obs_min)         
       } else {
@@ -763,8 +774,8 @@ run_simulation_study_generalized <- function(n_sim,
         
       }, error = function(e) {
         warning(paste("Error in scenario", scenario_idx, "sim", sim, ":", e$message))
-        
-        results[[result_idx]] <- data.frame(
+
+        results[[result_idx]] <<- data.frame(
           scenario_idx = scenario_idx,
           scenario_name = scenario$scenario_name,
           sim = sim,
@@ -796,8 +807,8 @@ run_simulation_study_generalized <- function(n_sim,
           converged = FALSE,
           stringsAsFactors = FALSE
         )
-        
-        result_idx <- result_idx + 1
+
+        result_idx <<- result_idx + 1
       })
     }
     
@@ -805,6 +816,6 @@ run_simulation_study_generalized <- function(n_sim,
   }
   
   # Combine results
-  bind_rows(results)
+  dplyr::bind_rows(results)
 }
 

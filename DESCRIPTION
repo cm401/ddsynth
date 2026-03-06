@@ -19,13 +19,13 @@ Imports:
     ggsci,
     MASS,
     parallel,
+    rstan,
     stats
 Suggests:
     knitr,
     loo,
     patchwork,
     rmarkdown,
-    rstan,
     testthat (>= 3.0.0),
     tidyr
 Config/testthat/edition: 3

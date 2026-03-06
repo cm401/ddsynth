@@ -7,6 +7,7 @@
 # --------------------------
 # Dataset simulator
 # --------------------------
+#' @noRd
 bsl_simulate_dataset <- function(dist, loc, phi, n) {
   x <- switch(dist,
               lognormal = rlnorm(n, meanlog = loc, sdlog = phi),
@@ -20,6 +21,7 @@ bsl_simulate_dataset <- function(dist, loc, phi, n) {
 # --------------------------
 # Simulator returning matrix
 # --------------------------
+#' @noRd
 bsl_make_simulator_matrix <- function(dist, datasets, summaries_fun, summary_names) {
   function(theta, M = 1) {
     mu0 <- theta[1]; tau <- exp(theta[2]); phi <- exp(theta[3])
@@ -49,6 +51,7 @@ bsl_make_simulator_matrix <- function(dist, datasets, summaries_fun, summary_nam
 # --------------------------
 # Prior function
 # --------------------------
+#' @noRd
 bsl_fnPrior_hier <- function(theta) {
   mu0 <- theta[1]; log_tau <- theta[2]; log_phi <- theta[3]
   dnorm(mu0, 0, 5, log = TRUE) +
@@ -60,6 +63,11 @@ bsl_fnPrior_hier <- function(theta) {
 # --------------------------
 # Create MODEL objects
 # --------------------------
+#' Create a BSL model object
+#' @param dist Distribution name: `"lognormal"`, `"gamma"`, or `"weibull"`.
+#' @param theta0 Numeric vector of initial parameter values.
+#' @return A BSL model object.
+#' @export
 bsl_create_model <- function(dist, theta0) {
   newModel(
     fnSim = function(theta, M = 1) bsl_make_simulator_matrix(dist, datasets, summaries_fun, summary_names_used)(theta, M),
@@ -74,6 +82,10 @@ bsl_create_model <- function(dist, theta0) {
 # --------------------------
 # Bridge estimator for model comparison
 # --------------------------
+#' Compute a log-mean-exp bridge estimate of the marginal likelihood
+#' @param loglik Numeric vector of log-likelihood values.
+#' @return Scalar log marginal likelihood estimate.
+#' @export
 bsl_bridge_estimate <- function(loglik) {
   m <- max(loglik)
   m + log(mean(exp(loglik - m)))
@@ -81,7 +93,10 @@ bsl_bridge_estimate <- function(loglik) {
 
 
 
-# Convert fits_multi into coda::mcmc.list for each model
+#' Convert a multi-chain BSL fit list to coda mcmc.list objects
+#' @param fits_multi Named list of chain lists (one per model).
+#' @return Named list of `coda::mcmc.list` objects.
+#' @export
 bsl_to_mcmc_list_multi <- function(fits_multi) {
   lapply(fits_multi, function(chain_list) {
     chains <- lapply(chain_list, function(f) {
@@ -95,7 +110,12 @@ bsl_to_mcmc_list_multi <- function(fits_multi) {
 # posterior samples for further analysis
 # --------------------------
 # Helper function to compute mean and 90th percentile for each posterior draw
-# corrected get_summary_stats for hierarchical theta = (mu0, log_tau, log_phi)
+#' Compute predictive summary statistics from BSL posterior draws
+#' @param dist_name Distribution name: `"lognormal"`, `"gamma"`, or `"weibull"`.
+#' @param post Matrix or data frame of posterior draws (columns: mu0, log_tau, log_phi).
+#' @param L Number of study-level locations to integrate over per draw (default 50).
+#' @return Data frame with columns `mean`, `q90`, and `median` per posterior draw.
+#' @export
 bsl_get_summary_stats <- function(dist_name, post, L = 50) {
   # post: data.frame or matrix of posterior draws (columns in order theta1, theta2, theta3)
   post <- as.matrix(post)
@@ -154,7 +174,11 @@ bsl_get_summary_stats <- function(dist_name, post, L = 50) {
   data.frame(mean = pred_mean, q90 = pred_q90, median = pred_median)
 }
 
-# wrapper to compute posterior point estimate and 95% CrI
+#' Summarise BSL posteriors with point estimates and 95% credible intervals
+#' @param posterior_samples_list Named list of posterior sample matrices.
+#' @param L Number of study-level locations to integrate over (default 50).
+#' @return Data frame with posterior summaries per model.
+#' @export
 bsl_summarise_posteriors <- function(posterior_samples_list, L = 50) {
   out <- lapply(names(posterior_samples_list), function(model_name) {
     post <- posterior_samples_list[[model_name]]
@@ -177,7 +201,14 @@ bsl_summarise_posteriors <- function(posterior_samples_list, L = 50) {
 }
 
 
-# Posterior predictive draw samples - confirm not same as below
+#' Compute posterior predictive density summary for plotting
+#' @param dist_name Distribution name: `"lognormal"`, `"gamma"`, or `"weibull"`.
+#' @param post Matrix or data frame of posterior draws.
+#' @param x_seq Numeric vector of evaluation points.
+#' @param n_draws Number of posterior draws to use.
+#' @param L Number of study-level locations to integrate over per draw.
+#' @return Data frame with columns `x`, `mean`, `low`, `high`, and `model`.
+#' @export
 bsl_make_density_summary <- function(dist_name, post,
                                      x_seq = seq(0, 20, length.out = 300),
                                      n_draws = 200, L = 20) {
@@ -217,9 +248,15 @@ bsl_make_density_summary <- function(dist_name, post,
 }
 
 
-# --------------------------
-# Posterior predictive density summaries (for plotting)
-# --------------------------
+#' Compute posterior predictive density or CDF summary for plotting
+#' @param dist_name Distribution name: `"lognormal"`, `"gamma"`, or `"weibull"`.
+#' @param post Matrix or data frame of posterior draws.
+#' @param x_seq Numeric vector of evaluation points.
+#' @param n_draws Number of posterior draws to use.
+#' @param L Number of study-level locations to integrate over per draw.
+#' @param posterior_cdf Logical; if `TRUE`, returns cumulative density instead.
+#' @return Data frame with columns `x`, `mean`, `low`, `high`, and `model`.
+#' @export
 bsl_make_posterior_summary <- function(dist_name, post,
                                        x_seq = seq(0, 20, length.out = 400),
                                        n_draws = 200, L = 20,
@@ -269,25 +306,32 @@ bsl_make_posterior_summary <- function(dist_name, post,
 # AUTOMATED BSL DIAGNOSTIC REPORT
 # ===============================
 
+#' @noRd
 bsl_to_mcmc <- function(fit) {
   if (!is.null(fit@theta)) as.mcmc(as.matrix(fit@theta))
   else stop("fit@theta not found in object.")
 }
 
+#' @noRd
 bsl_combine_chains <- function(fit_list) {
-  mcmc.list(lapply(fit_list, to_mcmc))
+  mcmc.list(lapply(fit_list, bsl_to_mcmc))
 }
 
+#' Run automated MCMC diagnostics on BSL fits and save plots/CSV
+#' @param fits_multi Named list of chain lists (one per model).
+#' @param diagnostic_dir Directory to save diagnostic outputs (created if absent).
+#' @return Invisibly, a data frame of diagnostics across all models.
+#' @export
 bsl_run_diagnostics <- function(fits_multi, diagnostic_dir = "bsl_diagnostics") {
   results <- list()
   
   for (model_name in names(fits_multi)) {
-    message("\n🔍 Checking model: ", model_name)
+    message("\nChecking model: ", model_name)
     model_dir <- file.path(diagnostic_dir, model_name)
     if (!dir.exists(model_dir)) dir.create(model_dir)
     
     fit_list <- fits_multi[[model_name]]
-    mcmc_obj <- combine_chains(fit_list)
+    mcmc_obj <- bsl_combine_chains(fit_list)
     
     # === TRACEPLOT ===
     png(file.path(model_dir, paste0("traceplot_", model_name, ".png")),
@@ -323,7 +367,7 @@ bsl_run_diagnostics <- function(fits_multi, diagnostic_dir = "bsl_diagnostics") 
   }
   
   # Combine results across models
-  all_results <- bind_rows(results)
+  all_results <- dplyr::bind_rows(results)
   write.csv(all_results, file.path(diagnostic_dir, "all_diagnostics_summary.csv"), row.names = FALSE)
   
   # === 4. Plots across models ===
@@ -340,20 +384,24 @@ bsl_run_diagnostics <- function(fits_multi, diagnostic_dir = "bsl_diagnostics") 
     geom_point(size = 3, position = position_jitter(width = 0.1, height = 0)) +
     geom_hline(yintercept = 1.05, linetype = "dashed", color = "red") +
     theme_bw() +
-    labs(title = "Gelman–Rubin R̂ Diagnostic", y = "R̂ value")
+    labs(title = "Gelman-Rubin Rhat Diagnostic", y = "Rhat value")
   
   ggsave(file.path(diagnostic_dir, "effective_sample_size.png"), p1, width = 9, height = 6)
   ggsave(file.path(diagnostic_dir, "gelman_rhat.png"), p2, width = 9, height = 6)
   
-  message("\n✅ Diagnostics complete! Files saved in: ", normalizePath(diagnostic_dir))
+  message("\nDiagnostics complete! Files saved in: ", normalizePath(diagnostic_dir))
   return(invisible(all_results))
 }
 
 
+#' Build a tidy trace data frame from a multi-chain BSL fit list
+#' @param fits_multi Named list of chain lists (one per model).
+#' @return Data frame with columns `theta*`, `iter`, `chain`, and `model`.
+#' @export
 bsl_make_trace_df <- function(fits_multi) {
   trace_dfs <- lapply(names(fits_multi), function(mdl) {
     chain_list <- fits_multi[[mdl]]
-    bind_rows(lapply(seq_along(chain_list), function(ch) {
+    dplyr::bind_rows(lapply(seq_along(chain_list), function(ch) {
       df <- as.data.frame(chain_list[[ch]]@theta)
       colnames(df) <- paste0("theta", seq_len(ncol(df)))
       df$iter <- seq_len(nrow(df))
@@ -362,10 +410,14 @@ bsl_make_trace_df <- function(fits_multi) {
       df
     }))
   })
-  bind_rows(trace_dfs)
+  dplyr::bind_rows(trace_dfs)
 }
 
-# =============================== GET PARAMETERS FOR THE MODELS OUT
+#' Summarise posterior parameter estimates across BSL models
+#' @param posterior_samples_list Named list of posterior sample matrices
+#'   (columns: mu0, log_tau, log_phi).
+#' @return Data frame with mean, median, and 95% CrI per parameter per model.
+#' @export
 summarise_parameters <- function(posterior_samples_list) {
   out_list <- lapply(names(posterior_samples_list), function(model_name) {
     post <- as.matrix(posterior_samples_list[[model_name]])
@@ -393,14 +445,12 @@ summarise_parameters <- function(posterior_samples_list) {
     )
     
     # Add readable formatted CI string
-    df <- df %>%
-      mutate(
-        ci_95 = paste0(round(low_2.5, 3), " — ", round(high_97.5, 3)),
-        mean = round(mean, 3),
-        median = round(median, 3)
-      ) %>%
-      select(model, parameter, mean, median, ci_95, low_2.5, high_97.5)
-    df
+    df <- dplyr::mutate(df,
+      ci_95 = paste0(round(low_2.5, 3), " \u2014 ", round(high_97.5, 3)),
+      mean = round(mean, 3),
+      median = round(median, 3)
+    )
+    dplyr::select(df, model, parameter, mean, median, ci_95, low_2.5, high_97.5)
   })
   do.call(rbind, out_list)
 }
