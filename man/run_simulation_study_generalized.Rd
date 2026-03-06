@@ -10,7 +10,8 @@ run_simulation_study_generalized(
   stan_model,
   seed = 123,
   save_name = "simulation_results_tmp_general.rds",
-  parallel = FALSE
+  n_cores = 1,
+  chains = 4
 )
 }
 \arguments{
@@ -22,9 +23,13 @@ run_simulation_study_generalized(
 
 \item{seed}{Random seed}
 
-\item{save_name}{File path for intermediate RDS save after each scenario.}
+\item{save_name}{File path to save final results as RDS.}
 
-\item{parallel}{Use parallel processing (requires future package)}
+\item{n_cores}{Number of parallel workers requested. Automatically capped at
+\code{floor(detectCores() / chains)} to avoid CPU oversubscription.}
+
+\item{chains}{Number of Stan chains per fit (default 4). Used to compute the
+worker cap.}
 }
 \value{
 Data frame with one row per simulation replicate and columns for

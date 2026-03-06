@@ -641,181 +641,201 @@ compute_iqd <- function(fit, true_params, dist_type, x_grid = NULL) {
 #' @param scenarios_df Data frame from generate_scenario_library()
 #' @param stan_model Compiled Stan model
 #' @param seed Random seed
-#' @param save_name File path for intermediate RDS save after each scenario.
-#' @param parallel Use parallel processing (requires future package)
+#' @param save_name File path to save final results as RDS.
+#' @param n_cores Number of parallel workers requested. Automatically capped at
+#'   `floor(detectCores() / chains)` to avoid CPU oversubscription.
+#' @param chains Number of Stan chains per fit (default 4). Used to compute the
+#'   worker cap.
 #' @return Data frame with one row per simulation replicate and columns for
 #'   scenario metadata, true parameter values, coverage, bias, and IQD metrics.
 #' @export
-run_simulation_study_generalized <- function(n_sim, 
-                                             scenarios_df, 
-                                             stan_model, 
+run_simulation_study_generalized <- function(n_sim,
+                                             scenarios_df,
+                                             stan_model,
                                              seed = 123,
                                              save_name = "simulation_results_tmp_general.rds",
-                                             parallel = FALSE) {
-  
-  set.seed(seed)
-  
-  # Get full scenario details
+                                             n_cores = 1,
+                                             chains = 4) {
+
   full_scenarios <- attr(scenarios_df, "full_scenarios")
-  
   if (is.null(full_scenarios)) {
     stop("scenarios_df must be created by generate_scenario_library()")
   }
-  
-  results <- list()
-  result_idx <- 1
-  
-  for (scenario_idx in seq_len(nrow(scenarios_df))) {
-    
-    scenario <- scenarios_df[scenario_idx,] #full_scenarios[[scenario_idx]]
-    
-    cat("\n========================================\n")
-    cat("Scenario", rownames(scenarios_df[scenario_idx,]), "of", length(full_scenarios), "\n")
-    cat("Name:", scenario$scenario_name, "\n")
-    cat("Distribution:", scenario$dist_type, "\n")
-    cat("n_datasets:", scenario$n_datasets, "\n")
-    cat("Sample sizes: ", paste(range(scenario$n_obs_mean), collapse = "-"), 
-        " (mean:", round(mean(scenario$n_obs_mean), 1), ")\n")
-    cat("Summary types:", paste(unique(scenario$summary_type), collapse = ", "), "\n")
-    cat("========================================\n\n")
-    
-    for (sim in 1:n_sim) {
-      
-      cat("  Simulation", sim, "of", n_sim, "\n")
-      
-      if (startsWith(scenario$scenario_name, "VarN"))
-      {
-        n_obs_in <- pmax(pmin(round(rnorm( scenario$n_datasets, scenario$n_obs_mean, scenario$n_obs_sd )),scenario$n_obs_max),scenario$n_obs_min)         
-      } else {
-        n_obs_in <- scenario$n_obs_mean        
-      }
-      
-      # Generate data using the mixed function
-      sim_data <- generate_hierarchical_data_mixed(
-        n_datasets = scenario$n_datasets,
-        n_obs = n_obs_in,
-        dist_type = scenario$dist_type,
-        mu0 = scenario$mu0,
-        tau = scenario$tau,
-        phi = scenario$phi,
-        summary_type = ifelse(scenario$summary_type_1_prop == 1, 1,
-                              ifelse(scenario$summary_type_2_prop == 1, 2,
-                                     ifelse(scenario$summary_type_3_prop == 1, 3, c(scenario$summary_type_1_prop,scenario$summary_type_2_prop,scenario$summary_type_3_prop))))
-      )
-      
-      # Fit model
-      tryCatch({
-        fit <- fit_model(sim_data, stan_model, 
-                         refresh = 0, 
-                         control = list(adapt_delta = 0.95, max_treedepth = 12))
-        
-        # Check convergence
-        fit_summary <- summary(fit)$summary
-        max_rhat <- max(fit_summary[, "Rhat"], na.rm = TRUE)
-        min_neff <- min(fit_summary[, "n_eff"], na.rm = TRUE)
-        
-        if (max_rhat > 1.1 || min_neff < 100) {
-          warning(paste("Convergence issues in scenario", scenario_idx, 
-                        "sim", sim, ": Rhat =", round(max_rhat, 3),
-                        ", min n_eff =", round(min_neff, 0)))
-        }
-        
-        # Compute metrics
-        coverage_mu0 <- check_coverage(fit, "mu0", sim_data$true_params$mu0)
-        coverage_tau <- check_coverage(fit, "tau", sim_data$true_params$tau)
-        coverage_phi <- check_coverage(fit, "phi", sim_data$true_params$phi)
-        
-        bias_mu0 <- compute_median_bias(fit, "mu0", sim_data$true_params$mu0)
-        bias_tau <- compute_median_bias(fit, "tau", sim_data$true_params$tau)
-        bias_phi <- compute_median_bias(fit, "phi", sim_data$true_params$phi)
-        
-        # Compute relative bias
-        rel_bias_mu0 <- bias_mu0 / sim_data$true_params$mu0
-        rel_bias_tau <- bias_tau / sim_data$true_params$tau
-        rel_bias_phi <- bias_phi / sim_data$true_params$phi
-        
-        iqd <- compute_iqd(fit, sim_data$true_params, scenario$dist_type)
-        
-        # Store results
-        results[[result_idx]] <- data.frame(
-          scenario_idx = scenario_idx,
-          scenario_name = scenario$scenario_name,
-          sim = sim,
-          dist_type = scenario$dist_type,
-          n_datasets = scenario$n_datasets,
-          n_obs_mean = mean(scenario$n_obs),
-          n_obs_sd = sd(scenario$n_obs),
-          n_obs_min = min(scenario$n_obs),
-          n_obs_max = max(scenario$n_obs),
-          summary_type_diversity = length(unique(scenario$summary_type)),
-          prop_summary_type_1 = mean(scenario$summary_type == 1),
-          prop_summary_type_2 = mean(scenario$summary_type == 2),
-          prop_summary_type_3 = mean(scenario$summary_type == 3),
-          true_mu0 = scenario$mu0,
-          true_tau = scenario$tau,
-          true_phi = scenario$phi,
-          coverage_mu0 = coverage_mu0,
-          coverage_tau = coverage_tau,
-          coverage_phi = coverage_phi,
-          bias_mu0 = bias_mu0,
-          bias_tau = bias_tau,
-          bias_phi = bias_phi,
-          rel_bias_mu0 = rel_bias_mu0,
-          rel_bias_tau = rel_bias_tau,
-          rel_bias_phi = rel_bias_phi,
-          iqd = iqd,
-          max_rhat = max_rhat,
-          min_neff = min_neff,
-          converged = max_rhat <= 1.1 & min_neff >= 100,
-          stringsAsFactors = FALSE
-        )
-        
-        result_idx <- result_idx + 1
-        
-      }, error = function(e) {
-        warning(paste("Error in scenario", scenario_idx, "sim", sim, ":", e$message))
 
-        results[[result_idx]] <<- data.frame(
-          scenario_idx = scenario_idx,
-          scenario_name = scenario$scenario_name,
-          sim = sim,
-          dist_type = scenario$dist_type,
-          n_datasets = scenario$n_datasets,
-          n_obs_mean = mean(scenario$n_obs),
-          n_obs_sd = sd(scenario$n_obs),
-          n_obs_min = min(scenario$n_obs),
-          n_obs_max = max(scenario$n_obs),
-          summary_type_diversity = length(unique(scenario$summary_type)),
-          prop_summary_type_1 = mean(scenario$summary_type == 1),
-          prop_summary_type_2 = mean(scenario$summary_type == 2),
-          prop_summary_type_3 = mean(scenario$summary_type == 3),
-          true_mu0 = scenario$mu0,
-          true_tau = scenario$tau,
-          true_phi = scenario$phi,
-          coverage_mu0 = NA,
-          coverage_tau = NA,
-          coverage_phi = NA,
-          bias_mu0 = NA,
-          bias_tau = NA,
-          bias_phi = NA,
-          rel_bias_mu0 = NA,
-          rel_bias_tau = NA,
-          rel_bias_phi = NA,
-          iqd = NA,
-          max_rhat = NA,
-          min_neff = NA,
-          converged = FALSE,
-          stringsAsFactors = FALSE
-        )
+  # Cap workers to avoid oversubscription: each worker runs `chains` Stan chains
+  max_workers <- max(1L, floor(parallel::detectCores() / chains))
+  n_workers   <- min(n_cores, max_workers)
 
-        result_idx <<- result_idx + 1
-      })
-    }
-    
-    saveRDS(results, save_name)
+  if (n_cores > max_workers) {
+    message("Capping n_cores from ", n_cores, " to ", max_workers,
+            " (floor(", parallel::detectCores(), " cores / ", chains, " chains))")
   }
-  
-  # Combine results
-  dplyr::bind_rows(results)
+
+  # Flat task list: one row per (scenario, sim) pair
+  tasks <- expand.grid(scenario_idx = seq_len(nrow(scenarios_df)),
+                       sim          = seq_len(n_sim))
+
+  # Register parallel or sequential backend
+  if (n_workers > 1) {
+    cl <- parallel::makeCluster(n_workers)
+    doParallel::registerDoParallel(cl)
+    on.exit(parallel::stopCluster(cl), add = TRUE)
+    message("Running ", nrow(tasks), " tasks on ", n_workers, " workers ",
+            "(", chains, " chains each).")
+  } else {
+    foreach::registerDoSEQ()
+  }
+
+  run_one <- function(scenario_idx, sim, scenario, stan_model, seed, chains, n_sim) {
+    # Reproducible per-task seed
+    set.seed(seed + scenario_idx * n_sim + sim)
+
+    if (startsWith(scenario$scenario_name, "VarN")) {
+      n_obs_in <- pmax(
+        pmin(round(stats::rnorm(scenario$n_datasets, scenario$n_obs_mean, scenario$n_obs_sd)),
+             scenario$n_obs_max),
+        scenario$n_obs_min)
+    } else {
+      n_obs_in <- scenario$n_obs_mean
+    }
+
+    summary_type_arg <- ifelse(
+      scenario$summary_type_1_prop == 1, 1,
+      ifelse(scenario$summary_type_2_prop == 1, 2,
+             ifelse(scenario$summary_type_3_prop == 1, 3,
+                    c(scenario$summary_type_1_prop,
+                      scenario$summary_type_2_prop,
+                      scenario$summary_type_3_prop))))
+
+    sim_data <- generate_hierarchical_data_mixed(
+      n_datasets   = scenario$n_datasets,
+      n_obs        = n_obs_in,
+      dist_type    = scenario$dist_type,
+      mu0          = scenario$mu0,
+      tau          = scenario$tau,
+      phi          = scenario$phi,
+      summary_type = summary_type_arg
+    )
+
+    # Number of distinct summary types present in this scenario
+    summary_type_diversity <- sum(
+      c(scenario$summary_type_1_prop,
+        scenario$summary_type_2_prop,
+        scenario$summary_type_3_prop) > 0)
+
+    tryCatch({
+      fit <- fit_model(sim_data, stan_model,
+                       chains  = chains,
+                       refresh = 0,
+                       control = list(adapt_delta = 0.95, max_treedepth = 12))
+
+      fit_summary <- summary(fit)$summary
+      max_rhat    <- max(fit_summary[, "Rhat"],  na.rm = TRUE)
+      min_neff    <- min(fit_summary[, "n_eff"], na.rm = TRUE)
+
+      if (max_rhat > 1.1 || min_neff < 100) {
+        warning(paste("Convergence issues in scenario", scenario_idx,
+                      "sim", sim, ": Rhat =", round(max_rhat, 3),
+                      ", min n_eff =", round(min_neff, 0)))
+      }
+
+      coverage_mu0 <- check_coverage(fit, "mu0", sim_data$true_params$mu0)
+      coverage_tau <- check_coverage(fit, "tau", sim_data$true_params$tau)
+      coverage_phi <- check_coverage(fit, "phi", sim_data$true_params$phi)
+
+      bias_mu0 <- compute_median_bias(fit, "mu0", sim_data$true_params$mu0)
+      bias_tau <- compute_median_bias(fit, "tau", sim_data$true_params$tau)
+      bias_phi <- compute_median_bias(fit, "phi", sim_data$true_params$phi)
+
+      iqd <- compute_iqd(fit, sim_data$true_params, scenario$dist_type)
+
+      data.frame(
+        scenario_idx           = scenario_idx,
+        scenario_name          = scenario$scenario_name,
+        sim                    = sim,
+        dist_type              = scenario$dist_type,
+        n_datasets             = scenario$n_datasets,
+        n_obs_mean             = scenario$n_obs_mean,
+        n_obs_sd               = scenario$n_obs_sd,
+        n_obs_min              = scenario$n_obs_min,
+        n_obs_max              = scenario$n_obs_max,
+        summary_type_diversity = summary_type_diversity,
+        prop_summary_type_1    = scenario$summary_type_1_prop,
+        prop_summary_type_2    = scenario$summary_type_2_prop,
+        prop_summary_type_3    = scenario$summary_type_3_prop,
+        true_mu0               = scenario$mu0,
+        true_tau               = scenario$tau,
+        true_phi               = scenario$phi,
+        coverage_mu0           = coverage_mu0,
+        coverage_tau           = coverage_tau,
+        coverage_phi           = coverage_phi,
+        bias_mu0               = bias_mu0,
+        bias_tau               = bias_tau,
+        bias_phi               = bias_phi,
+        rel_bias_mu0           = bias_mu0 / sim_data$true_params$mu0,
+        rel_bias_tau           = bias_tau / sim_data$true_params$tau,
+        rel_bias_phi           = bias_phi / sim_data$true_params$phi,
+        iqd                    = iqd,
+        max_rhat               = max_rhat,
+        min_neff               = min_neff,
+        converged              = max_rhat <= 1.1 & min_neff >= 100,
+        stringsAsFactors       = FALSE
+      )
+    }, error = function(e) {
+      warning(paste("Error in scenario", scenario_idx, "sim", sim, ":", e$message))
+      data.frame(
+        scenario_idx           = scenario_idx,
+        scenario_name          = scenario$scenario_name,
+        sim                    = sim,
+        dist_type              = scenario$dist_type,
+        n_datasets             = scenario$n_datasets,
+        n_obs_mean             = scenario$n_obs_mean,
+        n_obs_sd               = scenario$n_obs_sd,
+        n_obs_min              = scenario$n_obs_min,
+        n_obs_max              = scenario$n_obs_max,
+        summary_type_diversity = summary_type_diversity,
+        prop_summary_type_1    = scenario$summary_type_1_prop,
+        prop_summary_type_2    = scenario$summary_type_2_prop,
+        prop_summary_type_3    = scenario$summary_type_3_prop,
+        true_mu0               = scenario$mu0,
+        true_tau               = scenario$tau,
+        true_phi               = scenario$phi,
+        coverage_mu0           = NA,
+        coverage_tau           = NA,
+        coverage_phi           = NA,
+        bias_mu0               = NA,
+        bias_tau               = NA,
+        bias_phi               = NA,
+        rel_bias_mu0           = NA,
+        rel_bias_tau           = NA,
+        rel_bias_phi           = NA,
+        iqd                    = NA,
+        max_rhat               = NA,
+        min_neff               = NA,
+        converged              = FALSE,
+        stringsAsFactors       = FALSE
+      )
+    })
+  }
+
+  results <- foreach::foreach(
+    i          = seq_len(nrow(tasks)),
+    .combine   = dplyr::bind_rows,
+    .packages  = c("rstan", "delaydistribution"),
+    .export    = c("stan_model", "run_one")
+  ) %dopar% {
+    run_one(
+      scenario_idx = tasks$scenario_idx[i],
+      sim          = tasks$sim[i],
+      scenario     = scenarios_df[tasks$scenario_idx[i], ],
+      stan_model   = stan_model,
+      seed         = seed,
+      chains       = chains,
+      n_sim        = n_sim
+    )
+  }
+
+  saveRDS(results, save_name)
+  results
 }
 
