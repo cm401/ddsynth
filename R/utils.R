@@ -161,6 +161,8 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95)) {  # CHANGED: a
 #'     \item{`median`, `min`, `max`}{Median and range (summary type 1).}
 #'     \item{`median`, `Q1`, `Q3`}{Median and inter-quartile range (summary type 2).}
 #'     \item{`mean`, `sd`}{Mean and standard deviation (summary type 3).}
+#'     \item{`freq_value`, `freq_count`}{Frequency table of (value, count) pairs
+#'       (summary type 4). `n` is optional and defaults to `sum(freq_count)`.}
 #'   }
 #' @param dist_type Integer distribution code: `1` = log-normal, `2` = gamma,
 #'   `3` = Weibull. Defaults to `1`.
@@ -178,44 +180,80 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
   n_datasets <- length(datasets)
   
   # Initialize vectors
-  n_obs_vec <- integer(n_datasets)
-  summary_type <- integer(n_datasets)
-  obs_stat1 <- numeric(n_datasets)
-  obs_stat2 <- numeric(n_datasets)
-  obs_stat3 <- numeric(n_datasets)
-  
+  n_obs_vec      <- integer(n_datasets)
+  summary_type   <- integer(n_datasets)
+  obs_stat1      <- numeric(n_datasets)
+  obs_stat2      <- numeric(n_datasets)
+  obs_stat3      <- numeric(n_datasets)
+  # Frequency table flat arrays (for summary_type == 4)
+  freq_value_all <- numeric(0)
+  freq_count_all <- integer(0)
+  freq_start_vec <- integer(n_datasets)
+  freq_len_vec   <- integer(n_datasets)
+  running_start  <- 1L
+
   # Process each dataset
   for (i in seq_along(datasets)) {
     d <- datasets[[i]]
-    n_obs_vec[i] <- d$n
-    
+
     # Determine summary type and extract statistics
     if (!is.null(d$median) && !is.null(d$min) && !is.null(d$max)) {
       # Type 1: median + range (min, max)
+      n_obs_vec[i]    <- d$n
       summary_type[i] <- 1
-      obs_stat1[i] <- d$median
-      obs_stat2[i] <- d$min
-      obs_stat3[i] <- d$max
-      
+      obs_stat1[i]    <- d$median
+      obs_stat2[i]    <- d$min
+      obs_stat3[i]    <- d$max
+
     } else if (!is.null(d$median) && !is.null(d$Q1) && !is.null(d$Q3)) {
       # Type 2: median + IQR (Q1, Q3)
+      n_obs_vec[i]    <- d$n
       summary_type[i] <- 2
-      obs_stat1[i] <- d$median
-      obs_stat2[i] <- d$Q1
-      obs_stat3[i] <- d$Q3
-      
+      obs_stat1[i]    <- d$median
+      obs_stat2[i]    <- d$Q1
+      obs_stat3[i]    <- d$Q3
+
     } else if (!is.null(d$mean) && !is.null(d$sd)) {
       # Type 3: mean + sd
+      n_obs_vec[i]    <- d$n
       summary_type[i] <- 3
-      obs_stat1[i] <- d$mean
-      obs_stat2[i] <- d$sd
-      obs_stat3[i] <- 0  # placeholder
-      
+      obs_stat1[i]    <- d$mean
+      obs_stat2[i]    <- d$sd
+      obs_stat3[i]    <- 0  # placeholder
+
+    } else if (!is.null(d$freq_value) && !is.null(d$freq_count)) {
+      # Type 4: frequency table (e.g. delays rounded to whole days)
+      n_obs_vec[i]      <- if (!is.null(d$n)) d$n else sum(d$freq_count)
+      summary_type[i]   <- 4
+      obs_stat1[i]      <- 0  # placeholder
+      obs_stat2[i]      <- 0  # placeholder
+      obs_stat3[i]      <- 0  # placeholder
+      freq_start_vec[i] <- running_start
+      freq_len_vec[i]   <- length(d$freq_value)
+      freq_value_all    <- c(freq_value_all, as.numeric(d$freq_value))
+      freq_count_all    <- c(freq_count_all, as.integer(d$freq_count))
+      running_start     <- running_start + freq_len_vec[i]
+
     } else {
       stop(paste("Dataset", i, "does not have recognized summary statistics"))
     }
   }
-  
+
+  # Compute central estimates for mu0 prior (use weighted mean from freq table for type 4)
+  central_estimates <- numeric(n_datasets)
+  for (i in seq_len(n_datasets)) {
+    if (summary_type[i] %in% c(1L, 2L, 3L)) {
+      central_estimates[i] <- obs_stat1[i]
+    } else if (summary_type[i] == 4L && freq_len_vec[i] > 0) {
+      s  <- freq_start_vec[i]
+      ln <- freq_len_vec[i]
+      fv <- freq_value_all[s:(s + ln - 1)]
+      fc <- freq_count_all[s:(s + ln - 1)]
+      central_estimates[i] <- sum(fv * fc) / sum(fc)
+    }
+  }
+  valid_centrals <- central_estimates[central_estimates > 0]
+
   # Create base Stan data
   stan_data <- list(
     n_datasets   = n_datasets,
@@ -224,16 +262,21 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
     dist_type    = dist_type,
     obs_stat1    = as.array(obs_stat1),
     obs_stat2    = as.array(obs_stat2),
-    obs_stat3    = as.array(obs_stat3)
+    obs_stat3    = as.array(obs_stat3),
+    n_freq_total = length(freq_value_all),
+    freq_value   = freq_value_all,
+    freq_count   = freq_count_all,
+    freq_start   = as.array(freq_start_vec),
+    freq_len     = as.array(freq_len_vec)
   )
-  
-  stan_data$mu0_mean <- log(mean(obs_stat1))  # log of overall central estimates as prior mean for mu0
-  stan_data$mu0_sd <- 1.0
+
+  stan_data$mu0_mean     <- if (length(valid_centrals) > 0) log(mean(valid_centrals)) else 0
+  stan_data$mu0_sd       <- 1.0
   stan_data$log_tau_mean <- 0.2
-  stan_data$log_tau_sd <- 0.5
+  stan_data$log_tau_sd   <- 0.5
   stan_data$log_phi_mean <- 0.2
-  stan_data$log_phi_sd <- 0.5
-  
+  stan_data$log_phi_sd   <- 0.5
+
   return(stan_data)
 }
 
@@ -263,7 +306,9 @@ create_scenario <- function(scenario_name,
                             n_datasets,
                             n_obs_config = c("fixed", "small_var", "large_var", "custom"),
                             n_obs_values = NULL,
-                            summary_config = c("fixed", "mixed_balanced", "mixed_random", "custom"),
+                            summary_config = c("fixed", "mixed_balanced", "mixed_random",
+                                               "mixed_balanced_with_freq", "mixed_random_with_freq",
+                                               "custom"),
                             summary_values = NULL,
                             fixed_summary_type = 1,
                             fixed_n_obs = 14,
@@ -308,9 +353,19 @@ create_scenario <- function(scenario_name,
   } else if (summary_config == "mixed_random") {
     # Random mix with realistic probabilities
     # Median+range more common, mean+sd less common
-    summary_type <- sample(1:3, n_datasets, replace = TRUE, 
+    summary_type <- sample(1:3, n_datasets, replace = TRUE,
                            prob = c(0.5, 0.2, 0.3))
-    
+
+  } else if (summary_config == "mixed_balanced_with_freq") {
+    # Equal representation of all four summary types (1-4)
+    summary_type <- rep(1:4, length.out = n_datasets)
+    summary_type <- sample(summary_type)  # Shuffle
+
+  } else if (summary_config == "mixed_random_with_freq") {
+    # Random mix including frequency table type
+    summary_type <- sample(1:4, n_datasets, replace = TRUE,
+                           prob = c(0.4, 0.15, 0.25, 0.2))
+
   } else if (summary_config == "custom") {
     if (is.null(summary_values) || length(summary_values) != n_datasets) {
       stop("For custom summary_config, must provide summary_values with length = n_datasets")
@@ -349,7 +404,8 @@ create_scenario <- function(scenario_name,
 #' @export
 generate_scenario_library <- function(include_homogeneous = TRUE,
                                       include_mixed = TRUE,
-                                      include_varied_n = TRUE) {
+                                      include_varied_n = TRUE,
+                                      include_freq_table = FALSE) {
   
   scenarios <- list()
   idx <- 1
@@ -379,6 +435,26 @@ generate_scenario_library <- function(include_homogeneous = TRUE,
     }
   }
   
+  # ===== HOMOGENEOUS FREQ TABLE SCENARIOS =====
+  if (include_homogeneous && include_freq_table) {
+    for (dist in distributions) {
+      for (n_datasets_val in c(5, 10, 20)) {
+        for (n_obs_val in c(5, 10, 20, 50)) {
+          scenarios[[idx]] <- create_scenario(
+            scenario_name      = sprintf("Homog_%s_ST4_D%d_N%d", dist, n_datasets_val, n_obs_val),
+            dist_type          = dist,
+            n_datasets         = n_datasets_val,
+            n_obs_config       = "fixed",
+            fixed_n_obs        = n_obs_val,
+            summary_config     = "fixed",
+            fixed_summary_type = 4
+          )
+          idx <- idx + 1
+        }
+      }
+    }
+  }
+
   # ===== MIXED SUMMARY TYPE SCENARIOS =====
   if (include_mixed) {
     for (dist in distributions) {
@@ -408,6 +484,33 @@ generate_scenario_library <- function(include_homogeneous = TRUE,
     }
   }
   
+  # ===== MIXED SCENARIOS WITH FREQUENCY TABLE =====
+  if (include_mixed && include_freq_table) {
+    for (dist in distributions) {
+      for (n_datasets_val in c(15, 30)) {
+        scenarios[[idx]] <- create_scenario(
+          scenario_name  = sprintf("Mixed_Balanced_Freq_%s_D%d", dist, n_datasets_val),
+          dist_type      = dist,
+          n_datasets     = n_datasets_val,
+          n_obs_config   = "fixed",
+          fixed_n_obs    = 30,
+          summary_config = "mixed_balanced_with_freq"
+        )
+        idx <- idx + 1
+
+        scenarios[[idx]] <- create_scenario(
+          scenario_name  = sprintf("Mixed_Random_Freq_%s_D%d", dist, n_datasets_val),
+          dist_type      = dist,
+          n_datasets     = n_datasets_val,
+          n_obs_config   = "fixed",
+          fixed_n_obs    = 30,
+          summary_config = "mixed_random_with_freq"
+        )
+        idx <- idx + 1
+      }
+    }
+  }
+
   # ===== VARIED SAMPLE SIZE SCENARIOS =====
   if (include_varied_n) {
     for (dist in distributions) {
@@ -458,6 +561,7 @@ generate_scenario_library <- function(include_homogeneous = TRUE,
       summary_type_1_prop = mean(s$summary_type == 1),
       summary_type_2_prop = mean(s$summary_type == 2),
       summary_type_3_prop = mean(s$summary_type == 3),
+      summary_type_4_prop = mean(s$summary_type == 4),
       stringsAsFactors = FALSE
     )
   }))
@@ -700,13 +804,21 @@ run_simulation_study_generalized <- function(n_sim,
       n_obs_in <- scenario$n_obs_mean
     }
 
-    summary_type_arg <- ifelse(
-      scenario$summary_type_1_prop == 1, 1,
-      ifelse(scenario$summary_type_2_prop == 1, 2,
-             ifelse(scenario$summary_type_3_prop == 1, 3,
-                    c(scenario$summary_type_1_prop,
-                      scenario$summary_type_2_prop,
-                      scenario$summary_type_3_prop))))
+    st4_prop <- if (!is.null(scenario$summary_type_4_prop)) scenario$summary_type_4_prop else 0
+    summary_type_arg <- if (scenario$summary_type_1_prop == 1) {
+      1L
+    } else if (scenario$summary_type_2_prop == 1) {
+      2L
+    } else if (scenario$summary_type_3_prop == 1) {
+      3L
+    } else if (st4_prop == 1) {
+      4L
+    } else {
+      c(scenario$summary_type_1_prop,
+        scenario$summary_type_2_prop,
+        scenario$summary_type_3_prop,
+        st4_prop)
+    }
 
     sim_data <- generate_hierarchical_data_mixed(
       n_datasets   = scenario$n_datasets,
@@ -722,7 +834,8 @@ run_simulation_study_generalized <- function(n_sim,
     summary_type_diversity <- sum(
       c(scenario$summary_type_1_prop,
         scenario$summary_type_2_prop,
-        scenario$summary_type_3_prop) > 0)
+        scenario$summary_type_3_prop,
+        st4_prop) > 0)
 
     tryCatch({
       fit <- fit_model(sim_data, stan_model,
@@ -764,6 +877,7 @@ run_simulation_study_generalized <- function(n_sim,
         prop_summary_type_1    = scenario$summary_type_1_prop,
         prop_summary_type_2    = scenario$summary_type_2_prop,
         prop_summary_type_3    = scenario$summary_type_3_prop,
+        prop_summary_type_4    = st4_prop,
         true_mu0               = scenario$mu0,
         true_tau               = scenario$tau,
         true_phi               = scenario$phi,
@@ -798,6 +912,7 @@ run_simulation_study_generalized <- function(n_sim,
         prop_summary_type_1    = scenario$summary_type_1_prop,
         prop_summary_type_2    = scenario$summary_type_2_prop,
         prop_summary_type_3    = scenario$summary_type_3_prop,
+        prop_summary_type_4    = st4_prop,
         true_mu0               = scenario$mu0,
         true_tau               = scenario$tau,
         true_phi               = scenario$phi,
@@ -884,6 +999,22 @@ run_simulation_study_generalized_non_parallel <- function(n_sim,
       }
       
       # Generate data using the mixed function
+      st4_prop_np <- if (!is.null(scenario$summary_type_4_prop)) scenario$summary_type_4_prop else 0
+      summary_type_np <- if (scenario$summary_type_1_prop == 1) {
+        1L
+      } else if (scenario$summary_type_2_prop == 1) {
+        2L
+      } else if (scenario$summary_type_3_prop == 1) {
+        3L
+      } else if (st4_prop_np == 1) {
+        4L
+      } else {
+        c(scenario$summary_type_1_prop,
+          scenario$summary_type_2_prop,
+          scenario$summary_type_3_prop,
+          st4_prop_np)
+      }
+
       sim_data <- generate_hierarchical_data_mixed(
         n_datasets = scenario$n_datasets,
         n_obs = n_obs_in,
@@ -891,9 +1022,7 @@ run_simulation_study_generalized_non_parallel <- function(n_sim,
         mu0 = scenario$mu0,
         tau = scenario$tau,
         phi = scenario$phi,
-        summary_type = ifelse(scenario$summary_type_1_prop == 1, 1,
-                              ifelse(scenario$summary_type_2_prop == 1, 2,
-                                     ifelse(scenario$summary_type_3_prop == 1, 3, c(scenario$summary_type_1_prop,scenario$summary_type_2_prop,scenario$summary_type_3_prop))))
+        summary_type = summary_type_np
       )
       
       # Fit model
@@ -944,6 +1073,7 @@ run_simulation_study_generalized_non_parallel <- function(n_sim,
           prop_summary_type_1 = mean(scenario$summary_type == 1),
           prop_summary_type_2 = mean(scenario$summary_type == 2),
           prop_summary_type_3 = mean(scenario$summary_type == 3),
+          prop_summary_type_4 = mean(scenario$summary_type == 4),
           true_mu0 = scenario$mu0,
           true_tau = scenario$tau,
           true_phi = scenario$phi,
@@ -982,6 +1112,7 @@ run_simulation_study_generalized_non_parallel <- function(n_sim,
           prop_summary_type_1 = mean(scenario$summary_type == 1),
           prop_summary_type_2 = mean(scenario$summary_type == 2),
           prop_summary_type_3 = mean(scenario$summary_type == 3),
+          prop_summary_type_4 = mean(scenario$summary_type == 4),
           true_mu0 = scenario$mu0,
           true_tau = scenario$tau,
           true_phi = scenario$phi,
@@ -1020,13 +1151,18 @@ run_simulation_study_generalized_non_parallel <- function(n_sim,
 #' @param mu0 Population mean (location parameter)
 #' @param tau Between-study standard deviation
 #' @param phi Distribution-specific shape/scale parameter
-#' @param summary_type Vector of summary types for each dataset (can vary)
+#' @param summary_type Summary type specification. Can be: `NULL` (random mix of
+#'   types 1-3), a single integer 1-4 (all datasets use that type), a vector of
+#'   length `n_datasets` (one type per dataset), a length-3 probability vector
+#'   (sample from types 1-3 with those probabilities), or a length-4 probability
+#'   vector (sample from types 1-4 with those probabilities). Type 4 produces a
+#'   frequency table of observations rounded to the nearest whole day.
 #' @return List containing true parameters and observed summary statistics
-generate_hierarchical_data_mixed <- function(n_datasets, 
-                                             n_obs, 
+generate_hierarchical_data_mixed <- function(n_datasets,
+                                             n_obs,
                                              dist_type = c("lognormal", "gamma", "weibull"),
-                                             mu0, 
-                                             tau, 
+                                             mu0,
+                                             tau,
                                              phi,
                                              summary_type = NULL) {
   
@@ -1044,9 +1180,11 @@ generate_hierarchical_data_mixed <- function(n_datasets,
   
   # If summary_type is NULL or single value, handle appropriately
   if (is.null(summary_type)) {
-    # Default: random mix of all three types
+    # Default: random mix of types 1-3 (no freq table)
     summary_type <- sample(1:3, n_datasets, replace = TRUE)
-  } else if(length(summary_type) == 3) {
+  } else if (length(summary_type) == 4) {
+    summary_type <- sample(1:4, n_datasets, replace = TRUE, prob = summary_type)
+  } else if (length(summary_type) == 3) {
     summary_type <- sample(1:3, n_datasets, replace = TRUE, prob = summary_type)
   } else if (length(summary_type) == 1) {
     summary_type <- rep(summary_type, n_datasets)
@@ -1061,9 +1199,10 @@ generate_hierarchical_data_mixed <- function(n_datasets,
   loc_d <- rnorm(n_datasets, mean = mu0, sd = tau)
   
   # Initialize storage
-  obs_stat1 <- numeric(n_datasets)
-  obs_stat2 <- numeric(n_datasets)
-  obs_stat3 <- numeric(n_datasets)
+  obs_stat1   <- numeric(n_datasets)
+  obs_stat2   <- numeric(n_datasets)
+  obs_stat3   <- numeric(n_datasets)
+  freq_tables <- vector("list", n_datasets)
   
   # Generate data for each dataset
   for (d in 1:n_datasets) {
@@ -1102,9 +1241,38 @@ generate_hierarchical_data_mixed <- function(n_datasets,
       obs_stat1[d] <- mean(data_d)
       obs_stat2[d] <- sd(data_d)
       obs_stat3[d] <- 0  # placeholder
+
+    } else if (st == 4) {  # frequency table (rounded to full days)
+      data_d_rounded <- pmax(round(data_d), 1L)
+      freq_tbl       <- table(data_d_rounded)
+      freq_tables[[d]] <- list(
+        value = as.numeric(names(freq_tbl)),
+        count = as.integer(freq_tbl)
+      )
+      obs_stat1[d] <- 0  # placeholder
+      obs_stat2[d] <- 0  # placeholder
+      obs_stat3[d] <- 0  # placeholder
     }
   }
-  
+
+  # Build flat frequency-table arrays required by the Stan model
+  freq_value_flat <- numeric(0)
+  freq_count_flat <- integer(0)
+  freq_start_vec  <- integer(n_datasets)
+  freq_len_vec    <- integer(n_datasets)
+  running_start   <- 1L
+
+  for (d in seq_len(n_datasets)) {
+    if (summary_type[d] == 4 && !is.null(freq_tables[[d]])) {
+      ft                <- freq_tables[[d]]
+      freq_start_vec[d] <- running_start
+      freq_len_vec[d]   <- length(ft$value)
+      freq_value_flat   <- c(freq_value_flat, ft$value)
+      freq_count_flat   <- c(freq_count_flat, ft$count)
+      running_start     <- running_start + freq_len_vec[d]
+    }
+  }
+
   list(
     true_params = list(
       mu0 = mu0,
@@ -1113,24 +1281,30 @@ generate_hierarchical_data_mixed <- function(n_datasets,
       loc_d = loc_d
     ),
     obs_data = list(
-      n_datasets = n_datasets,
-      n_obs = n_obs,
+      n_datasets   = n_datasets,
+      n_obs        = n_obs,
       summary_type = summary_type,
-      dist_type = switch(dist_type,
-                         "lognormal" = 1,
-                         "gamma" = 2,
-                         "weibull" = 3),
-      obs_stat1 = obs_stat1,
-      obs_stat2 = obs_stat2,
-      obs_stat3 = obs_stat3,
+      dist_type    = switch(dist_type,
+                            "lognormal" = 1,
+                            "gamma"     = 2,
+                            "weibull"   = 3),
+      obs_stat1    = obs_stat1,
+      obs_stat2    = obs_stat2,
+      obs_stat3    = obs_stat3,
+      # Frequency table fields (populated only when summary_type == 4)
+      n_freq_total = length(freq_value_flat),
+      freq_value   = freq_value_flat,
+      freq_count   = freq_count_flat,
+      freq_start   = freq_start_vec,
+      freq_len     = freq_len_vec,
       # Default priors
-      mu0_mean = 1,
-      mu0_sd = 2,
+      mu0_mean     = 1,
+      mu0_sd       = 2,
       log_tau_mean = 0.2,
-      log_tau_sd = 0.5,
+      log_tau_sd   = 0.5,
       log_phi_mean = ifelse(dist_type == "lognormal", 0.2,
-                            ifelse(dist_type == "gamma", 1.0, 1.0)),        # might need to make this a function of the distribution...
-      log_phi_sd = 1
+                            ifelse(dist_type == "gamma", 1.0, 1.0)),
+      log_phi_sd   = 1
     )
   )
 }
