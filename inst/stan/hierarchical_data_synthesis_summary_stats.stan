@@ -38,12 +38,10 @@ functions {
   // k-th order statistic out of n observations
   real order_stat_logpdf_fun(real x, int n, int k, int dist_type, real loc, real phi) {
     real F = dist_cdf_fun(x, dist_type, loc, phi);
-    real log_f = dist_logpdf_fun(x, dist_type, loc, phi);  // CHANGED: get log directly
+    real log_f = dist_logpdf_fun(x, dist_type, loc, phi);
   
-    // Improved numerical stability with tighter bounds
-    F = fmax(fmin(F, 0.99999), 0.00001);  // CHANGED: tighter bounds
+    F = fmax(fmin(F, 0.99999), 0.00001);
   
-    // Use log_f directly instead of log(exp(log_f))
     real log_dens = lchoose(n, k) + log_f + (k - 1) * log(F) + (n - k) * log1m(F);
   
     return log_dens;
@@ -52,27 +50,35 @@ functions {
   // Helper function to compute gamma quantile approximation
   real gamma_quantile_approx(real p, real shape, real scale) {
     // Wilson-Hilferty approximation for gamma quantiles
-    real z = inv_Phi(p);  // standard normal quantile
+    real z = inv_Phi(p);
     if (shape > 1) {
       return shape * scale * pow(1 - 1.0/(9*shape) + z/(3*sqrt(shape)), 3);
     } else {
-      // Fallback for small shape
-      return shape * scale * (1 + z / sqrt(shape));
+      return shape * scale * (1 + z / sqrt(shape));   // Fallback for small shape
+    }
   }
-}
 }
 
 data {
   int<lower=1> n_datasets;              // Number of datasets
   array[n_datasets] int<lower=1> n_obs; // Sample sizes for each dataset
-  array[n_datasets] int<lower=1,upper=3> summary_type; // 1=median+range, 2=median+IQR, 3=mean+sd
+  array[n_datasets] int<lower=1,upper=4> summary_type; // 1=median+range, 2=median+IQR, 3=mean+sd, 4=raw freq table
   int<lower=1,upper=3> dist_type;       // 1=lognormal, 2=gamma, 3=weibull
   
-  // Observed summaries - organized by dataset
+  // Observed summaries - organized by dataset (used for summary_type 1, 2, 3)
   array[n_datasets] real<lower=0> obs_stat1;     // median or mean
   array[n_datasets] real<lower=0> obs_stat2;     // min, q25, or sd
   array[n_datasets] real<lower=0> obs_stat3;     // max, q75, or placeholder
-  
+
+  // --- Frequency table data for summary_type == 4 ---
+  // All datasets' frequency tables are stored in flat arrays.
+  // For dataset d, its entries occupy indices freq_start[d] .. freq_start[d] + freq_len[d] - 1.
+  int<lower=0> n_freq_total;                        // Total number of (value, count) pairs across all type-4 datasets
+  array[n_freq_total] real<lower=0> freq_value;     // Observed day values (must be > 0 for continuous distributions)
+  array[n_freq_total] int<lower=1>  freq_count;     // Number of individuals with that day value
+  array[n_datasets]   int<lower=0>  freq_start;     // 1-based start index into freq_value/freq_count for dataset d
+  array[n_datasets]   int<lower=0>  freq_len;       // Number of distinct values for dataset d (0 if not type 4)
+
   // Prior hyperparameters for mu0 ~ normal(mu0_mean, mu0_sd)
   real mu0_mean;
   real<lower=0> mu0_sd;
@@ -87,31 +93,34 @@ data {
 }
 
 transformed data {
-  // Precompute constants for quantiles
-  real z_q25 = 0.6745;      // ~Phi^(-1)(0.25)
-  real z_q75 = 0.6745;      // ~Phi^(-1)(0.75)
-  real z_q90 = 1.28155;     // ~Phi^(-1)(0.90)
-  real z_q95 = 1.64485;     // ~Phi^(-1)(0.95)
+  real z_q25 = -0.6745;       
+  real z_q75 = 0.6745;       
+  real z_q90 = 1.28155;
+  real z_q95 = 1.64485;
   
   // Validate data
   for (d in 1:n_datasets) {
-    if (summary_type[d] == 1) {  // median + range
+    if (summary_type[d] == 1) {
       if (obs_stat2[d] > obs_stat1[d] || obs_stat1[d] > obs_stat3[d]) {
         reject("For summary_type=1, must have min <= median <= max");
       }
-    } else if (summary_type[d] == 2) {  // median + IQR
+    } else if (summary_type[d] == 2) {
       if (obs_stat2[d] > obs_stat1[d] || obs_stat1[d] > obs_stat3[d]) {
         reject("For summary_type=2, must have q25 <= median <= q75");
+      }
+    } else if (summary_type[d] == 4) {
+      if (freq_len[d] == 0) {
+        reject("For summary_type=4, freq_len must be > 0");
       }
     }
   }
 }
 
 parameters {
-  real mu0;                    // Population mean (location)
-  real log_tau;                // Log of between-study SD
-  real log_phi;                // Log of distribution-specific parameter
-  vector[n_datasets] loc_d_raw; // Non-centered parameterization
+  real mu0;                        // Population mean (location)
+  real log_tau;                    // Log of between-study SD
+  real log_phi;                    // Log of distribution-specific parameter
+  vector[n_datasets] loc_d_raw;    // Non-centered parameterization
 }
 
 transformed parameters {
@@ -121,51 +130,38 @@ transformed parameters {
 }
 
 model {
-  // Priors (using configured or default values)
   mu0 ~ normal(mu0_mean, mu0_sd);
   log_tau ~ normal(log_tau_mean, log_tau_sd);
   log_phi ~ normal(log_phi_mean, log_phi_sd);
   
-  // Non-centered parameterization
   loc_d_raw ~ std_normal();
   
-  // Likelihood for each dataset
   for (d in 1:n_datasets) {
     real loc = loc_d[d];
     int n = n_obs[d];
     
     if (summary_type[d] == 1) {  // median + range (min, max)
-      // Median is the middle order statistic
       int k_median = (n + 1) %/% 2;
       target += order_stat_logpdf_fun(obs_stat1[d], n, k_median, dist_type, loc, phi);
-      
-      // Min is 1st order statistic
       target += order_stat_logpdf_fun(obs_stat2[d], n, 1, dist_type, loc, phi);
-      
-      // Max is n-th order statistic
       target += order_stat_logpdf_fun(obs_stat3[d], n, n, dist_type, loc, phi);
     }
     
     else if (summary_type[d] == 2) {  // median + IQR (q25, q75)
-      // Median
       int k_median = (n + 1) %/% 2;
       target += order_stat_logpdf_fun(obs_stat1[d], n, k_median, dist_type, loc, phi);
       
-      // Q25 is approximately the n/4-th order statistic (at least 1)
       int k_q25 = (n + 1) %/% 4;
       if (k_q25 < 1) k_q25 = 1;
       target += order_stat_logpdf_fun(obs_stat2[d], n, k_q25, dist_type, loc, phi);
 
-      // Q75 is approximately the 3n/4-th order statistic (at least k_q25 + 1)
       int k_q75 = (3 * (n + 1)) %/% 4;
       if (k_q75 <= k_q25) k_q75 = k_q25 + 1;
-      if (k_q75 > n) k_q75 = n;  // optional safety
+      if (k_q75 > n) k_q75 = n;
       target += order_stat_logpdf_fun(obs_stat3[d], n, k_q75, dist_type, loc, phi);
     }
     
     else if (summary_type[d] == 3) {  // mean + sd
-      // For mean and SD, we use moment-based likelihood (normal approximation)
-      
       real expected_mean;
       real expected_sd;
       real se_mean;
@@ -176,7 +172,7 @@ model {
         real var_ = (exp(phi^2) - 1) * exp(2 * loc + phi^2);
         expected_sd = sqrt(var_);
         se_mean = expected_sd / sqrt(n);
-        se_sd = expected_sd / sqrt(2 * (n - 1));  // approximate
+        se_sd = expected_sd / sqrt(2 * (n - 1));
         
       } else if (dist_type == 2) {  // gamma
         real mean_d = exp(loc);
@@ -196,10 +192,19 @@ model {
         se_sd = expected_sd / sqrt(2 * (n - 1));
       }
       
-      // Likelihood for observed mean and sd
       obs_stat1[d] ~ normal(expected_mean, se_mean);
       obs_stat2[d] ~ normal(expected_sd, se_sd);
-      // obs_stat3[d] is ignored (placeholder)
+    }
+    
+    else if (summary_type[d] == 4) {  // raw frequency table
+      // Direct likelihood: for each distinct observed value, add count * log_pdf(value).
+      // This is equivalent to fitting the distribution directly to all individual observations,
+      // but using the compressed frequency-table representation.
+      int s = freq_start[d];
+      int len = freq_len[d];
+      for (i in s:(s + len - 1)) {
+        target += freq_count[i] * dist_logpdf_fun(freq_value[i], dist_type, loc, phi);
+      }
     }
   }
 }
@@ -295,7 +300,7 @@ generated quantities {
         if (k_q25 < 1) k_q25 = 1;
         int k_q75    = (3 * (n + 1)) %/% 4;
         if (k_q75 <= k_q25) k_q75 = k_q25 + 1;
-        if (k_q75 > n) k_q75 = n;  // optional
+        if (k_q75 > n) k_q75 = n;
         
         log_lik[idx]     = order_stat_logpdf_fun(obs_stat1[d], n, k_median, dist_type, loc, phi);
         log_lik[idx + 1] = order_stat_logpdf_fun(obs_stat2[d], n, k_q25,    dist_type, loc, phi);
@@ -307,13 +312,13 @@ generated quantities {
         real se_mean;
         real se_sd;
         
-        if (dist_type == 1) {  // lognormal
+        if (dist_type == 1) {
           expected_mean = exp(loc + phi^2 / 2);
           real var_ = (exp(phi^2) - 1) * exp(2 * loc + phi^2);
           expected_sd = sqrt(var_);
           se_mean = expected_sd / sqrt(n);
           se_sd = expected_sd / sqrt(2 * (n - 1));
-        } else if (dist_type == 2) {  // gamma
+        } else if (dist_type == 2) {
           real mean_d = exp(loc);
           real shape = phi;
           real scale_param = mean_d / shape;
@@ -321,7 +326,7 @@ generated quantities {
           expected_sd = sqrt(mean_d * scale_param);
           se_mean = expected_sd / sqrt(n);
           se_sd = expected_sd / sqrt(2 * (n - 1));
-        } else if (dist_type == 3) {  // weibull
+        } else if (dist_type == 3) {
           real scale = exp(loc);
           real shape = phi;
           expected_mean = scale * tgamma(1 + 1.0 / shape);
@@ -334,6 +339,19 @@ generated quantities {
         log_lik[idx]     = normal_lpdf(obs_stat1[d] | expected_mean, expected_sd / sqrt(n));
         log_lik[idx + 1] = normal_lpdf(obs_stat2[d] | expected_sd,   expected_sd / sqrt(2 * (n - 1)));
         log_lik[idx + 2] = 0;  // placeholder
+        
+      } else if (summary_type[d] == 4) {  // raw frequency table
+        // Sum log-likelihoods over all individuals, using the frequency table.
+        // Stored as a single scalar in log_lik[idx]; slots idx+1 and idx+2 are 0 (unused).
+        real ll_type4 = 0;
+        int s = freq_start[d];
+        int len = freq_len[d];
+        for (i in s:(s + len - 1)) {
+          ll_type4 += freq_count[i] * dist_logpdf_fun(freq_value[i], dist_type, loc, phi);
+        }
+        log_lik[idx]     = ll_type4;
+        log_lik[idx + 1] = 0;  // unused
+        log_lik[idx + 2] = 0;  // unused
       }
       
       idx += 3;
