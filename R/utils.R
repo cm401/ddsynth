@@ -434,26 +434,6 @@ generate_scenario_library <- function(include_homogeneous = TRUE,
       }
     }
   }
-  
-  # ===== HOMOGENEOUS FREQ TABLE SCENARIOS =====
-  if (include_homogeneous && include_freq_table) {
-    for (dist in distributions) {
-      for (n_datasets_val in c(5, 10, 20)) {
-        for (n_obs_val in c(5, 10, 20, 50)) {
-          scenarios[[idx]] <- create_scenario(
-            scenario_name      = sprintf("Homog_%s_ST4_D%d_N%d", dist, n_datasets_val, n_obs_val),
-            dist_type          = dist,
-            n_datasets         = n_datasets_val,
-            n_obs_config       = "fixed",
-            fixed_n_obs        = n_obs_val,
-            summary_config     = "fixed",
-            fixed_summary_type = 4
-          )
-          idx <- idx + 1
-        }
-      }
-    }
-  }
 
   # ===== MIXED SUMMARY TYPE SCENARIOS =====
   if (include_mixed) {
@@ -484,33 +464,6 @@ generate_scenario_library <- function(include_homogeneous = TRUE,
     }
   }
   
-  # ===== MIXED SCENARIOS WITH FREQUENCY TABLE =====
-  if (include_mixed && include_freq_table) {
-    for (dist in distributions) {
-      for (n_datasets_val in c(15, 30)) {
-        scenarios[[idx]] <- create_scenario(
-          scenario_name  = sprintf("Mixed_Balanced_Freq_%s_D%d", dist, n_datasets_val),
-          dist_type      = dist,
-          n_datasets     = n_datasets_val,
-          n_obs_config   = "fixed",
-          fixed_n_obs    = 30,
-          summary_config = "mixed_balanced_with_freq"
-        )
-        idx <- idx + 1
-
-        scenarios[[idx]] <- create_scenario(
-          scenario_name  = sprintf("Mixed_Random_Freq_%s_D%d", dist, n_datasets_val),
-          dist_type      = dist,
-          n_datasets     = n_datasets_val,
-          n_obs_config   = "fixed",
-          fixed_n_obs    = 30,
-          summary_config = "mixed_random_with_freq"
-        )
-        idx <- idx + 1
-      }
-    }
-  }
-
   # ===== VARIED SAMPLE SIZE SCENARIOS =====
   if (include_varied_n) {
     for (dist in distributions) {
@@ -539,6 +492,53 @@ generate_scenario_library <- function(include_homogeneous = TRUE,
           n_obs_config = "large_var",
           summary_config = summary_config,
           fixed_summary_type = 1
+        )
+        idx <- idx + 1
+      }
+    }
+  }
+  
+  # ===== HOMOGENEOUS FREQ TABLE SCENARIOS =====
+  if (include_homogeneous && include_freq_table) {
+    for (dist in distributions) {
+      for (n_datasets_val in c(1,3)) {
+        for (n_obs_val in c(10, 40)) {
+          scenarios[[idx]] <- create_scenario(
+            scenario_name      = sprintf("Homog_%s_ST4_D%d_N%d", dist, n_datasets_val, n_obs_val),
+            dist_type          = dist,
+            n_datasets         = n_datasets_val,
+            n_obs_config       = "fixed",
+            fixed_n_obs        = n_obs_val,
+            summary_config     = "fixed",
+            fixed_summary_type = 4
+          )
+          idx <- idx + 1
+        }
+      }
+    }
+  }
+  
+  # ===== MIXED SCENARIOS WITH FREQUENCY TABLE =====
+  if (include_mixed && include_freq_table) {
+    for (dist in distributions) {
+      for (n_datasets_val in c(15, 30)) {
+        scenarios[[idx]] <- create_scenario(
+          scenario_name  = sprintf("Mixed_Balanced_Freq_%s_D%d", dist, n_datasets_val),
+          dist_type      = dist,
+          n_datasets     = n_datasets_val,
+          n_obs_config   = "fixed",
+          fixed_n_obs    = 30,
+          summary_config = "mixed_balanced_with_freq"
+        )
+        idx <- idx + 1
+
+        scenarios[[idx]] <- create_scenario(
+          scenario_name  = sprintf("Mixed_Random_Freq_%s_D%d", dist, n_datasets_val),
+          dist_type      = dist,
+          n_datasets     = n_datasets_val,
+          n_obs_config   = "fixed",
+          fixed_n_obs    = 30,
+          summary_config = "mixed_random_with_freq"
         )
         idx <- idx + 1
       }
