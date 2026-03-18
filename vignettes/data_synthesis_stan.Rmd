@@ -11,7 +11,7 @@ vignette: >
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
-  eval = TRUE
+  eval = FALSE  # Stan models are too heavy to run in CI; code is shown for reference
 )
 ```
 
