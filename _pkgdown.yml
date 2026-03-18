@@ -39,6 +39,7 @@ reference:
     contents:
       - starts_with("fit_")
       - starts_with("run_")
+      - starts_with("bsl_")
   - title: "Results & Plotting"
     desc: "Functions for summarising and visualising results"
     contents:
@@ -47,3 +48,12 @@ reference:
       - starts_with("create_bias")
       - starts_with("create_mae")
       - starts_with("create_convergence")
+  - title: "Simulation Metrics"
+    desc: "Functions for evaluating simulation study performance"
+    contents:
+      - check_coverage
+      - compute_iqd
+      - compute_median_bias
+      - compute_predictive_cdf
+      - extract_quantiles
+      - summarise_parameters
