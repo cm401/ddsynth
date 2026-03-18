@@ -18,6 +18,8 @@ size) and one of the following combinations of summary statistics:
 \item{\code{median}, \code{min}, \code{max}}{Median and range (summary type 1).}
 \item{\code{median}, \code{Q1}, \code{Q3}}{Median and inter-quartile range (summary type 2).}
 \item{\code{mean}, \code{sd}}{Mean and standard deviation (summary type 3).}
+\item{\code{freq_value}, \code{freq_count}}{Frequency table of (value, count) pairs
+(summary type 4). \code{n} is optional and defaults to \code{sum(freq_count)}.}
 }}
 
 \item{dist_type}{Integer distribution code: \code{1} = log-normal, \code{2} = gamma,

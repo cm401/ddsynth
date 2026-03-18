@@ -47,3 +47,12 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# macOS metadata
+.DS_Store
+
+# Large simulation output files
+*.rds
+
+# Claude Code internals
+.claude/

@@ -7,7 +7,8 @@
 generate_scenario_library(
   include_homogeneous = TRUE,
   include_mixed = TRUE,
-  include_varied_n = TRUE
+  include_varied_n = TRUE,
+  include_freq_table = FALSE
 )
 }
 \arguments{
