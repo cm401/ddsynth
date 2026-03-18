@@ -1,4 +1,6 @@
-# Delay distribution from summary statistics
+<img src="man/figures/logo.svg" align="right" height="139" />
+
+# ddsynth
 Methods to compute delay distributions from summary statistics
 
 ## Prerequisites
