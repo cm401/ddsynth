@@ -1,0 +1,146 @@
+# ddsynth
+
+Methods to compute delay distributions from summary statistics
+
+  
+
+## Prerequisites
+
+### R
+
+R (≥ 4.0.0) is required. Download it from
+[CRAN](https://cran.r-project.org/).
+
+### Stan
+
+Several functions in this package use [Stan](https://mc-stan.org/) via
+the **rstan** package. Stan requires a working C++ toolchain:
+
+- **Windows**: Install
+  [Rtools](https://cran.r-project.org/bin/windows/Rtools/) and follow
+  the [RStan Getting Started
+  guide](https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started).
+- **macOS**: Install the Xcode Command Line Tools
+  (`xcode-select --install`) and follow the [RStan Getting Started
+  guide](https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started).
+- **Linux**: Ensure `g++` and `make` are available
+  (e.g. `sudo apt install build-essential` on Debian/Ubuntu), then
+  install rstan normally.
+
+Install rstan from CRAN once the toolchain is ready:
+
+``` r
+install.packages("rstan")
+```
+
+Verify the installation works by running the built-in example:
+
+``` r
+example(stan_model, package = "rstan", run.dontrun = TRUE)
+```
+
+## Installation
+
+Install the development version of **ddsynth** directly from GitHub
+using either `remotes` or `pak`:
+
+``` r
+# Using remotes (install remotes first if needed)
+install.packages("remotes")
+remotes::install_github("cm401/delay_distribution_data_synthesis")
+
+# Alternatively, using pak
+install.packages("pak")
+pak::pkg_install("cm401/delay_distribution_data_synthesis")
+```
+
+## Quick start
+
+``` r
+library(ddsynth)
+```
+
+See the package vignettes for detailed usage examples:
+
+``` r
+browseVignettes("ddsynth")
+```
+
+# Package index
+
+## Data Synthesis
+
+Functions for synthesising delay distribution data
+
+- [`create_scenario()`](https://cm401.github.io/ddsynth/reference/create_scenario.md)
+  : Create a scenario with specific characteristics
+- [`generate_hierarchical_data_mixed()`](https://cm401.github.io/ddsynth/reference/generate_hierarchical_data_mixed.md)
+  : Generate data from hierarchical model with mixed summary types and
+  sample sizes
+- [`generate_scenario_library()`](https://cm401.github.io/ddsynth/reference/generate_scenario_library.md)
+  : Generate a comprehensive set of scenarios
+- [`prepare_stan_data_from_datasets()`](https://cm401.github.io/ddsynth/reference/prepare_stan_data_from_datasets.md)
+  : Prepare Stan data from a list of dataset summaries
+
+## Model Fitting
+
+Functions for fitting hierarchical Bayesian models
+
+- [`fit_model()`](https://cm401.github.io/ddsynth/reference/fit_model.md)
+  : Fit Stan model to simulated data
+- [`run_simulation_study_generalized()`](https://cm401.github.io/ddsynth/reference/run_simulation_study_generalized.md)
+  : Run simulation study with generalized scenarios
+- [`bsl_bridge_estimate()`](https://cm401.github.io/ddsynth/reference/bsl_bridge_estimate.md)
+  : Compute a log-mean-exp bridge estimate of the marginal likelihood
+- [`bsl_create_model()`](https://cm401.github.io/ddsynth/reference/bsl_create_model.md)
+  : Create a BSL model object
+- [`bsl_get_summary_stats()`](https://cm401.github.io/ddsynth/reference/bsl_get_summary_stats.md)
+  : Compute predictive summary statistics from BSL posterior draws
+- [`bsl_make_density_summary()`](https://cm401.github.io/ddsynth/reference/bsl_make_density_summary.md)
+  : Compute posterior predictive density summary for plotting
+- [`bsl_make_posterior_summary()`](https://cm401.github.io/ddsynth/reference/bsl_make_posterior_summary.md)
+  : Compute posterior predictive density or CDF summary for plotting
+- [`bsl_make_trace_df()`](https://cm401.github.io/ddsynth/reference/bsl_make_trace_df.md)
+  : Build a tidy trace data frame from a multi-chain BSL fit list
+- [`bsl_run_diagnostics()`](https://cm401.github.io/ddsynth/reference/bsl_run_diagnostics.md)
+  : Run automated MCMC diagnostics on BSL fits and save plots/CSV
+- [`bsl_summarise_posteriors()`](https://cm401.github.io/ddsynth/reference/bsl_summarise_posteriors.md)
+  : Summarise BSL posteriors with point estimates and 95% credible
+  intervals
+- [`bsl_to_mcmc_list_multi()`](https://cm401.github.io/ddsynth/reference/bsl_to_mcmc_list_multi.md)
+  : Convert a multi-chain BSL fit list to coda mcmc.list objects
+
+## Results & Plotting
+
+Functions for summarising and visualising results
+
+## Simulation Metrics
+
+Functions for evaluating simulation study performance
+
+- [`check_coverage()`](https://cm401.github.io/ddsynth/reference/check_coverage.md)
+  : Compute coverage for a parameter
+- [`compute_iqd()`](https://cm401.github.io/ddsynth/reference/compute_iqd.md)
+  : Compute Integrated Quadratic Distance (IQD)
+- [`compute_median_bias()`](https://cm401.github.io/ddsynth/reference/compute_median_bias.md)
+  : Compute median bias
+- [`compute_predictive_cdf()`](https://cm401.github.io/ddsynth/reference/compute_predictive_cdf.md)
+  : Compute posterior predictive CDF from a fitted Stan model
+- [`extract_quantiles()`](https://cm401.github.io/ddsynth/reference/extract_quantiles.md)
+  : Extract quantiles from a predictive CDF summary
+- [`summarise_parameters()`](https://cm401.github.io/ddsynth/reference/summarise_parameters.md)
+  : Summarise posterior parameter estimates across BSL models
+
+# Articles
+
+### Getting Started
+
+- [Introduction to
+  ddsynth](https://cm401.github.io/ddsynth/articles/introduction.md):
+
+### Methods
+
+- [Data Synthesis Using Summary Statistics with
+  Stan](https://cm401.github.io/ddsynth/articles/data_synthesis_stan.md):
+- [Simulation Study: Evaluating the Hierarchical Bayesian
+  Model](https://cm401.github.io/ddsynth/articles/simulation_study.md):

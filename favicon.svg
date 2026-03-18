@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" width="560" height="648"><svg width="560" height="648" viewBox="0 0 560 648">
+  <defs>
+    <clipPath id="hexclip">
+      <polygon points="280,25 502,153 502,493 280,621 58,493 58,153"></polygon>
+    </clipPath>
+    <clipPath id="ciclip">
+      <path d="
+        M66,364
+        C122,346 153,331 181,315
+        C208,300 233,278 260,250
+        C278,230 298,206 317,176
+        C334,150 353,134 377,124
+        C395,117 420,113 449,110
+        L449,193
+        C420,196 395,200 377,210
+        C353,222 334,242 317,268
+        C298,298 278,328 260,356
+        C233,390 208,414 181,430
+        C153,447 122,460 66,462
+        Z"></path>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <polygon points="280,25 502,153 502,493 280,621 58,493 58,153" fill="#2e2e2e"></polygon>
+
+  <!-- Grid -->
+  <g clip-path="url(#hexclip)" opacity="0.15">
+    <line x1="58" y1="165" x2="502" y2="165" stroke="#fff" stroke-width="0.7"></line>
+    <line x1="58" y1="215" x2="502" y2="215" stroke="#fff" stroke-width="0.7"></line>
+    <line x1="58" y1="265" x2="502" y2="265" stroke="#fff" stroke-width="0.7"></line>
+    <line x1="58" y1="315" x2="502" y2="315" stroke="#fff" stroke-width="0.7"></line>
+    <line x1="58" y1="365" x2="502" y2="365" stroke="#fff" stroke-width="0.7"></line>
+    <line x1="58" y1="415" x2="502" y2="415" stroke="#fff" stroke-width="0.7"></line>
+    <line x1="132" y1="25" x2="132" y2="621" stroke="#fff" stroke-width="0.7"></line>
+    <line x1="206" y1="25" x2="206" y2="621" stroke="#fff" stroke-width="0.7"></line>
+    <line x1="280" y1="25" x2="280" y2="621" stroke="#fff" stroke-width="0.7"></line>
+    <line x1="354" y1="25" x2="354" y2="621" stroke="#fff" stroke-width="0.7"></line>
+    <line x1="428" y1="25" x2="428" y2="621" stroke="#fff" stroke-width="0.7"></line>
+  </g>
+
+  <g clip-path="url(#hexclip)">
+    <!-- CI band -->
+    <path d="
+      M66,364
+      C122,346 153,331 181,315
+      C208,300 233,278 260,250
+      C278,230 298,206 317,176
+      C334,150 353,134 377,124
+      C395,117 420,113 449,110
+      L449,193
+      C420,196 395,200 377,210
+      C353,222 334,242 317,268
+      C298,298 278,328 260,356
+      C233,390 208,414 181,430
+      C153,447 122,460 66,462
+      Z" fill="#c0392b" opacity="0.32"></path>
+
+    <!-- CDF mean line -->
+    <path d="
+      M66,406
+      C122,388 153,373 181,357
+      C208,342 233,320 260,292
+      C278,272 298,248 317,218
+      C334,192 353,174 377,164
+      C395,157 420,152 449,150" fill="none" stroke="#e74c3c" stroke-width="3" stroke-linecap="round"></path>
+
+    <!-- Median dashed lines -->
+    <line x1="66" y1="292" x2="260" y2="292" stroke="#e74c3c" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.8"></line>
+    <line x1="260" y1="292" x2="260" y2="462" stroke="#e74c3c" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.8"></line>
+
+    <!-- 95th percentile line clipped to CI band -->
+    <line x1="58" y1="172" x2="502" y2="172" stroke="#e74c3c" stroke-width="1.5" stroke-dasharray="3,4" opacity="0.8" clip-path="url(#ciclip)"></line>
+
+    <!-- Forest plot — white -->
+    <!-- d7: left of median -->
+    <line x1="161" y1="347" x2="334" y2="347" stroke="#ffffff" stroke-width="1.3" opacity="0.9"></line>
+    <line x1="161" y1="341" x2="161" y2="353" stroke="#ffffff" stroke-width="1.3" opacity="0.9"></line>
+    <line x1="334" y1="341" x2="334" y2="353" stroke="#ffffff" stroke-width="1.3" opacity="0.9"></line>
+    <polygon points="235,339 244,347 235,355 226,347" fill="#ffffff"></polygon>
+
+    <!-- d1: left of median -->
+    <line x1="177" y1="365" x2="323" y2="365" stroke="#ffffff" stroke-width="1.3" opacity="0.9"></line>
+    <line x1="177" y1="359" x2="177" y2="371" stroke="#ffffff" stroke-width="1.3" opacity="0.9"></line>
+    <line x1="323" y1="359" x2="323" y2="371" stroke="#ffffff" stroke-width="1.3" opacity="0.9"></line>
+    <polygon points="243,357 252,365 243,373 234,365" fill="#ffffff"></polygon>
+
+    <!-- d9: open circle, right of median -->
+    <line x1="201" y1="383" x2="388" y2="383" stroke="#ffffff" stroke-width="1.3" opacity="0.9"></line>
+    <line x1="201" y1="377" x2="201" y2="389" stroke="#ffffff" stroke-width="1.3" opacity="0.9"></line>
+    <line x1="388" y1="377" x2="388" y2="389" stroke="#ffffff" stroke-width="1.3" opacity="0.9"></line>
+    <circle cx="288" cy="383" r="6" fill="#2e2e2e" stroke="#ffffff" stroke-width="1.6"></circle>
+
+    <!-- d2: wide diamond, right of median -->
+    <line x1="124" y1="401" x2="401" y2="401" stroke="#ffffff" stroke-width="1.3" opacity="0.9"></line>
+    <line x1="124" y1="395" x2="124" y2="407" stroke="#ffffff" stroke-width="1.3" opacity="0.9"></line>
+    <line x1="401" y1="395" x2="401" y2="407" stroke="#ffffff" stroke-width="1.3" opacity="0.9"></line>
+    <polygon points="296,393 305,401 296,409 287,401" fill="#ffffff" opacity="0.9"></polygon>
+  </g>
+
+  <!-- Hex border -->
+  <polygon points="280,25 502,153 502,493 280,621 58,493 58,153" fill="none" stroke="#c0392b" stroke-width="7"></polygon>
+  <polygon points="280,33 495,158 495,488 280,613 65,488 65,158" fill="none" stroke="#e74c3c" stroke-width="1.2" opacity="0.5"></polygon>
+
+  <!-- Package name -->
+  <text x="280" y="504" text-anchor="middle" font-family="monospace, sans-serif" font-size="52" font-weight="700" fill="#ffffff" letter-spacing="2">ddsynth</text>
+
+  <!-- Tagline -->
+  <text x="280" y="536" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#e74c3c" letter-spacing="2.5">DELAY · DISTRIBUTIONS ·</text>
+  <text x="280" y="556" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#e74c3c" letter-spacing="2.5">SYNTHESIS</text>
+
+</svg></svg>
