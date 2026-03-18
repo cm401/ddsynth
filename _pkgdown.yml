@@ -1,0 +1,49 @@
+url: https://cm401.github.io/delay_distribution_data_synthesis/
+
+template:
+  bootstrap: 5
+
+home:
+  title: "ddsynth"
+  description: "Delay Distributions from Summary Statistics"
+
+navbar:
+  structure:
+    left:  [intro, articles, reference]
+    right: [github]
+  components:
+    github:
+      icon: fab fa-github
+      href: https://github.com/cm401/delay_distribution_data_synthesis
+
+articles:
+  - title: "Getting Started"
+    navbar: ~
+    contents:
+      - introduction
+  - title: "Methods"
+    navbar: ~
+    contents:
+      - data_synthesis_stan
+      - simulation_study
+
+reference:
+  - title: "Data Synthesis"
+    desc: "Functions for synthesising delay distribution data"
+    contents:
+      - starts_with("create_")
+      - starts_with("generate_")
+      - starts_with("prepare_")
+  - title: "Model Fitting"
+    desc: "Functions for fitting hierarchical Bayesian models"
+    contents:
+      - starts_with("fit_")
+      - starts_with("run_")
+  - title: "Results & Plotting"
+    desc: "Functions for summarising and visualising results"
+    contents:
+      - starts_with("create_results")
+      - starts_with("create_coverage")
+      - starts_with("create_bias")
+      - starts_with("create_mae")
+      - starts_with("create_convergence")
