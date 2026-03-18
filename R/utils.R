@@ -937,7 +937,7 @@ run_simulation_study_generalized <- function(n_sim,
   results <- foreach::foreach(
     i          = seq_len(nrow(tasks)),
     .combine   = dplyr::bind_rows,
-    .packages  = c("rstan", "delaydistribution"),
+    .packages  = c("rstan", "ddsynth"),
     .export    = c("stan_model", "run_one")
   ) %dopar% {
     run_one(

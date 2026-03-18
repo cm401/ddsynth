@@ -1,8 +1,8 @@
 ---
-title: "Introduction to delaydistribution"
+title: "Introduction to ddsynth"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Introduction to delaydistribution}
+  %\VignetteIndexEntry{Introduction to ddsynth}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -15,12 +15,12 @@ knitr::opts_chunk$set(
 ```
 
 ```{r setup}
-library(delaydistribution)
+library(ddsynth)
 ```
 
 ## Overview
 
-`delaydistribution` provides methods to compute delay distributions from
+`ddsynth` provides methods to compute delay distributions from
 summary statistics (e.g. a reported mean and standard deviation).
 
 This vignette is a **placeholder** that will be expanded once the main

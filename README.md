@@ -27,7 +27,7 @@ example(stan_model, package = "rstan", run.dontrun = TRUE)
 
 ## Installation
 
-Install the development version of **delaydistribution** directly from GitHub using either `remotes` or `pak`:
+Install the development version of **ddsynth** directly from GitHub using either `remotes` or `pak`:
 
 ```r
 # Using remotes (install remotes first if needed)
@@ -42,11 +42,11 @@ pak::pkg_install("cm401/delay_distribution_data_synthesis")
 ## Quick start
 
 ```r
-library(delaydistribution)
+library(ddsynth)
 ```
 
 See the package vignettes for detailed usage examples:
 
 ```r
-browseVignettes("delaydistribution")
+browseVignettes("ddsynth")
 ```

@@ -18,7 +18,7 @@ When the package is installed, everything under `inst/` is copied to the
 package root, so a model can be located from R with:
 
 ```r
-system.file("stan", "lognormal_fit.stan", package = "delaydistribution")
+system.file("stan", "lognormal_fit.stan", package = "ddsynth")
 ```
 
 This path can then be passed to `rstan::stan()`, `cmdstanr::cmdstan_model()`,
