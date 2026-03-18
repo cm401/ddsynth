@@ -51,8 +51,9 @@ rsconnect/
 # macOS metadata
 .DS_Store
 
-# Large simulation output files
+# Large simulation output files (allow vignette data)
 *.rds
+!vignettes/*.rds
 
 # Claude Code internals
 .claude/

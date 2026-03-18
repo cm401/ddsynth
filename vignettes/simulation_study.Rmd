@@ -8,15 +8,11 @@ vignette: >
 ---
 
 ```{r setup, include=FALSE}
-has_results <- file.exists('simulation_results_output_generalized.rds')
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
-  eval = has_results
+  eval = TRUE
 )
-if (!has_results) {
-  message("Simulation results file not found — all chunks set to eval=FALSE.")
-}
 ```
 
 ## Overview
