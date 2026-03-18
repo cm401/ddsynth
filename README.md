@@ -1,4 +1,4 @@
-<img src="man/figures/logo.svg" align="right" height="220" />
+<img src="man/figures/logo.svg" align="right" height="240" style="margin-top: 50px; margin-left: 20px;" />
 
 # ddsynth
 Methods to compute delay distributions from summary statistics
