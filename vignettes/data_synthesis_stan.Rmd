@@ -33,7 +33,7 @@ both bridge sampling (log marginal likelihood) and leave-one-out cross-validatio
 ## Setup
 
 ```{r setup}
-library(delaydistribution)
+library(ddsynth)
 library(rstan)
 library(bridgesampling)
 library(loo)
@@ -83,7 +83,7 @@ The Stan model file is shipped with the package under `inst/stan/`.
 ```{r compile}
 stan_model_path <- system.file(
   "stan", "hierarchical_data_synthesis_summary_stats.stan",
-  package = "delaydistribution"
+  package = "ddsynth"
 )
 stan_model_code <- stan_model(stan_model_path)
 ```

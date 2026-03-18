@@ -41,7 +41,7 @@ sample size.
 ## Setup
 
 ```{r libs}
-library(delaydistribution)
+library(ddsynth)
 library(tidyverse)
 library(ggsci)
 ```
