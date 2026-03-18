@@ -1,4 +1,4 @@
-url: https://cm401.github.io/delay_distribution_data_synthesis/
+url: https://cm401.github.io/ddsynth/
 
 template:
   bootstrap: 5
@@ -14,7 +14,7 @@ navbar:
   components:
     github:
       icon: fab fa-github
-      href: https://github.com/cm401/delay_distribution_data_synthesis
+      href: https://github.com/cm401/ddsynth
 
 articles:
   - title: "Getting Started"
