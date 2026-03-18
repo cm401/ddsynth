@@ -1,7 +1,9 @@
-<img src="man/figures/logo.svg" align="right" height="139" />
+<img src="man/figures/logo.svg" align="right" height="220" />
 
 # ddsynth
 Methods to compute delay distributions from summary statistics
+
+<br clear="right"/>
 
 ## Prerequisites
 
