@@ -7,7 +7,7 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r chunk-opts, include=FALSE}
+```{r chunk-opts, include=FALSE, purl=FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
@@ -33,7 +33,7 @@ both bridge sampling (log marginal likelihood) and leave-one-out cross-validatio
 
 ## Setup
 
-```{r setup}
+```{r setup, purl=FALSE}
 library(ddsynth)
 library(rstan)
 library(bridgesampling)
@@ -60,7 +60,7 @@ statistics and sample size.  Three summary-statistic types are supported:
 | 2 | `median`, `Q1`, `Q3` |
 | 3 | `mean`, `sd` |
 
-```{r data}
+```{r data, purl=FALSE}
 datasets <- list(
   d1  = list(median = 10.0, min =  9.0, max = 12.0, n =  4),
   d2  = list(median =  4.0, min =  2.0, max =  7.0, n =  6),
@@ -81,7 +81,7 @@ stan_data <- prepare_stan_data_from_datasets(datasets)
 
 The Stan model file is shipped with the package under `inst/stan/`.
 
-```{r compile}
+```{r compile, purl=FALSE}
 stan_model_path <- system.file(
   "stan", "hierarchical_data_synthesis_summary_stats.stan",
   package = "ddsynth"
@@ -93,7 +93,7 @@ stan_model_code <- stan_model(stan_model_path)
 
 We fit the hierarchical model under each candidate distribution family.
 
-```{r fit}
+```{r fit, purl=FALSE}
 distributions <- c("lognormal", "weibull")
 dist_codes    <- c(lognormal = 1, gamma = 2, weibull = 3)
 
@@ -129,7 +129,7 @@ for (dist in distributions) {
 
 ### Bridge Sampling (Log Marginal Likelihood)
 
-```{r model-comparison}
+```{r model-comparison, purl=FALSE}
 log_ml    <- sapply(bridge_samples, function(x) x$logml)
 rel_prob  <- exp(log_ml - max(log_ml))
 rel_prob  <- rel_prob / sum(rel_prob)
@@ -155,7 +155,7 @@ print(bf_table)
 
 ### LOO-CV Comparison
 
-```{r loo}
+```{r loo, purl=FALSE}
 loo_list <- lapply(fits, loo, save_psis = TRUE)
 loo_comparison <- loo_compare(loo_list)
 cat("\n========== LOO Model Comparison ==========\n")
@@ -164,7 +164,7 @@ print(loo_comparison)
 
 ## Convergence Diagnostics
 
-```{r diagnostics}
+```{r diagnostics, purl=FALSE}
 diagnostic_summary <- list()
 
 for (dist in distributions) {
@@ -193,7 +193,7 @@ print(diagnostic_df)
 
 ### Traceplots
 
-```{r traceplots, fig.width=10, fig.height=8}
+```{r traceplots, fig.width=10, fig.height=8, purl=FALSE}
 tp <- lapply(distributions, function(dist) {
   traceplot(fits[[dist]], pars = c("mu0", "log_tau", "log_phi"),
             main = paste("Traceplots:", dist))
@@ -205,7 +205,7 @@ tp[["lognormal"]] / tp[["weibull"]]
 
 ## Posterior Predictive Summaries
 
-```{r posterior-summaries}
+```{r posterior-summaries, purl=FALSE}
 get_posterior_summaries <- function(fit) {
   sims <- rstan::extract(fit)
   data.frame(
@@ -236,7 +236,7 @@ print(posterior_summaries)
 
 ## Parameter Summaries
 
-```{r param-summaries}
+```{r param-summaries, purl=FALSE}
 summarise_parameters_stan <- function(fit, model_name) {
   sims <- rstan::extract(fit)
 
@@ -272,7 +272,7 @@ print(param_summaries)
 
 ### Posterior Predictive Summaries Plot
 
-```{r plot-pred, fig.width=10, fig.height=5}
+```{r plot-pred, fig.width=10, fig.height=5, purl=FALSE}
 plot_data <- posterior_summaries %>%
   select(model, median_mean, median_low, median_high,
          q90_mean, q90_low, q90_high,
@@ -299,7 +299,7 @@ print(p1)
 
 ### Parameter Estimates Plot
 
-```{r plot-params, fig.width=6, fig.height=8}
+```{r plot-params, fig.width=6, fig.height=8, purl=FALSE}
 param_plot_data <- param_summaries %>%
   mutate(parameter = factor(parameter, levels = c("mu0", "tau", "phi")))
 
@@ -322,7 +322,7 @@ print(p2)
 The `compute_predictive_cdf()` helper integrates over the posterior and the
 between-study random effect to produce a predictive CDF with credible bands.
 
-```{r cdf, fig.width=8, fig.height=10}
+```{r cdf, fig.width=8, fig.height=10, purl=FALSE}
 cdf_summaries <- list()
 
 for (dist in names(fits)) {
@@ -467,6 +467,6 @@ print(p_final)
 
 ## Session Info
 
-```{r session-info, eval=TRUE}
+```{r session-info, eval=TRUE, purl=FALSE}
 sessionInfo()
 ```
