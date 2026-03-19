@@ -41,11 +41,11 @@ Install the development version of **ddsynth** directly from GitHub using either
 ```r
 # Using remotes (install remotes first if needed)
 install.packages("remotes")
-remotes::install_github("cm401/delay_distribution_data_synthesis")
+remotes::install_github("cm401/ddsynth")
 
 # Alternatively, using pak
 install.packages("pak")
-pak::pkg_install("cm401/delay_distribution_data_synthesis")
+pak::pkg_install("cm401/ddsynth")
 ```
 
 ## Quick start
