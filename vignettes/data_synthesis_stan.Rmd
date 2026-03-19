@@ -7,11 +7,12 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r echo=TRUE}
+```{r setup, include=FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
-  eval = FALSE  # Stan models are too heavy to run in CI; code is shown for reference
+  eval = FALSE,  # Stan models are too heavy to run in CI; code is shown for reference
+  purl = FALSE   # Exclude from R CMD check tangle
 )
 ```
 
