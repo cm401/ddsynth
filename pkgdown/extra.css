@@ -1,0 +1,4 @@
+/* Push the hex logo down so it sits below the title underline */
+.page-header img.logo {
+  margin-top: 1.5rem;
+}
