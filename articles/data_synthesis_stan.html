@@ -67,12 +67,6 @@
 
     
     
-<div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">knitr</span><span class="fu">::</span><span class="va"><a href="https://rdrr.io/pkg/knitr/man/opts_chunk.html" class="external-link">opts_chunk</a></span><span class="op">$</span><span class="fu">set</span><span class="op">(</span></span>
-<span>  collapse <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  comment <span class="op">=</span> <span class="st">"#&gt;"</span>,</span>
-<span>  eval <span class="op">=</span> <span class="cn">FALSE</span>  <span class="co"># Stan models are too heavy to run in CI; code is shown for reference</span></span>
-<span><span class="op">)</span></span></code></pre></div>
 <div class="section level2">
 <h2 id="overview">Overview<a class="anchor" aria-label="anchor" href="#overview"></a>
 </h2>
@@ -91,7 +85,7 @@ likelihood) and leave-one-out cross-validation (LOO-CV).</p>
 <div class="section level2">
 <h2 id="setup">Setup<a class="anchor" aria-label="anchor" href="#setup"></a>
 </h2>
-<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://cm401.github.io/ddsynth">ddsynth</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://mc-stan.org/rstan/" class="external-link">rstan</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/quentingronau/bridgesampling" class="external-link">bridgesampling</a></span><span class="op">)</span></span>
@@ -138,7 +132,7 @@ types are supported:</p>
 </tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">datasets</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
 <span>  d1  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>median <span class="op">=</span> <span class="fl">10.0</span>, min <span class="op">=</span>  <span class="fl">9.0</span>, max <span class="op">=</span> <span class="fl">12.0</span>, n <span class="op">=</span>  <span class="fl">4</span><span class="op">)</span>,</span>
 <span>  d2  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>median <span class="op">=</span>  <span class="fl">4.0</span>, min <span class="op">=</span>  <span class="fl">2.0</span>, max <span class="op">=</span>  <span class="fl">7.0</span>, n <span class="op">=</span>  <span class="fl">6</span><span class="op">)</span>,</span>
@@ -159,7 +153,7 @@ types are supported:</p>
 </h2>
 <p>The Stan model file is shipped with the package under
 <code>inst/stan/</code>.</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">stan_model_path</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span></span>
 <span>  <span class="st">"stan"</span>, <span class="st">"hierarchical_data_synthesis_summary_stats.stan"</span>,</span>
 <span>  package <span class="op">=</span> <span class="st">"ddsynth"</span></span>
@@ -171,7 +165,7 @@ types are supported:</p>
 </h2>
 <p>We fit the hierarchical model under each candidate distribution
 family.</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">distributions</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lognormal"</span>, <span class="st">"weibull"</span><span class="op">)</span></span>
 <span><span class="va">dist_codes</span>    <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>lognormal <span class="op">=</span> <span class="fl">1</span>, gamma <span class="op">=</span> <span class="fl">2</span>, weibull <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span>
 <span></span>
@@ -208,7 +202,7 @@ family.</p>
 <div class="section level3">
 <h3 id="bridge-sampling-log-marginal-likelihood">Bridge Sampling (Log Marginal Likelihood)<a class="anchor" aria-label="anchor" href="#bridge-sampling-log-marginal-likelihood"></a>
 </h3>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">log_ml</span>    <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">sapply</a></span><span class="op">(</span><span class="va">bridge_samples</span>, <span class="kw">function</span><span class="op">(</span><span class="va">x</span><span class="op">)</span> <span class="va">x</span><span class="op">$</span><span class="va">logml</span><span class="op">)</span></span>
 <span><span class="va">rel_prob</span>  <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="va">log_ml</span> <span class="op">-</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="va">log_ml</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">rel_prob</span>  <span class="op">&lt;-</span> <span class="va">rel_prob</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">rel_prob</span><span class="op">)</span></span>
@@ -234,7 +228,7 @@ family.</p>
 <div class="section level3">
 <h3 id="loo-cv-comparison">LOO-CV Comparison<a class="anchor" aria-label="anchor" href="#loo-cv-comparison"></a>
 </h3>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">loo_list</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="va">fits</span>, <span class="va">loo</span>, save_psis <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="va">loo_comparison</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://mc-stan.org/loo/reference/loo_compare.html" class="external-link">loo_compare</a></span><span class="op">(</span><span class="va">loo_list</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"\n========== LOO Model Comparison ==========\n"</span><span class="op">)</span></span>
@@ -244,7 +238,7 @@ family.</p>
 <div class="section level2">
 <h2 id="convergence-diagnostics">Convergence Diagnostics<a class="anchor" aria-label="anchor" href="#convergence-diagnostics"></a>
 </h2>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">diagnostic_summary</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
 <span></span>
 <span><span class="kw">for</span> <span class="op">(</span><span class="va">dist</span> <span class="kw">in</span> <span class="va">distributions</span><span class="op">)</span> <span class="op">{</span></span>
@@ -272,7 +266,7 @@ family.</p>
 <div class="section level3">
 <h3 id="traceplots">Traceplots<a class="anchor" aria-label="anchor" href="#traceplots"></a>
 </h3>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">tp</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="va">distributions</span>, <span class="kw">function</span><span class="op">(</span><span class="va">dist</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="fu"><a href="https://mc-stan.org/rstan/reference/stanfit-method-traceplot.html" class="external-link">traceplot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">[[</span><span class="va">dist</span><span class="op">]</span><span class="op">]</span>, pars <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mu0"</span>, <span class="st">"log_tau"</span>, <span class="st">"log_phi"</span><span class="op">)</span>,</span>
 <span>            main <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span><span class="st">"Traceplots:"</span>, <span class="va">dist</span><span class="op">)</span><span class="op">)</span></span>
@@ -285,7 +279,7 @@ family.</p>
 <div class="section level2">
 <h2 id="posterior-predictive-summaries">Posterior Predictive Summaries<a class="anchor" aria-label="anchor" href="#posterior-predictive-summaries"></a>
 </h2>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">get_posterior_summaries</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">fit</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">sims</span> <span class="op">&lt;-</span> <span class="fu">rstan</span><span class="fu">::</span><span class="fu"><a href="https://mc-stan.org/rstan/reference/stanfit-method-extract.html" class="external-link">extract</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
@@ -316,7 +310,7 @@ family.</p>
 <div class="section level2">
 <h2 id="parameter-summaries">Parameter Summaries<a class="anchor" aria-label="anchor" href="#parameter-summaries"></a>
 </h2>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">summarise_parameters_stan</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">fit</span>, <span class="va">model_name</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">sims</span> <span class="op">&lt;-</span> <span class="fu">rstan</span><span class="fu">::</span><span class="fu"><a href="https://mc-stan.org/rstan/reference/stanfit-method-extract.html" class="external-link">extract</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span>
 <span></span>
@@ -353,7 +347,7 @@ family.</p>
 <div class="section level3">
 <h3 id="posterior-predictive-summaries-plot">Posterior Predictive Summaries Plot<a class="anchor" aria-label="anchor" href="#posterior-predictive-summaries-plot"></a>
 </h3>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">plot_data</span> <span class="op">&lt;-</span> <span class="va">posterior_summaries</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
 <span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/select.html" class="external-link">select</a></span><span class="op">(</span><span class="va">model</span>, <span class="va">median_mean</span>, <span class="va">median_low</span>, <span class="va">median_high</span>,</span>
 <span>         <span class="va">q90_mean</span>, <span class="va">q90_low</span>, <span class="va">q90_high</span>,</span>
@@ -380,7 +374,7 @@ family.</p>
 <div class="section level3">
 <h3 id="parameter-estimates-plot">Parameter Estimates Plot<a class="anchor" aria-label="anchor" href="#parameter-estimates-plot"></a>
 </h3>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">param_plot_data</span> <span class="op">&lt;-</span> <span class="va">param_summaries</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
 <span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/mutate.html" class="external-link">mutate</a></span><span class="op">(</span>parameter <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="va">parameter</span>, levels <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mu0"</span>, <span class="st">"tau"</span>, <span class="st">"phi"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
@@ -403,7 +397,7 @@ family.</p>
 <p>The <code><a href="../reference/compute_predictive_cdf.html">compute_predictive_cdf()</a></code> helper integrates over the
 posterior and the between-study random effect to produce a predictive
 CDF with credible bands.</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">cdf_summaries</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
 <span></span>
 <span><span class="kw">for</span> <span class="op">(</span><span class="va">dist</span> <span class="kw">in</span> <span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">fits</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
@@ -549,7 +543,7 @@ CDF with credible bands.</p>
 <div class="section level2">
 <h2 id="session-info">Session Info<a class="anchor" aria-label="anchor" href="#session-info"></a>
 </h2>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/sessionInfo.html" class="external-link">sessionInfo</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt; R version 4.5.3 (2026-03-11)</span></span>
 <span><span class="co">#&gt; Platform: x86_64-pc-linux-gnu</span></span>

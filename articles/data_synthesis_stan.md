@@ -1,13 +1,5 @@
 # Data Synthesis Using Summary Statistics with Stan
 
-``` r
-knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>",
-  eval = FALSE  # Stan models are too heavy to run in CI; code is shown for reference
-)
-```
-
 ## Overview
 
 This vignette demonstrates how to synthesise delay distribution
