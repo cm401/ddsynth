@@ -1,7 +1,8 @@
 # ddsynth
 
+![](reference/figures/logo.svg)
+
 [![R-CMD-check](https://github.com/cm401/ddsynth/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/cm401/ddsynth/actions/workflows/R-CMD-check.yaml)
-[![DOI](https://zenodo.org/badge/DOI/XYZ)](https://doi.org/XYZ)
 [![lifecycle](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 
 Methods to compute delay distributions from summary statistics
