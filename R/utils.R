@@ -163,6 +163,11 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95)) {  # CHANGED: a
 #'     \item{`mean`, `sd`}{Mean and standard deviation (summary type 3).}
 #'     \item{`freq_value`, `freq_count`}{Frequency table of (value, count) pairs
 #'       (summary type 4). `n` is optional and defaults to `sum(freq_count)`.}
+#'     \item{`freq_lower`, `freq_upper`, `freq_count`}{Interval-censored frequency
+#'       table (summary type 5). Each entry gives the lower and upper bound of the
+#'       censoring interval and the count of individuals in that interval.  When
+#'       `freq_lower[i] == freq_upper[i]` the observation is treated as exact.
+#'       `n` is optional and defaults to `sum(freq_count)`.}
 #'   }
 #' @param dist_type Integer distribution code: `1` = log-normal, `2` = gamma,
 #'   `3` = Weibull. Defaults to `1`.
@@ -171,7 +176,19 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95)) {  # CHANGED: a
 #' @param custom_priors Optional list of custom prior values. Currently unused.
 #'
 #' @return A named list suitable for passing to [rstan::sampling()] as the
-#'   `data` argument.
+#'   `data` argument. The list always includes `freq_lower` and `freq_upper`
+#'   fields (populated with zeros for non-type-5 datasets), as these are
+#'   required by the Stan model regardless of which summary types are present.
+#'
+#' @note **Backward compatibility:** The Stan model requires `freq_lower` and
+#'   `freq_upper` to be present in the data list for all runs, including those
+#'   that contain only type 1--4 datasets. This is handled automatically when
+#'   using this function. If you construct the Stan data list manually (rather
+#'   than via this function), you must include these fields explicitly, e.g.:
+#'   ```r
+#'   stan_data$freq_lower <- rep(0, stan_data$n_freq_total)
+#'   stan_data$freq_upper <- rep(0, stan_data$n_freq_total)
+#'   ```
 #' @export
 prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
                                             use_custom_priors = 0,
@@ -185,8 +202,10 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
   obs_stat1      <- numeric(n_datasets)
   obs_stat2      <- numeric(n_datasets)
   obs_stat3      <- numeric(n_datasets)
-  # Frequency table flat arrays (for summary_type == 4)
+  # Frequency table flat arrays (for summary_type == 4 and 5)
   freq_value_all <- numeric(0)
+  freq_lower_all <- numeric(0)
+  freq_upper_all <- numeric(0)
   freq_count_all <- integer(0)
   freq_start_vec <- integer(n_datasets)
   freq_len_vec   <- integer(n_datasets)
@@ -231,6 +250,30 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
       freq_start_vec[i] <- running_start
       freq_len_vec[i]   <- length(d$freq_value)
       freq_value_all    <- c(freq_value_all, as.numeric(d$freq_value))
+      freq_lower_all    <- c(freq_lower_all, rep(0, length(d$freq_value)))  # unused for type 4
+      freq_upper_all    <- c(freq_upper_all, rep(0, length(d$freq_value)))  # unused for type 4
+      freq_count_all    <- c(freq_count_all, as.integer(d$freq_count))
+      running_start     <- running_start + freq_len_vec[i]
+
+    } else if (!is.null(d$freq_lower) && !is.null(d$freq_upper) && !is.null(d$freq_count)) {
+      # Type 5: interval-censored frequency table
+      if (length(d$freq_lower) != length(d$freq_upper) ||
+          length(d$freq_lower) != length(d$freq_count)) {
+        stop(paste("Dataset", i, ": freq_lower, freq_upper and freq_count must all have the same length"))
+      }
+      if (any(d$freq_lower > d$freq_upper)) {
+        stop(paste("Dataset", i, ": all freq_lower values must be <= their corresponding freq_upper values"))
+      }
+      n_obs_vec[i]      <- if (!is.null(d$n)) d$n else sum(d$freq_count)
+      summary_type[i]   <- 5
+      obs_stat1[i]      <- 0  # placeholder
+      obs_stat2[i]      <- 0  # placeholder
+      obs_stat3[i]      <- 0  # placeholder
+      freq_start_vec[i] <- running_start
+      freq_len_vec[i]   <- length(d$freq_lower)
+      freq_value_all    <- c(freq_value_all, rep(0, length(d$freq_lower)))  # unused for type 5
+      freq_lower_all    <- c(freq_lower_all, as.numeric(d$freq_lower))
+      freq_upper_all    <- c(freq_upper_all, as.numeric(d$freq_upper))
       freq_count_all    <- c(freq_count_all, as.integer(d$freq_count))
       running_start     <- running_start + freq_len_vec[i]
 
@@ -239,7 +282,7 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
     }
   }
 
-  # Compute central estimates for mu0 prior (use weighted mean from freq table for type 4)
+  # Compute central estimates for mu0 prior (use weighted mean from freq table for types 4 and 5)
   central_estimates <- numeric(n_datasets)
   for (i in seq_len(n_datasets)) {
     if (summary_type[i] %in% c(1L, 2L, 3L)) {
@@ -250,6 +293,14 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
       fv <- freq_value_all[s:(s + ln - 1)]
       fc <- freq_count_all[s:(s + ln - 1)]
       central_estimates[i] <- sum(fv * fc) / sum(fc)
+    } else if (summary_type[i] == 5L && freq_len_vec[i] > 0) {
+      s   <- freq_start_vec[i]
+      ln  <- freq_len_vec[i]
+      fl  <- freq_lower_all[s:(s + ln - 1)]
+      fu  <- freq_upper_all[s:(s + ln - 1)]
+      fc  <- freq_count_all[s:(s + ln - 1)]
+      mid <- (fl + fu) / 2
+      central_estimates[i] <- sum(mid * fc) / sum(fc)
     }
   }
   valid_centrals <- central_estimates[central_estimates > 0]
@@ -265,6 +316,8 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
     obs_stat3    = as.array(obs_stat3),
     n_freq_total = length(freq_value_all),
     freq_value   = freq_value_all,
+    freq_lower   = freq_lower_all,
+    freq_upper   = freq_upper_all,
     freq_count   = freq_count_all,
     freq_start   = as.array(freq_start_vec),
     freq_len     = as.array(freq_len_vec)
