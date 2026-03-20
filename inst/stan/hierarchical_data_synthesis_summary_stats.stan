@@ -246,65 +246,104 @@ generated quantities {
   real pred_sd;
   vector[n_datasets * 3] log_lik;
   
+  // Predicted quantities:
+  // - When n_datasets < 5, tau is not identifiable from data (prior-dominated).
+  //   pred_* are computed at mu0 directly to avoid tau^2/2 inflation.
+  //   See: Higgins & Thompson (2002) doi:10.1002/sim.1186
+  //        Gelman (2006) doi:10.1214/06-BA117A
+  //        Rover et al. (2021) doi:10.1002/jrsm.1475
+  // - When n_datasets >= 5, tau is identifiable; sample from Normal(mu0, tau)
+  //   to include between-study heterogeneity. L=2000 for MC stability.
   {
-    int L = 100;
-    vector[L] means;
-    vector[L] medians;
-    vector[L] q25s;
-    vector[L] q75s;
-    vector[L] q90s;
-    vector[L] q95s; 
-    vector[L] sds;
-    
-    for (l in 1:L) {
-      real loc_sample = normal_rng(mu0, tau);
-      
+    if (n_datasets < 5) {
+      // Use mu0 directly — tau unidentifiable with fewer than 5 studies
       if (dist_type == 1) {  // lognormal
-        means[l] = exp(loc_sample + phi^2 / 2);
-        medians[l] = exp(loc_sample);
-        q25s[l] = exp(loc_sample - 0.6745 * phi);
-        q75s[l] = exp(loc_sample + 0.6745 * phi);
-        q90s[l] = exp(loc_sample + 1.28155 * phi);
-        q95s[l] = exp(loc_sample + 1.64485 * phi);  
-        sds[l] = sqrt((exp(phi^2) - 1) * exp(2 * loc_sample + phi^2));
-        
+        pred_mean   = exp(mu0 + phi^2 / 2);
+        pred_median = exp(mu0);
+        pred_q25    = exp(mu0 - 0.6745  * phi);
+        pred_q75    = exp(mu0 + 0.6745  * phi);
+        pred_q90    = exp(mu0 + 1.28155 * phi);
+        pred_q95    = exp(mu0 + 1.64485 * phi);
+        pred_sd     = sqrt((exp(phi^2) - 1) * exp(2 * mu0 + phi^2));
+
       } else if (dist_type == 2) {  // gamma
-        real mean_d = exp(loc_sample);
-        real shape = phi;
-        real scale_param = mean_d / shape;
-        
-        means[l] = mean_d;
-        sds[l] = sqrt(mean_d * scale_param);
-        
-        medians[l] = gamma_quantile_approx(0.5, shape, scale_param);
-        q25s[l] = gamma_quantile_approx(0.25, shape, scale_param);
-        q75s[l] = gamma_quantile_approx(0.75, shape, scale_param);
-        q90s[l] = gamma_quantile_approx(0.90, shape, scale_param);
-        q95s[l] = gamma_quantile_approx(0.95, shape, scale_param); 
-          
+        real mean_d      = exp(mu0);
+        real scale_param = mean_d / phi;
+        pred_mean   = mean_d;
+        pred_sd     = sqrt(mean_d * scale_param);
+        pred_median = gamma_quantile_approx(0.5,  phi, scale_param);
+        pred_q25    = gamma_quantile_approx(0.25, phi, scale_param);
+        pred_q75    = gamma_quantile_approx(0.75, phi, scale_param);
+        pred_q90    = gamma_quantile_approx(0.90, phi, scale_param);
+        pred_q95    = gamma_quantile_approx(0.95, phi, scale_param);
+
       } else if (dist_type == 3) {  // weibull
-        real scale = exp(loc_sample);
-        real shape = phi;
-        
-        means[l] = scale * tgamma(1 + 1.0 / shape);
-        medians[l] = scale * pow(log(2), 1.0 / shape);
-        q25s[l] = scale * pow(log(4.0 / 3.0), 1.0 / shape);
-        q75s[l] = scale * pow(log(4.0), 1.0 / shape);
-        q90s[l] = scale * pow(log(10.0), 1.0 / shape);
-        q95s[l] = scale * pow(log(20.0), 1.0 / shape);
-        
-        real var_weib = scale^2 * (tgamma(1 + 2.0 / shape) - pow(tgamma(1 + 1.0 / shape), 2));
-        sds[l] = sqrt(var_weib);
+        real scale  = exp(mu0);
+        pred_mean   = scale * tgamma(1 + 1.0 / phi);
+        pred_median = scale * pow(log(2),         1.0 / phi);
+        pred_q25    = scale * pow(log(4.0 / 3.0), 1.0 / phi);
+        pred_q75    = scale * pow(log(4.0),       1.0 / phi);
+        pred_q90    = scale * pow(log(10.0),      1.0 / phi);
+        pred_q95    = scale * pow(log(20.0),      1.0 / phi);
+        pred_sd     = sqrt(scale^2 * (tgamma(1 + 2.0/phi) - pow(tgamma(1 + 1.0/phi), 2)));
       }
+
+    } else {
+      // n_datasets >= 5: tau identifiable; include between-study heterogeneity
+      // via Monte Carlo integration over Normal(mu0, tau). L=2000 for stability.
+      int L = 2000;
+      vector[L] means;
+      vector[L] medians;
+      vector[L] q25s;
+      vector[L] q75s;
+      vector[L] q90s;
+      vector[L] q95s;
+      vector[L] sds;
+
+      for (l in 1:L) {
+        real loc_sample = normal_rng(mu0, tau);
+
+        if (dist_type == 1) {  // lognormal
+          means[l]   = exp(loc_sample + phi^2 / 2);
+          medians[l] = exp(loc_sample);
+          q25s[l]    = exp(loc_sample - 0.6745  * phi);
+          q75s[l]    = exp(loc_sample + 0.6745  * phi);
+          q90s[l]    = exp(loc_sample + 1.28155 * phi);
+          q95s[l]    = exp(loc_sample + 1.64485 * phi);
+          sds[l]     = sqrt((exp(phi^2) - 1) * exp(2 * loc_sample + phi^2));
+
+        } else if (dist_type == 2) {  // gamma
+          real mean_d      = exp(loc_sample);
+          real scale_param = mean_d / phi;
+          means[l]   = mean_d;
+          sds[l]     = sqrt(mean_d * scale_param);
+          medians[l] = gamma_quantile_approx(0.5,  phi, scale_param);
+          q25s[l]    = gamma_quantile_approx(0.25, phi, scale_param);
+          q75s[l]    = gamma_quantile_approx(0.75, phi, scale_param);
+          q90s[l]    = gamma_quantile_approx(0.90, phi, scale_param);
+          q95s[l]    = gamma_quantile_approx(0.95, phi, scale_param);
+
+        } else if (dist_type == 3) {  // weibull
+          real scale    = exp(loc_sample);
+          means[l]      = scale * tgamma(1 + 1.0 / phi);
+          medians[l]    = scale * pow(log(2),         1.0 / phi);
+          q25s[l]       = scale * pow(log(4.0 / 3.0), 1.0 / phi);
+          q75s[l]       = scale * pow(log(4.0),       1.0 / phi);
+          q90s[l]       = scale * pow(log(10.0),      1.0 / phi);
+          q95s[l]       = scale * pow(log(20.0),      1.0 / phi);
+          real var_weib = scale^2 * (tgamma(1 + 2.0/phi) - pow(tgamma(1 + 1.0/phi), 2));
+          sds[l]        = sqrt(var_weib);
+        }
+      }
+
+      pred_mean   = mean(means);
+      pred_median = mean(medians);
+      pred_q25    = mean(q25s);
+      pred_q75    = mean(q75s);
+      pred_q90    = mean(q90s);
+      pred_q95    = mean(q95s);
+      pred_sd     = mean(sds);
     }
-    
-    pred_mean   = mean(means);
-    pred_median = mean(medians);
-    pred_q25    = mean(q25s);
-    pred_q75    = mean(q75s);
-    pred_q90    = mean(q90s);
-    pred_q95    = mean(q95s);
-    pred_sd     = mean(sds);
   }
   
   // Log likelihood
