@@ -337,7 +337,7 @@ for (dist in names(fits)) {
     dist,
     x_seq   = seq(0, 30, length.out = 500),
     n_draws = 500,
-    L       = 50
+    L       = 2000
   )
 }
 
