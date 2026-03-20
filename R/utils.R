@@ -195,7 +195,21 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
                                             custom_priors = NULL) {
   
   n_datasets <- length(datasets)
-  
+
+  if (n_datasets < 5) {
+    warning(
+      "n_datasets = ", n_datasets, " (< 5): the between-study heterogeneity ",
+      "parameter tau cannot be reliably identified from so few studies and will ",
+      "be largely determined by its prior. Predicted quantities (pred_mean, ",
+      "pred_median, etc.) are therefore computed at the population mean mu0 ",
+      "rather than averaging over the predictive distribution for new studies. ",
+      "See Higgins & Thompson (2002) doi:10.1002/sim.1186, ",
+      "Gelman (2006) doi:10.1214/06-BA117A, ",
+      "and Rover et al. (2021) doi:10.1002/jrsm.1475.",
+      call. = FALSE
+    )
+  }
+
   # Initialize vectors
   n_obs_vec      <- integer(n_datasets)
   summary_type   <- integer(n_datasets)
