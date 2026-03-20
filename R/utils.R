@@ -192,7 +192,27 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95)) {  # CHANGED: a
 #'   `3` = Weibull. Defaults to `1`.
 #' @param use_custom_priors Integer flag (0 or 1) for custom prior use.
 #'   Currently unused; reserved for future extension. Defaults to `0`.
-#' @param custom_priors Optional list of custom prior values. Currently unused.
+#' @param custom_priors Named list of prior overrides. Any values not supplied
+#'   fall back to distribution-appropriate defaults (see Details). Recognised
+#'   names: `mu0_sd`, `log_tau_mean`, `log_tau_sd`, `log_phi_mean`,
+#'   `log_phi_sd`.
+#'
+#' @details
+#' **Distribution-specific defaults for `log_phi`:**
+#'
+#' Because `phi` has a different meaning in each distribution, the default
+#' prior for `log_phi_mean` is chosen per `dist_type`:
+#'
+#' | `dist_type` | Distribution | `phi` | Default `log_phi_mean` | Prior median phi |
+#' |---|---|---|---|---|
+#' | 1 | Lognormal | log-SD (σ) | -0.7 | 0.50 |
+#' | 2 | Gamma | shape | 2.5 | 12.2 |
+#' | 3 | Weibull | shape | 1.0 | 2.7 |
+#'
+#' Users can override any individual prior by passing only the relevant
+#' element(s) in `custom_priors`, e.g.
+#' `custom_priors = list(log_phi_mean = 3.0)` — all other priors will use
+#' the distribution-appropriate defaults above.
 #'
 #' @return A named list suitable for passing to [rstan::sampling()] as the
 #'   `data` argument. The list always includes `freq_lower` and `freq_upper`
@@ -211,12 +231,32 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95)) {  # CHANGED: a
 #' @export
 prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
                                             use_custom_priors = 0,
-                                            custom_priors = list(mu0_sd = 1.0,
-                                                                 log_tau_mean = 0.2,
-                                                                 log_tau_sd = 0.5,
-                                                                 log_phi_mean = 0.2,
-                                                                 log_phi_sd   = 0.5)) {
-  
+                                            custom_priors = list()) {
+
+  # Apply distribution-specific defaults for log_phi_mean/log_phi_sd.
+  # phi has a different meaning in each distribution:
+  #   lognormal : phi = log-SD (sigma),  typical range 0.2-0.7  -> log_phi_mean = -0.7
+  #   gamma     : phi = shape,           typical range 5-30     -> log_phi_mean =  2.5
+  #   weibull   : phi = shape,           typical range 2-6      -> log_phi_mean =  1.0
+  # All other priors share the same sensible defaults regardless of dist_type.
+  phi_defaults <- list(
+    `1` = list(log_phi_mean = -0.7, log_phi_sd = 0.5),   # lognormal
+    `2` = list(log_phi_mean =  2.5, log_phi_sd = 0.5),   # gamma
+    `3` = list(log_phi_mean =  1.0, log_phi_sd = 0.5)    # weibull
+  )[[as.character(dist_type)]]
+
+  defaults <- list(
+    mu0_sd       = 1.0,
+    log_tau_mean = 0.2,
+    log_tau_sd   = 0.5,
+    log_phi_mean = phi_defaults$log_phi_mean,
+    log_phi_sd   = phi_defaults$log_phi_sd
+  )
+
+  # User-supplied values in custom_priors override defaults; anything not
+  # supplied falls back to the distribution-appropriate default above.
+  custom_priors <- modifyList(defaults, custom_priors)
+
   n_datasets <- length(datasets)
 
   if (n_datasets < 5) {
