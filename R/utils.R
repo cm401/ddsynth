@@ -77,12 +77,17 @@ compute_predictive_cdf <- function(fit, dist_name, x_seq = seq(0, 30, length.out
     phi <- sims$phi[idx]
 
     # Integrate over L study-level locations.
-    # When n_datasets < 5, tau is not reliably identified by the data and is
-    # largely determined by its prior; sampling from Normal(mu0, tau) would
-    # therefore inflate the predictive uncertainty. Instead we fix all
-    # locations at mu0, consistent with the Stan generated quantities block.
+    # When n_datasets < 5, mu0 is confounded with tau * loc_d_raw and is not
+    # directly identified by the data — only their sum (loc_d) is. Using mu0
+    # therefore produces overly wide predictive intervals. Instead we use
+    # mean(loc_d_draw), the mean of the study-level location estimates, which
+    # is the quantity the data actually constrains. This is consistent with
+    # the Stan generated quantities block.
+    #   n_datasets == 1 : mean(loc_d) == loc_d[1], tightly identified
+    #   n_datasets 2-4  : sample mean of study-level estimates
     if (n_datasets < 5) {
-      locs <- rep(mu0, L)
+      loc_d_draw <- sims$loc_d[idx, ]
+      locs <- rep(mean(loc_d_draw), L)
     } else {
       locs <- rnorm(L, mean = mu0, sd = tau)
     }
@@ -206,7 +211,11 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95)) {  # CHANGED: a
 #' @export
 prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
                                             use_custom_priors = 0,
-                                            custom_priors = NULL) {
+                                            custom_priors = list(mu0_sd = 1.0,
+                                                                 log_tau_mean = 0.2,
+                                                                 log_tau_sd = 0.5,
+                                                                 log_phi_mean = 0.2,
+                                                                 log_phi_sd   = 0.5)) {
   
   n_datasets <- length(datasets)
 
@@ -352,11 +361,11 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
   )
 
   stan_data$mu0_mean     <- if (length(valid_centrals) > 0) log(mean(valid_centrals)) else 0
-  stan_data$mu0_sd       <- 1.0
-  stan_data$log_tau_mean <- 0.2
-  stan_data$log_tau_sd   <- 0.5
-  stan_data$log_phi_mean <- 0.2
-  stan_data$log_phi_sd   <- 0.5
+  stan_data$mu0_sd       <- custom_priors$mu0_sd
+  stan_data$log_tau_mean <- custom_priors$log_tau_mean
+  stan_data$log_tau_sd   <- custom_priors$log_tau_sd
+  stan_data$log_phi_mean <- custom_priors$log_phi_mean
+  stan_data$log_phi_sd   <- custom_priors$log_phi_sd
 
   return(stan_data)
 }
