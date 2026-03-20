@@ -131,6 +131,12 @@ types are supported:</p>
 <code>mean</code>, <code>sd</code>
 </td>
 </tr>
+<tr class="even">
+<td>4</td>
+<td>
+<code>freq_value</code>, <code>freq_count</code> (for frequency
+tables)</td>
+</tr>
 </tbody>
 </table>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
@@ -144,7 +150,11 @@ types are supported:</p>
 <span>  d7  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>median <span class="op">=</span> <span class="fl">10.0</span>, min <span class="op">=</span>  <span class="fl">8.0</span>, max <span class="op">=</span> <span class="fl">15.0</span>, n <span class="op">=</span> <span class="fl">11</span><span class="op">)</span>,</span>
 <span>  d8  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>median <span class="op">=</span>  <span class="fl">9.0</span>, min <span class="op">=</span>  <span class="fl">6.0</span>, max <span class="op">=</span> <span class="fl">11.0</span>, n <span class="op">=</span> <span class="fl">11</span><span class="op">)</span>,</span>
 <span>  d9  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>median <span class="op">=</span>  <span class="fl">9.0</span>, Q1  <span class="op">=</span>  <span class="fl">8.0</span>, Q3  <span class="op">=</span> <span class="fl">11.0</span>, n <span class="op">=</span> <span class="fl">82</span><span class="op">)</span>,</span>
-<span>  d10 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mean   <span class="op">=</span>  <span class="fl">9.3</span>, sd  <span class="op">=</span>  <span class="fl">1.9</span>,              n <span class="op">=</span> <span class="fl">18</span><span class="op">)</span></span>
+<span>  d10 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mean   <span class="op">=</span>  <span class="fl">9.3</span>, sd  <span class="op">=</span>  <span class="fl">1.9</span>,             n <span class="op">=</span> <span class="fl">18</span><span class="op">)</span>,</span>
+<span>  d11 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>    freq_value <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">6</span>, <span class="fl">7</span>, <span class="fl">8</span>, <span class="fl">9</span>, <span class="fl">11</span>, <span class="fl">12</span>, <span class="fl">14</span><span class="op">)</span>,</span>
+<span>    freq_count <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">1</span>, <span class="fl">3</span>, <span class="fl">2</span>,  <span class="fl">1</span>,  <span class="fl">2</span>,  <span class="fl">1</span><span class="op">)</span></span>
+<span>  <span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">stan_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/prepare_stan_data_from_datasets.html">prepare_stan_data_from_datasets</a></span><span class="op">(</span><span class="va">datasets</span><span class="op">)</span></span></code></pre></div>
@@ -167,7 +177,7 @@ types are supported:</p>
 <p>We fit the hierarchical model under each candidate distribution
 family.</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">distributions</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lognormal"</span>, <span class="st">"weibull"</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="va">distributions</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lognormal"</span>, <span class="st">"gamma"</span>, <span class="st">"weibull"</span><span class="op">)</span></span>
 <span><span class="va">dist_codes</span>    <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>lognormal <span class="op">=</span> <span class="fl">1</span>, gamma <span class="op">=</span> <span class="fl">2</span>, weibull <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">fits</span>           <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>

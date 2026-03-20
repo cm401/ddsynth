@@ -39,11 +39,12 @@ rstan_options(auto_write = TRUE)
 Each element of `datasets` describes one study via its reported summary
 statistics and sample size. Three summary-statistic types are supported:
 
-| `summary_type` | Fields required        |
-|----------------|------------------------|
-| 1              | `median`, `min`, `max` |
-| 2              | `median`, `Q1`, `Q3`   |
-| 3              | `mean`, `sd`           |
+| `summary_type` | Fields required                                   |
+|----------------|---------------------------------------------------|
+| 1              | `median`, `min`, `max`                            |
+| 2              | `median`, `Q1`, `Q3`                              |
+| 3              | `mean`, `sd`                                      |
+| 4              | `freq_value`, `freq_count` (for frequency tables) |
 
 ``` r
 datasets <- list(
@@ -56,7 +57,11 @@ datasets <- list(
   d7  = list(median = 10.0, min =  8.0, max = 15.0, n = 11),
   d8  = list(median =  9.0, min =  6.0, max = 11.0, n = 11),
   d9  = list(median =  9.0, Q1  =  8.0, Q3  = 11.0, n = 82),
-  d10 = list(mean   =  9.3, sd  =  1.9,              n = 18)
+  d10 = list(mean   =  9.3, sd  =  1.9,             n = 18),
+  d11 = list(
+    freq_value = c(6, 7, 8, 9, 11, 12, 14),
+    freq_count = c(1, 1, 3, 2,  1,  2,  1)
+  )
 )
 
 stan_data <- prepare_stan_data_from_datasets(datasets)
@@ -79,7 +84,7 @@ stan_model_code <- stan_model(stan_model_path)
 We fit the hierarchical model under each candidate distribution family.
 
 ``` r
-distributions <- c("lognormal", "weibull")
+distributions <- c("lognormal", "gamma", "weibull")
 dist_codes    <- c(lognormal = 1, gamma = 2, weibull = 3)
 
 fits           <- list()
