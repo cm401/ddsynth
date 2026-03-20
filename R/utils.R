@@ -46,33 +46,47 @@ check_scalar <- function(x, arg = deparse(substitute(x))) {
 #'   `[0, 30]`).
 #' @param n_draws Number of posterior draws to use (default: 500).
 #' @param L Number of study-level locations to integrate over per draw
-#'   (default: 50).
+#'   (default: 2000). When `n_datasets < 5`, `mu0` is used directly for all
+#'   `L` locations (i.e. no between-study sampling) for consistency with the
+#'   Stan generated quantities block — see [prepare_stan_data_from_datasets()]
+#'   for details.
 #'
 #' @return A data frame with columns `x`, `median`, `mean`, `low`, `high`, and
 #'   `model`.
 #' @export
-compute_predictive_cdf <- function(fit, dist_name, x_seq = seq(0, 30, length.out = 500), 
-                                   n_draws = 500, L = 50) {
-  
+compute_predictive_cdf <- function(fit, dist_name, x_seq = seq(0, 30, length.out = 500),
+                                   n_draws = 500, L = 2000) {
+
   # Extract posterior samples
   sims <- rstan::extract(fit)
-  
+
+  # Determine number of datasets from the study-level location parameter
+  n_datasets <- dim(sims$loc_d)[2]
+
   # Sample from posterior
   n_post <- length(sims$mu0)
   draws_idx <- sample(1:n_post, min(n_draws, n_post))
-  
+
   # Storage for CDF values
   cdf_mat <- matrix(NA, nrow = length(draws_idx), ncol = length(x_seq))
-  
+
   for (i in seq_along(draws_idx)) {
     idx <- draws_idx[i]
     mu0 <- sims$mu0[idx]
-    tau <- sims$tau[idx]  
-    phi <- sims$phi[idx]  
-    
-    # Integrate over L study-level locations
-    locs <- rnorm(L, mean = mu0, sd = tau)
-    
+    tau <- sims$tau[idx]
+    phi <- sims$phi[idx]
+
+    # Integrate over L study-level locations.
+    # When n_datasets < 5, tau is not reliably identified by the data and is
+    # largely determined by its prior; sampling from Normal(mu0, tau) would
+    # therefore inflate the predictive uncertainty. Instead we fix all
+    # locations at mu0, consistent with the Stan generated quantities block.
+    if (n_datasets < 5) {
+      locs <- rep(mu0, L)
+    } else {
+      locs <- rnorm(L, mean = mu0, sd = tau)
+    }
+
     # Compute CDF for each location and average
     cdf_l <- matrix(NA, nrow = L, ncol = length(x_seq))
     
