@@ -62,7 +62,7 @@ functions {
 data {
   int<lower=1> n_datasets;              // Number of datasets
   array[n_datasets] int<lower=1> n_obs; // Sample sizes for each dataset
-  array[n_datasets] int<lower=1,upper=4> summary_type; // 1=median+range, 2=median+IQR, 3=mean+sd, 4=raw freq table
+  array[n_datasets] int<lower=1,upper=5> summary_type; // 1=median+range, 2=median+IQR, 3=mean+sd, 4=raw freq table, 5=interval-censored freq table
   int<lower=1,upper=3> dist_type;       // 1=lognormal, 2=gamma, 3=weibull
   
   // Observed summaries - organized by dataset (used for summary_type 1, 2, 3)
@@ -74,10 +74,16 @@ data {
   // All datasets' frequency tables are stored in flat arrays.
   // For dataset d, its entries occupy indices freq_start[d] .. freq_start[d] + freq_len[d] - 1.
   int<lower=0> n_freq_total;                        // Total number of (value, count) pairs across all type-4 datasets
-  array[n_freq_total] real<lower=0> freq_value;     // Observed day values (must be > 0 for continuous distributions)
-  array[n_freq_total] int<lower=1>  freq_count;     // Number of individuals with that day value
-  array[n_datasets]   int<lower=0>  freq_start;     // 1-based start index into freq_value/freq_count for dataset d
-  array[n_datasets]   int<lower=0>  freq_len;       // Number of distinct values for dataset d (0 if not type 4)
+  array[n_freq_total] real<lower=0> freq_value;     // Observed day values for type 4 (must be > 0 for continuous distributions)
+  array[n_freq_total] int<lower=1>  freq_count;     // Number of individuals with that day value (types 4 and 5)
+  array[n_datasets]   int<lower=0>  freq_start;     // 1-based start index into freq arrays for dataset d
+  array[n_datasets]   int<lower=0>  freq_len;       // Number of distinct values for dataset d (0 if not type 4 or 5)
+
+  // Interval bounds for summary_type == 5 (interval-censored frequency table).
+  // For type 4 datasets these arrays are ignored (populate with zeros).
+  // When freq_lower[i] == freq_upper[i] the contribution falls back to the log-PDF.
+  array[n_freq_total] real<lower=0> freq_lower;    // lower bound of censoring interval
+  array[n_freq_total] real<lower=0> freq_upper;    // upper bound of censoring interval
 
   // Prior hyperparameters for mu0 ~ normal(mu0_mean, mu0_sd)
   real mu0_mean;
@@ -111,6 +117,10 @@ transformed data {
     } else if (summary_type[d] == 4) {
       if (freq_len[d] == 0) {
         reject("For summary_type=4, freq_len must be > 0");
+      }
+    } else if (summary_type[d] == 5) {
+      if (freq_len[d] == 0) {
+        reject("For summary_type=5, freq_len must be > 0");
       }
     }
   }
@@ -204,6 +214,23 @@ model {
       int len = freq_len[d];
       for (i in s:(s + len - 1)) {
         target += freq_count[i] * dist_logpdf_fun(freq_value[i], dist_type, loc, phi);
+      }
+    }
+
+    else if (summary_type[d] == 5) {  // interval-censored frequency table
+      // Likelihood: count * log[ F(upper) - F(lower) ] for each interval.
+      // When lower == upper (point observation), falls back to count * log_pdf(value)
+      // to avoid log(0).
+      int s = freq_start[d];
+      int len = freq_len[d];
+      for (i in s:(s + len - 1)) {
+        if (freq_lower[i] == freq_upper[i]) {
+          target += freq_count[i] * dist_logpdf_fun(freq_lower[i], dist_type, loc, phi);
+        } else {
+          real cdf_u = dist_cdf_fun(freq_upper[i], dist_type, loc, phi);
+          real cdf_l = dist_cdf_fun(freq_lower[i], dist_type, loc, phi);
+          target += freq_count[i] * log(cdf_u - cdf_l);
+        }
       }
     }
   }
@@ -350,6 +377,23 @@ generated quantities {
           ll_type4 += freq_count[i] * dist_logpdf_fun(freq_value[i], dist_type, loc, phi);
         }
         log_lik[idx]     = ll_type4;
+        log_lik[idx + 1] = 0;  // unused
+        log_lik[idx + 2] = 0;  // unused
+
+      } else if (summary_type[d] == 5) {  // interval-censored frequency table
+        real ll_type5 = 0;
+        int s = freq_start[d];
+        int len = freq_len[d];
+        for (i in s:(s + len - 1)) {
+          if (freq_lower[i] == freq_upper[i]) {
+            ll_type5 += freq_count[i] * dist_logpdf_fun(freq_lower[i], dist_type, loc, phi);
+          } else {
+            real cdf_u = dist_cdf_fun(freq_upper[i], dist_type, loc, phi);
+            real cdf_l = dist_cdf_fun(freq_lower[i], dist_type, loc, phi);
+            ll_type5 += freq_count[i] * log(cdf_u - cdf_l);
+          }
+        }
+        log_lik[idx]     = ll_type5;
         log_lik[idx + 1] = 0;  // unused
         log_lik[idx + 2] = 0;  // unused
       }
