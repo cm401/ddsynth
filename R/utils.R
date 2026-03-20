@@ -46,10 +46,10 @@ check_scalar <- function(x, arg = deparse(substitute(x))) {
 #'   `[0, 30]`).
 #' @param n_draws Number of posterior draws to use (default: 500).
 #' @param L Number of study-level locations to integrate over per draw
-#'   (default: 2000). When `n_datasets < 5`, `mu0` is used directly for all
-#'   `L` locations (i.e. no between-study sampling) for consistency with the
-#'   Stan generated quantities block — see [prepare_stan_data_from_datasets()]
-#'   for details.
+#'   (default: 2000). When `n_datasets < 5`, `mean(loc_d)` is used directly
+#'   for all `L` locations (i.e. no between-study sampling) for consistency
+#'   with the Stan generated quantities block — see
+#'   [prepare_stan_data_from_datasets()] for details.
 #'
 #' @return A data frame with columns `x`, `median`, `mean`, `low`, `high`, and
 #'   `model`.
@@ -731,13 +731,15 @@ compute_median_bias <- function(fit, param_name, true_value) {
 compute_iqd <- function(fit, true_params, dist_type, x_grid = NULL) {
 
   draws <- rstan::extract(fit)
-  
+
   # Extract posterior samples
-  mu0_samples <- draws$mu0
-  tau_samples <- exp(draws$log_tau)
-  phi_samples <- exp(draws$log_phi)
-  
-  n_samples <- length(mu0_samples)
+  mu0_samples  <- draws$mu0
+  tau_samples  <- exp(draws$log_tau)
+  phi_samples  <- exp(draws$log_phi)
+  loc_d_samples <- draws$loc_d          # [n_samples x n_datasets]
+
+  n_samples  <- length(mu0_samples)
+  n_datasets <- dim(loc_d_samples)[2]
   
   # Create grid if not provided
   if (is.null(x_grid)) {
@@ -793,29 +795,47 @@ compute_iqd <- function(fit, true_params, dist_type, x_grid = NULL) {
     density_samples <- numeric(length(sample_idx))
     for (s in seq_along(sample_idx)) {
       idx <- sample_idx[s]
-      
-      # Integrate over random effects for this posterior sample
-      integrand <- function(loc) {
-        if (dist_type == "lognormal") {
-          dlnorm(x, meanlog = loc, sdlog = phi_samples[idx]) * 
-            dnorm(loc, mean = mu0_samples[idx], sd = tau_samples[idx])
+
+      if (n_datasets < 5) {
+        # When n_datasets < 5, tau is not identified and mu0 is confounded
+        # with tau * loc_d_raw. Use mean(loc_d) as a point estimate of the
+        # study-level location, consistent with the Stan generated quantities
+        # block and compute_predictive_cdf().
+        loc_point <- mean(loc_d_samples[idx, ])
+        phi_s     <- phi_samples[idx]
+
+        density_samples[s] <- if (dist_type == "lognormal") {
+          dlnorm(x, meanlog = loc_point, sdlog = phi_s)
         } else if (dist_type == "gamma") {
-          mean_d <- exp(loc)
-          shape <- phi_samples[idx]
-          rate <- shape / mean_d
-          dgamma(x, shape = shape, rate = rate) * 
-            dnorm(loc, mean = mu0_samples[idx], sd = tau_samples[idx])
+          mean_d <- exp(loc_point)
+          dgamma(x, shape = phi_s, rate = phi_s / mean_d)
         } else if (dist_type == "weibull") {
-          scale <- exp(loc)
-          shape <- phi_samples[idx]
-          dweibull(x, shape = shape, scale = scale) * 
-            dnorm(loc, mean = mu0_samples[idx], sd = tau_samples[idx])
+          dweibull(x, shape = phi_s, scale = exp(loc_point))
         }
+
+      } else {
+        # n_datasets >= 5: integrate over Normal(mu0, tau) random effects
+        integrand <- function(loc) {
+          if (dist_type == "lognormal") {
+            dlnorm(x, meanlog = loc, sdlog = phi_samples[idx]) *
+              dnorm(loc, mean = mu0_samples[idx], sd = tau_samples[idx])
+          } else if (dist_type == "gamma") {
+            mean_d <- exp(loc)
+            shape  <- phi_samples[idx]
+            dgamma(x, shape = shape, rate = shape / mean_d) *
+              dnorm(loc, mean = mu0_samples[idx], sd = tau_samples[idx])
+          } else if (dist_type == "weibull") {
+            scale <- exp(loc)
+            shape <- phi_samples[idx]
+            dweibull(x, shape = shape, scale = scale) *
+              dnorm(loc, mean = mu0_samples[idx], sd = tau_samples[idx])
+          }
+        }
+
+        density_samples[s] <- integrate(integrand,
+                                        lower = mu0_samples[idx] - 5 * tau_samples[idx],
+                                        upper = mu0_samples[idx] + 5 * tau_samples[idx])$value
       }
-      
-      density_samples[s] <- integrate(integrand,
-                                      lower = mu0_samples[idx] - 5*tau_samples[idx],
-                                      upper = mu0_samples[idx] + 5*tau_samples[idx])$value
     }
     
     est_density[i] <- mean(density_samples)
