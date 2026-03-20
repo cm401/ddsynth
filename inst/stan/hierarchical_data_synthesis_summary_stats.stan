@@ -256,18 +256,26 @@ generated quantities {
   //   to include between-study heterogeneity. L=2000 for MC stability.
   {
     if (n_datasets < 5) {
-      // Use mu0 directly — tau unidentifiable with fewer than 5 studies
+      // With fewer than 5 datasets, tau is not reliably identified and mu0 is
+      // confounded with tau * loc_d_raw (their sum is identified, not each
+      // individually). Using mu0 directly therefore produces wide posteriors
+      // that reflect prior uncertainty rather than data. Instead we use
+      // mean(loc_d), which is the quantity the data actually constrains:
+      //   n_datasets == 1 : mean(loc_d) == loc_d[1], tightly identified
+      //   n_datasets 2-4  : sample mean of study-level estimates
+      real loc_pred = mean(loc_d);
+
       if (dist_type == 1) {  // lognormal
-        pred_mean   = exp(mu0 + phi^2 / 2);
-        pred_median = exp(mu0);
-        pred_q25    = exp(mu0 - 0.6745  * phi);
-        pred_q75    = exp(mu0 + 0.6745  * phi);
-        pred_q90    = exp(mu0 + 1.28155 * phi);
-        pred_q95    = exp(mu0 + 1.64485 * phi);
-        pred_sd     = sqrt((exp(phi^2) - 1) * exp(2 * mu0 + phi^2));
+        pred_mean   = exp(loc_pred + phi^2 / 2);
+        pred_median = exp(loc_pred);
+        pred_q25    = exp(loc_pred - 0.6745  * phi);
+        pred_q75    = exp(loc_pred + 0.6745  * phi);
+        pred_q90    = exp(loc_pred + 1.28155 * phi);
+        pred_q95    = exp(loc_pred + 1.64485 * phi);
+        pred_sd     = sqrt((exp(phi^2) - 1) * exp(2 * loc_pred + phi^2));
 
       } else if (dist_type == 2) {  // gamma
-        real mean_d      = exp(mu0);
+        real mean_d      = exp(loc_pred);
         real scale_param = mean_d / phi;
         pred_mean   = mean_d;
         pred_sd     = sqrt(mean_d * scale_param);
@@ -278,7 +286,7 @@ generated quantities {
         pred_q95    = gamma_quantile_approx(0.95, phi, scale_param);
 
       } else if (dist_type == 3) {  // weibull
-        real scale  = exp(mu0);
+        real scale  = exp(loc_pred);
         pred_mean   = scale * tgamma(1 + 1.0 / phi);
         pred_median = scale * pow(log(2),         1.0 / phi);
         pred_q25    = scale * pow(log(4.0 / 3.0), 1.0 / phi);
