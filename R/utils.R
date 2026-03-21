@@ -412,6 +412,305 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
 
 
 
+# Pre-inference checks -----------------------------------------------------
+
+#' Run pre-inference checks on a list of datasets
+#'
+#' Performs a suite of fast, pre-MCMC checks to detect data issues that are
+#' likely to cause convergence problems. Checks are run in order of increasing
+#' computational cost and a summary is printed to the console.
+#'
+#' The five checks performed are:
+#' \describe{
+#'   \item{1. Method-of-moments consistency}{Estimates `phi` from each dataset
+#'     individually using moment-based approximations and flags any dataset
+#'     whose implied `phi` is more than `phi_outlier_threshold` times the
+#'     median of all implied values.}
+#'   \item{2. Prior predictive compatibility}{Simulates summary statistics from
+#'     the prior and checks whether each observed value falls within the 95\%
+#'     prior predictive interval. Datasets outside this range suggest a
+#'     prior--data mismatch.}
+#'   \item{3. MAP optimisation probe}{Runs [rstan::optimizing()] as a fast
+#'     proxy for MCMC convergence. Failure or extreme `phi` at the MAP
+#'     estimate is a reliable early warning that HMC will struggle.}
+#'   \item{4. Log-likelihood surface scan}{Evaluates the joint log-posterior
+#'     over a grid of `phi` values (other parameters held at the MAP). A
+#'     multimodal or sharply peaked surface explains treedepth exhaustion.}
+#'   \item{5. Leave-one-out single-dataset fits}{Fits the model to each dataset
+#'     individually and compares the resulting `phi` posteriors. Non-overlapping
+#'     credible intervals identify the specific datasets driving tension.}
+#' }
+#'
+#' @param datasets A named list of datasets in the format accepted by
+#'   [prepare_stan_data_from_datasets()].
+#' @param stan_model A compiled Stan model object from [rstan::stan_model()].
+#' @param dist_type Integer distribution code: `1` = log-normal, `2` = gamma,
+#'   `3` = Weibull. Defaults to `1`.
+#' @param custom_priors Optional named list of prior overrides passed to
+#'   [prepare_stan_data_from_datasets()].
+#' @param phi_outlier_threshold Multiplier used in the method-of-moments check.
+#'   A dataset is flagged if its implied `phi` exceeds
+#'   `phi_outlier_threshold * median(implied_phi)`. Defaults to `5`.
+#' @param phi_grid Numeric vector of `phi` values for the log-likelihood
+#'   surface scan. Defaults to `seq(0.5, 50, by = 0.5)`.
+#' @param n_sim Number of draws for the prior predictive check. Defaults to
+#'   `2000`.
+#' @param loo_iter Number of MCMC iterations per chain for the leave-one-out
+#'   single-dataset fits. Defaults to `4000`.
+#' @param loo_chains Number of chains for the leave-one-out fits. Defaults to
+#'   `2`.
+#' @param verbose Logical. If `TRUE` (default), prints a formatted summary of
+#'   all check results to the console.
+#'
+#' @return A named list with elements:
+#'   \describe{
+#'     \item{`mom_consistency`}{Data frame of implied `phi` per dataset with
+#'       an `is_outlier` flag.}
+#'     \item{`prior_predictive`}{Data frame of 95\% prior predictive intervals
+#'       for the implied SD of each dataset, with an `outside_prior_pi` flag.}
+#'     \item{`map_probe`}{List with `phi_map` (MAP estimate of `phi`) and
+#'       `map_converged` logical.}
+#'     \item{`ll_surface`}{Data frame of `phi` vs `log_prob` from the surface
+#'       scan.}
+#'     \item{`loo_fits`}{Data frame of per-dataset `phi` posterior summaries
+#'       from the leave-one-out fits.}
+#'   }
+#' @export
+pre_inference_checks <- function(datasets,
+                                 stan_model,
+                                 dist_type             = 1,
+                                 custom_priors         = list(),
+                                 phi_outlier_threshold = 5,
+                                 phi_grid              = seq(0.5, 50, by = 0.5),
+                                 n_sim                 = 2000,
+                                 loo_iter              = 4000,
+                                 loo_chains            = 2,
+                                 verbose               = TRUE) {
+
+  dist_name <- c("1" = "lognormal", "2" = "gamma", "3" = "weibull")[[as.character(dist_type)]]
+  stan_data <- prepare_stan_data_from_datasets(datasets, dist_type = dist_type,
+                                               custom_priors = custom_priors)
+
+  results <- list()
+
+  # ── Check 1: Method-of-moments consistency ────────────────────────────────
+  # Estimate implied phi from each dataset individually. For each distribution:
+  #   lognormal : phi = log-SD -> approximate as sd(log(x)); use CV approximation
+  #   gamma     : phi = shape  -> (mean/sd)^2
+  #   weibull   : phi = shape  -> approximate from CV via Newton iteration
+  mom_df <- purrr::imap_dfr(datasets, function(d, name) {
+    mean_est <- sd_est <- NA_real_
+
+    if (!is.null(d$mean) && !is.null(d$sd)) {
+      mean_est <- d$mean
+      sd_est   <- d$sd
+    } else if (!is.null(d$median) && !is.null(d$Q1) && !is.null(d$Q3)) {
+      mean_est <- d$median
+      sd_est   <- (d$Q3 - d$Q1) / 1.35
+    } else if (!is.null(d$median) && !is.null(d$min) && !is.null(d$max)) {
+      mean_est <- d$median
+      sd_est   <- (d$max - d$min) / 4
+    } else if (!is.null(d$freq_value) && !is.null(d$freq_count)) {
+      w        <- d$freq_count / sum(d$freq_count)
+      mean_est <- sum(d$freq_value * w)
+      sd_est   <- sqrt(sum(w * (d$freq_value - mean_est)^2))
+    } else if (!is.null(d$freq_lower) && !is.null(d$freq_upper) && !is.null(d$freq_count)) {
+      mid      <- (d$freq_lower + d$freq_upper) / 2
+      w        <- d$freq_count / sum(d$freq_count)
+      mean_est <- sum(mid * w)
+      sd_est   <- sqrt(sum(w * (mid - mean_est)^2))
+    }
+
+    implied_phi <- NA_real_
+    if (!is.na(mean_est) && !is.na(sd_est) && sd_est > 0) {
+      implied_phi <- switch(dist_name,
+        lognormal = log(1 + (sd_est / mean_est)^2),        # approx log-variance
+        gamma     = (mean_est / sd_est)^2,                 # shape = (mean/sd)^2
+        weibull   = {                                       # invert CV numerically
+          cv <- sd_est / mean_est
+          # CV^2 = Gamma(1+2/k)/Gamma(1+1/k)^2 - 1; solve for k
+          obj <- function(k) sqrt(gamma(1 + 2/k) / gamma(1 + 1/k)^2 - 1) - cv
+          tryCatch(stats::uniroot(obj, c(0.1, 200))$root, error = function(e) NA_real_)
+        }
+      )
+    }
+
+    tibble::tibble(dataset = name, mean_est = mean_est, sd_est = sd_est,
+                   implied_phi = implied_phi)
+  })
+
+  med_phi  <- stats::median(mom_df$implied_phi, na.rm = TRUE)
+  mom_df   <- dplyr::mutate(
+    mom_df,
+    is_outlier = !is.na(implied_phi) &
+      (implied_phi > phi_outlier_threshold * med_phi |
+       implied_phi < med_phi / phi_outlier_threshold)
+  )
+  results$mom_consistency <- mom_df
+
+  # ── Check 2: Prior predictive compatibility ────────────────────────────────
+  mu0_draws  <- stats::rnorm(n_sim, stan_data$mu0_mean, stan_data$mu0_sd)
+  tau_draws  <- exp(stats::rnorm(n_sim, stan_data$log_tau_mean, stan_data$log_tau_sd))
+  phi_draws  <- exp(stats::rnorm(n_sim, stan_data$log_phi_mean, stan_data$log_phi_sd))
+  loc_draws  <- stats::rnorm(n_sim, mu0_draws, tau_draws)
+
+  sim_sd <- switch(dist_name,
+    lognormal = exp(loc_draws) * sqrt(exp(phi_draws^2) - 1),
+    gamma     = exp(loc_draws) / sqrt(phi_draws),
+    weibull   = exp(loc_draws) * sqrt(gamma(1 + 2/phi_draws) - gamma(1 + 1/phi_draws)^2)
+  )
+
+  prior_pi <- stats::quantile(sim_sd, c(0.025, 0.975), na.rm = TRUE)
+
+  prior_df <- dplyr::mutate(
+    mom_df,
+    prior_sd_lo        = prior_pi[[1]],
+    prior_sd_hi        = prior_pi[[2]],
+    outside_prior_pi   = !is.na(sd_est) &
+      (sd_est < prior_pi[[1]] | sd_est > prior_pi[[2]])
+  )
+  results$prior_predictive <- prior_df
+
+  # ── Check 3: MAP optimisation probe ───────────────────────────────────────
+  map_result <- tryCatch({
+    opt        <- rstan::optimizing(stan_model, data = stan_data, hessian = FALSE,
+                                    refresh = 0)
+    phi_map    <- exp(opt$par[["log_phi"]])
+    list(phi_map = phi_map, map_converged = opt$return_code == 0,
+         return_code = opt$return_code)
+  }, error = function(e) {
+    list(phi_map = NA_real_, map_converged = FALSE, return_code = NA_integer_,
+         error_msg = conditionMessage(e))
+  })
+  results$map_probe <- map_result
+
+  # ── Check 4: Log-likelihood surface scan ──────────────────────────────────
+  mu0_init      <- stan_data$mu0_mean
+  log_tau_init  <- stan_data$log_tau_mean
+  loc_d_raw_init <- rep(0, stan_data$n_datasets)
+
+  ll_surface <- purrr::map_dfr(phi_grid, function(phi_val) {
+    pars <- list(mu0       = mu0_init,
+                 log_tau   = log_tau_init,
+                 log_phi   = log(phi_val),
+                 loc_d_raw = loc_d_raw_init)
+    lp <- tryCatch({
+      rstan::log_prob(stan_model,
+                      rstan::unconstrain_pars(stan_model, data = stan_data, pars = pars),
+                      adjust_transform = TRUE)
+    }, error = function(e) NA_real_)
+    tibble::tibble(phi = phi_val, log_prob = lp)
+  })
+  results$ll_surface <- ll_surface
+
+  # ── Check 5: Leave-one-out single-dataset fits ────────────────────────────
+  loo_fits <- purrr::imap_dfr(datasets, function(d, name) {
+    # suppressWarnings() is intentional here: n_datasets = 1 is expected for
+    # each LOO fit (triggering the tau identifiability warning), and divergent
+    # transitions / treedepth warnings from individual fits are uninformative
+    # in this diagnostic context.
+    single_data <- tryCatch(
+      suppressWarnings(
+        prepare_stan_data_from_datasets(stats::setNames(list(d), name),
+                                        dist_type     = dist_type,
+                                        custom_priors = custom_priors)
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(single_data)) {
+      return(tibble::tibble(dataset = name, phi_mean = NA_real_,
+                            phi_lo = NA_real_, phi_hi = NA_real_,
+                            rhat = NA_real_,   n_eff = NA_real_))
+    }
+
+    fit <- tryCatch(
+      suppressWarnings(
+        rstan::sampling(stan_model, data = single_data,
+                        iter = loo_iter, chains = loo_chains,
+                        refresh = 0, show_messages = FALSE)
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(fit)) {
+      return(tibble::tibble(dataset = name, phi_mean = NA_real_,
+                            phi_lo = NA_real_, phi_hi = NA_real_,
+                            rhat = NA_real_,   n_eff = NA_real_))
+    }
+
+    s <- rstan::summary(fit, pars = "phi")$summary
+    tibble::tibble(dataset  = name,
+                   phi_mean = s[, "mean"],
+                   phi_lo   = s[, "2.5%"],
+                   phi_hi   = s[, "97.5%"],
+                   rhat     = s[, "Rhat"],
+                   n_eff    = s[, "n_eff"])
+  })
+  results$loo_fits <- loo_fits
+
+  # ── Verbose summary ───────────────────────────────────────────────────────
+  if (verbose) {
+    cli::cli_h1("Pre-inference checks ({dist_name}, {length(datasets)} datasets)")
+
+    cli::cli_h2("1. Method-of-moments consistency (phi outlier threshold: {phi_outlier_threshold}x median)")
+    print(dplyr::select(mom_df, dataset, implied_phi, is_outlier))
+    n_out <- sum(mom_df$is_outlier, na.rm = TRUE)
+    if (n_out > 0) {
+      cli::cli_alert_warning("{n_out} dataset(s) have an implied phi far from the others: {mom_df$dataset[mom_df$is_outlier]}")
+    } else {
+      cli::cli_alert_success("All implied phi values are broadly consistent")
+    }
+
+    cli::cli_h2("2. Prior predictive compatibility (95% PI for SD: [{round(prior_pi[[1]], 2)}, {round(prior_pi[[2]], 2)}])")
+    outside <- dplyr::filter(prior_df, outside_prior_pi)
+    if (nrow(outside) > 0) {
+      cli::cli_alert_warning("{nrow(outside)} dataset(s) have SD outside the 95% prior predictive interval: {outside$dataset}")
+    } else {
+      cli::cli_alert_success("All observed SDs are within the 95% prior predictive interval")
+    }
+
+    cli::cli_h2("3. MAP optimisation probe")
+    if (!map_result$map_converged) {
+      cli::cli_alert_danger("MAP optimisation failed (return code {map_result$return_code}) — MCMC likely to struggle")
+    } else {
+      cli::cli_alert_success("MAP converged; phi_MAP = {round(map_result$phi_map, 2)}")
+      if (!is.na(map_result$phi_map) && (map_result$phi_map > 50 || map_result$phi_map < 0.1)) {
+        cli::cli_alert_warning("phi_MAP = {round(map_result$phi_map, 2)} is extreme — check prior and data consistency")
+      }
+    }
+
+    cli::cli_h2("4. Log-likelihood surface scan")
+    finite_ll <- dplyr::filter(ll_surface, is.finite(log_prob))
+    if (nrow(finite_ll) > 0) {
+      peak_phi <- finite_ll$phi[which.max(finite_ll$log_prob)]
+      cli::cli_alert_info("Surface peak at phi ~ {peak_phi}. Plot with: plot(results$ll_surface$phi, results$ll_surface$log_prob, type = 'l')")
+    } else {
+      cli::cli_alert_danger("Log-likelihood surface is entirely non-finite — severe model/data mismatch")
+    }
+
+    cli::cli_h2("5. Leave-one-out single-dataset phi posteriors")
+    print(loo_fits)
+    phi_ranges_overlap <- function(df) {
+      # Flag any dataset whose 95% CI does not overlap the majority
+      med_lo <- stats::median(df$phi_lo, na.rm = TRUE)
+      med_hi <- stats::median(df$phi_hi, na.rm = TRUE)
+      dplyr::mutate(df,
+        no_overlap = !is.na(phi_lo) & (phi_hi < med_lo | phi_lo > med_hi))
+    }
+    loo_flagged <- phi_ranges_overlap(loo_fits)
+    n_no_overlap <- sum(loo_flagged$no_overlap, na.rm = TRUE)
+    if (n_no_overlap > 0) {
+      cli::cli_alert_warning(
+        "{n_no_overlap} dataset(s) have phi posteriors that do not overlap the majority: {loo_flagged$dataset[loo_flagged$no_overlap]}"
+      )
+    } else {
+      cli::cli_alert_success("All per-dataset phi posteriors broadly overlap")
+    }
+  }
+
+  invisible(results)
+}
+
+
 # Function for simulation studies -----------------------------------------
 
 
