@@ -13,6 +13,7 @@ RoxygenNote: 7.3.1
 Imports:
     BSL,
     bridgesampling,
+    cli,
     coda,
     doParallel,
     dplyr,
@@ -21,8 +22,10 @@ Imports:
     ggsci,
     MASS,
     parallel,
+    purrr,
     rstan,
-    stats
+    stats,
+    tibble
 Suggests:
     knitr,
     loo,
