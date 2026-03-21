@@ -34,16 +34,63 @@ functions {
     return 0;
   }
   
+  // Log-scale CDF for each distribution.
+  // Used in order statistic and interval-censored likelihoods to avoid
+  // probability-scale clipping and catastrophic cancellation.
+  real dist_log_cdf_fun(real x, int dist_type, real loc, real phi) {
+    if (dist_type == 1) {  // lognormal
+      return lognormal_lcdf(x | loc, phi);
+    } else if (dist_type == 2) {  // gamma
+      real mean_d = exp(loc);
+      real rate   = phi / mean_d;
+      return gamma_lcdf(x | phi, rate);
+    } else if (dist_type == 3) {  // weibull
+      real scale = exp(loc);
+      return weibull_lcdf(x | phi, scale);
+    }
+    return negative_infinity();
+  }
+
   // Log likelihood for order statistic:
-  // k-th order statistic out of n observations
+  // k-th order statistic out of n observations.
+  //
+  // Uses log-scale CDF (_lcdf) and CCDF (_lccdf) directly rather than
+  // computing the CDF on the probability scale and clipping. Clipping
+  // (fmax/fmin) is not differentiable at its boundaries, causing zero
+  // gradients whenever F ~ 0 or F ~ 1 — a common occurrence for tightly
+  // concentrated distributions such as gamma with large shape.
+  //
+  // Safeguard: terms with coefficient 0 are omitted explicitly to avoid
+  // 0 * (-Inf) = NaN in Stan's autodiff:
+  //   k == 1 (minimum): coefficient of log_F  is (k-1) = 0 — term omitted
+  //   k == n (maximum): coefficient of log_1mF is (n-k) = 0 — term omitted
   real order_stat_logpdf_fun(real x, int n, int k, int dist_type, real loc, real phi) {
-    real F = dist_cdf_fun(x, dist_type, loc, phi);
-    real log_f = dist_logpdf_fun(x, dist_type, loc, phi);
-  
-    F = fmax(fmin(F, 0.99999), 0.00001);
-  
-    real log_dens = lchoose(n, k) + log_f + (k - 1) * log(F) + (n - k) * log1m(F);
-  
+    real log_f;
+    real log_F;    // log CDF  = log P(X <= x)
+    real log_1mF;  // log CCDF = log P(X >  x)
+
+    if (dist_type == 1) {  // lognormal
+      log_f   = lognormal_lpdf(x  | loc, phi);
+      log_F   = lognormal_lcdf(x  | loc, phi);
+      log_1mF = lognormal_lccdf(x | loc, phi);
+
+    } else if (dist_type == 2) {  // gamma
+      real mean_d = exp(loc);
+      real rate   = phi / mean_d;
+      log_f   = gamma_lpdf(x  | phi, rate);
+      log_F   = gamma_lcdf(x  | phi, rate);
+      log_1mF = gamma_lccdf(x | phi, rate);
+
+    } else if (dist_type == 3) {  // weibull
+      real scale = exp(loc);
+      log_f   = weibull_lpdf(x  | phi, scale);
+      log_F   = weibull_lcdf(x  | phi, scale);
+      log_1mF = weibull_lccdf(x | phi, scale);
+    }
+
+    real log_dens = lchoose(n, k) + log_f;
+    if (k > 1) log_dens += (k - 1) * log_F;
+    if (k < n) log_dens += (n - k) * log_1mF;
     return log_dens;
   }
 
@@ -219,17 +266,19 @@ model {
 
     else if (summary_type[d] == 5) {  // interval-censored frequency table
       // Likelihood: count * log[ F(upper) - F(lower) ] for each interval.
-      // When lower == upper (point observation), falls back to count * log_pdf(value)
-      // to avoid log(0).
+      // Uses log_diff_exp(log_F_upper, log_F_lower) for numerical stability —
+      // avoids catastrophic cancellation when the two CDF values are close.
+      // When lower == upper (point observation), falls back to count * log_pdf
+      // since log_diff_exp(a, a) = -Inf.
       int s = freq_start[d];
       int len = freq_len[d];
       for (i in s:(s + len - 1)) {
         if (freq_lower[i] == freq_upper[i]) {
           target += freq_count[i] * dist_logpdf_fun(freq_lower[i], dist_type, loc, phi);
         } else {
-          real cdf_u = dist_cdf_fun(freq_upper[i], dist_type, loc, phi);
-          real cdf_l = dist_cdf_fun(freq_lower[i], dist_type, loc, phi);
-          target += freq_count[i] * log(cdf_u - cdf_l);
+          real log_cdf_u = dist_log_cdf_fun(freq_upper[i], dist_type, loc, phi);
+          real log_cdf_l = dist_log_cdf_fun(freq_lower[i], dist_type, loc, phi);
+          target += freq_count[i] * log_diff_exp(log_cdf_u, log_cdf_l);
         }
       }
     }
@@ -435,9 +484,9 @@ generated quantities {
           if (freq_lower[i] == freq_upper[i]) {
             ll_type5 += freq_count[i] * dist_logpdf_fun(freq_lower[i], dist_type, loc, phi);
           } else {
-            real cdf_u = dist_cdf_fun(freq_upper[i], dist_type, loc, phi);
-            real cdf_l = dist_cdf_fun(freq_lower[i], dist_type, loc, phi);
-            ll_type5 += freq_count[i] * log(cdf_u - cdf_l);
+            real log_cdf_u = dist_log_cdf_fun(freq_upper[i], dist_type, loc, phi);
+            real log_cdf_l = dist_log_cdf_fun(freq_lower[i], dist_type, loc, phi);
+            ll_type5 += freq_count[i] * log_diff_exp(log_cdf_u, log_cdf_l);
           }
         }
         log_lik[idx]     = ll_type5;
