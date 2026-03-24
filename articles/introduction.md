@@ -54,6 +54,6 @@ sessionInfo()
 #>  [9] knitr_1.51        htmltools_0.5.9   rmarkdown_2.30    lifecycle_1.0.5  
 #> [13] cli_3.6.5         foreach_1.5.2     sass_0.4.10       pkgdown_2.2.0    
 #> [17] textshaping_1.0.5 jquerylib_0.1.4   systemfonts_1.3.2 compiler_4.5.3   
-#> [21] tools_4.5.3       ragg_1.5.1        evaluate_1.0.5    bslib_0.10.0     
-#> [25] yaml_2.3.12       jsonlite_2.0.0    rlang_1.1.7       fs_1.6.7
+#> [21] tools_4.5.3       ragg_1.5.2        evaluate_1.0.5    bslib_0.10.0     
+#> [25] yaml_2.3.12       jsonlite_2.0.0    rlang_1.1.7       fs_2.0.0
 ```
