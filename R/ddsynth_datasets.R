@@ -187,23 +187,22 @@ datasets_SARS <- list(            # Severe Acute Respiratory Syndrome (SARS-CoV-
 # Underlying databased on PERG MERS Systematic Review (currently unpublished)
 
 datasets_MERS <- list(            # Middle East Respiratory Syndrome (MERS-CoV)
-  d1  = list(median = 7.00, Q1  = 5.0, Q3  = 10.0, n =  73, source = ""),
-  d2  = list(median = 8.00, Q1  = 6.5, Q3  = 10.5, n =  14, source = ""),
-  d3  = list(median = 4.00, Q1  = 3.0, Q3  =  8.0, n =  11, source = ""),
-  d4  = list(median = 4.00, min = 3.0, max =  8.0, n =  73, source = ""),
-  d5  = list(mean   = 6.27, sd  = 4.35,            n =  18, source = ""),
-  d6  = list(median = 5.00, min = 2.0, max = 13.0, n =  36, source = ""),
-  d7  = list(median = 7.00, min = 2.0, max = 14.0, n =  17, source = ""),
-  d8  = list(median = 6.00, min = 2.0, max = 15.0, n =  36, source = ""),
-  d9  = list(median = 5.00, min = 2.0, max = 15.0, n =  92, source = ""),
-  d10 = list(median = 7.00, min = 3.0, max = 11.0, n = 128, source = ""),
-  d11 = list(      # Saudi Arabia
+  d1  = list(median = 7.00, Q1  = 5.0, Q3  = 10.0, n =  73, source = "Cho (2016), doi: 10.1016/S0140-6736(16)30623-7"),
+  d2  = list(median = 8.00, Q1  = 6.5, Q3  = 10.5, n =  14, source = "Nam (2017), doi: 10.1016/j.ijid.2017.02.008"),
+  d3  = list(median = 4.00, Q1  = 3.0, Q3  =  8.0, n =  11, source = "Nam (2017), doi: 10.1016/j.ijid.2017.02.008"),
+  d4  = list(mean   = 6.27, sd  = 4.35,            n =  18, source = "Al-Jasser (2019), doi: 10.1016/j.jiph.2018.09.008"), 
+  d5  = list(median = 5.00, min = 2.0, max = 13.0, n =  36, source = "Kim (2015), doi: 10.1016/j.jiph.2018.09.008"),
+  d6  = list(median = 7.00, min = 2.0, max = 14.0, n =  17, source = "Kim (2016), doi: 10.1016/j.phrp.2016.01.001"),
+  d7  = list(median = 6.00, min = 2.0, max = 15.0, n =  36, source = "Park (2015), doi: 10.2807/1560-7917.es2015.20.25.21169"),
+  d8  = list(median = 5.00, min = 2.0, max = 15.0, n =  92, source = "Liu (2016), doi: 10.1371/journal.pone.0149988"),
+  d9 = list(median = 7.00, min = 3.0, max = 11.0, n = 128, source = "Liu (2016), doi: 10.1371/journal.pone.0149988"),
+  d10 = list(      # Saudi Arabia
     freq_lower = c( 1, 1, 1, 1,  1, 2, 3, 4, 5, 6, 7, 8,  8, 9, 11, 14 ),
     freq_upper = c( 1, 4, 5, 6, 10, 2, 3, 8, 8, 6, 7, 8, 12, 9, 19, 14 ),
     freq_count = c( 1, 1, 2, 2,  1, 1, 6, 1, 1, 1, 1, 1,  1, 1,  1,  1 ),
     source     = "Assiri (2013), doi: 10.1056/NEJMoa1306742"
   ),
-  d12 = list(      # South Korea
+  d11 = list(      # South Korea
     freq_lower = c( 0.1, 0.1, 0.1, 0.1,  1,  2,  2,  2,  3,  3,  3,  4,  
                     4,  4,  4,  4,  5,  5,  5,  5,  5,  5,  6,  6,  6,  
                     6,  7,  7,  7,  7,  8,  8,  8,  8,  8,  9,  9, 10, 
