@@ -119,15 +119,105 @@ datasets_Lassa <- list(           # Lassa Fever
 
 # Underlying data based on PERG SARS Systematic Review, published in the Lancet Microbe
 # https://doi.org/10.1101/2024.08.13.24311934
+# Frequency tables have been extracted from studies with 10 or more patients only (as reported in the paper, though might be less as usuable incubation period data)
 
 datasets_SARS <- list(            # Severe Acute Respiratory Syndrome (SARS-CoV-1)
-
+  d1  = list(mean   =  5.9, sd  =  3.5,             n = 96,  source = "Wu (2003)"),
+  d2  = list(mean   =  4.7, sd  =  4.6,             n = 234, source = "Virlogeux (2015), doi: doi.org/10.1097/ede.0000000000000339"),
+  d3  = list(median =  4.0, min =  2.0, max = 10.0, n =  42, source = "Varia (2003)"),
+  d4  = list(median =  3.0, min =  2.0, max =  6.0, n =  11, source = "Wong (2004), doi: doi.org/10.3201/eid1002.030452"),
+  d5  = list(median =  5.0, min =  1.0, max = 15.0, n =   7, source = "Scales (2003), doi: doi.org/10.3201/eid0910.030525"),
+  d6  = list(median =  4.0, min =  1.0, max = 18.0, n =  19, source = "Meltzer (2004), doi: doi.org/10.3201/eid1002.030426"),
+  d7  = list(mean   =  5.3, sd  =  4.5,             n =  85, source = "McBryde (2006), doi: doi.org/10.1007/s11538-005-9005-4"),
+  d8  = list(median =  6.0, min =  1.0, max = 15.0, n =  98, source = "Liu (2016), doi: doi.org/10.1371/journal.pone.0149988"),
+  d9  = list(median =  6.0, min =  2.0, max = 16.0, n = 138, source = "Lee (2003), doi: doi.org/10.1056/NEJMoa030685"),
+  d10 = list(median =  4.0, min =  2.0, max =  8.0, n =   7, source = "Hsu (2003), doi: doi.org/10.3201/eid0906.030264"),
+  d11 = list(median =  7.0, min =  4.0, max = 12.0, n =  13, source = "Hsu (2003), doi: doi.org/10.3201/eid0906.030264"),
+  d12 = list(mean   =  5.1, sd  =  2.2,             n =  50, source = "Goh (2006)"),
+  d13 = list(median =  4.0, min =  3.0, max =  6.0, n =  32, source = "Chen (2003), doi: doi.org/10.1001/archotol.129.11.1157"),
+  d14 = list(median =  6.0, Q1  =  3.0, Q3  = 10.0, n = 144, source = "Booth (2003), doi: doi.org/10.1001/jama.289.21.JOC30885"),
+  d15 = list(mean   =  4.0, sd  =  3.0,             n =   4, source = "Avendano (2003)"),
+  d16 = list(mean   =  3.5, sd  =  3.0,             n =  10, source = "Avendano (2003)"),
+  d17 = list(
+    freq_lower = c( 2,  1,  1,  1,  1,  3,  3,  1,  1,  2,  6,  2,  1,  5,  5,  1,  2,  13,  7),
+    freq_upper = c(12,  4,  4, 11, 14,  3, 10,  6,  2,  2,  6,  6, 11, 11, 11,  5,  7,  18, 12),
+    freq_count = c( 1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,   1,  1),
+    source     = "Meltzer (2004), doi: 10.3201/eid1002.030426"
+  ),
+  d18 = list(
+    # Note: four cases have freq_lower = 0 (unknown exposure start). Replaced with 0.1 to
+    # avoid a NaN gradient in the Weibull likelihood (0^phi * log(0) = 0 * -Inf = NaN).
+    # Lognormal and gamma are unaffected; this has negligible impact on all posteriors.
+    freq_lower = c( 2.5,  4.5,  0.1,  0.5,  5.5,  2.5,  1.5,  3.5,  7.5,  1.5,  2.5,  7.5,  4.5,  4.5,  3.5,
+                    0.5,  0.5,  2.5,  2.5,  0.1,  2.5,  0.1, 11.5,  0.5,  0.5,  1.5,  5.5,  3.5,  2.5, 12.5,
+                    1.5,  8.5,  7.5,  1.5,  5.5,  4.5,  3.5,  1.5,  0.5,  0.5,  3.5,  7.5,  5.5,  2.5,  1.5,
+                    1.5,  0.5,  1.5,  1.5,  1.5,  0.5,  8.5,  0.5,  0.1,  2.5,  5.5,  9.5,  2.5,  7.5,  4.5,
+                    3.5,  1.5,  3.5,  3.5,  3.5,  4.5,  0.5),
+    freq_upper = c( 6.5,  7.5,  2.5,  3.5,  6.5,  5.5,  4.5,  5.5, 11.5,  4.5,  5.5, 12.5,  5.5,  5.5,  6.5,
+                    1.5,  4.5,  4.5,  4.5,  1.5,  4.5,  4.5, 13.5,  2.5,  1.5,  2.5, 10.5,  5.5,  4.5, 14.5,
+                    6.5, 11.5,  9.5,  2.5,  7.5,  9.5,  7.5,  2.5,  4.5,  1.5,  4.5,  8.5,  6.5,  7.5,  2.5,
+                    2.5,  1.5,  2.5,  2.5,  3.5,  1.5, 12.5,  1.5,  4.5,  4.5,  6.5, 10.5,  3.5,  8.5,  7.5,
+                    5.5,  5.5,  8.5,  7.5,  7.5,  9.5,  3.5),
+    freq_count = rep(1, 67),
+    source     = "Farewell (2005), doi: 10.1002/sim.2206"
+  ),
+  d19 = list(
+    freq_value = c( 3, 4, 5, 7, 8),
+    freq_count = c( 5, 5, 3, 1, 1),
+    source     = "Chow (2004), doi: 10.1136/bmj.37939.465729.44"
+  ),
+  d20 = list(
+    freq_value = c( 2,  3, 4, 5, 6, 8),
+    freq_count = c( 1, 10, 5 ,3, 2, 1),
+    source     = "Olsen (2003), doi: 10.1056/NEJMoa031349"
+  ),
+  d21 = list(
+    freq_value = c( 2, 3, 4, 5, 6),
+    freq_count = c( 3, 3, 2, 2, 1),
+    source     = "Wong (2004), doi: 10.3201/eid1002.030452"
+  ),
+  d22 = list(
+    freq_lower = c( 4, 7, 6, 1, 3, 5, 10 ),
+    freq_upper = c( 4, 7, 7, 5, 7, 6, 12 ),
+    freq_count = c( 1, 1, 1, 1, 2, 1, 1),
+    source     = "Dwosh (2003)"
+  )
 )
 
 # Underlying databased on PERG MERS Systematic Review (currently unpublished)
 
 datasets_MERS <- list(            # Middle East Respiratory Syndrome (MERS-CoV)
-
+  d1  = list(median = 7.00, Q1  = 5.0, Q3  = 10.0, n =  73, source = ""),
+  d2  = list(median = 8.00, Q1  = 6.5, Q3  = 10.5, n =  14, source = ""),
+  d3  = list(median = 4.00, Q1  = 3.0, Q3  =  8.0, n =  11, source = ""),
+  d4  = list(median = 4.00, min = 3.0, max =  8.0, n =  73, source = ""),
+  d5  = list(mean   = 6.27, sd  = 4.35,            n =  18, source = ""),
+  d6  = list(median = 5.00, min = 2.0, max = 13.0, n =  36, source = ""),
+  d7  = list(median = 7.00, min = 2.0, max = 14.0, n =  17, source = ""),
+  d8  = list(median = 6.00, min = 2.0, max = 15.0, n =  36, source = ""),
+  d9  = list(median = 5.00, min = 2.0, max = 15.0, n =  92, source = ""),
+  d10 = list(median = 7.00, min = 3.0, max = 11.0, n = 128, source = ""),
+  d11 = list(      # Saudi Arabia
+    freq_lower = c( 1, 1, 1, 1,  1, 2, 3, 4, 5, 6, 7, 8,  8, 9, 11, 14 ),
+    freq_upper = c( 1, 4, 5, 6, 10, 2, 3, 8, 8, 6, 7, 8, 12, 9, 19, 14 ),
+    freq_count = c( 1, 1, 2, 2,  1, 1, 6, 1, 1, 1, 1, 1,  1, 1,  1,  1 ),
+    source     = "Assiri (2013), doi: 10.1056/NEJMoa1306742"
+  ),
+  d12 = list(      # South Korea
+    freq_lower = c( 0.1, 0.1, 0.1, 0.1,  1,  2,  2,  2,  3,  3,  3,  4,  
+                    4,  4,  4,  4,  5,  5,  5,  5,  5,  5,  6,  6,  6,  
+                    6,  7,  7,  7,  7,  8,  8,  8,  8,  8,  9,  9, 10, 
+                    10, 10, 11, 11, 12, 12, 12, 13, 15 ),
+    freq_upper = c( 0.1,   6,  12,  15,  3,  3,  4,  8,  3,  5,  8,  4,  
+                    5,  6,  8, 14,  5,  6,  7,  8,  9, 13,  6,  7,  8, 
+                    12,  7,  8,  9, 11,  8,  9, 10, 11, 12,  9, 10, 10, 
+                    12, 18, 12, 13, 14, 21, 27, 13, 17 ),
+    freq_count = c(   1,   1,   1,   1,  4,  1,  3,  1,  5,  3,  1,  3,  
+                      2,  4,  1,  1,  6,  4,  1,  2,  1,  1,  4,  1,  3,  
+                      1,  2,  1,  3,  1,  6,  1,  2,  3,  1,  3,  2,  6,  
+                      3,  1,  1,  1,  1,  1,  1,  1,  1 ),
+    source     = "Virlogeux (2016), doi: 10.3201/eid2203.151437"
+  )
 )
 
 # Underlying data based on PERG Zika Systematic Review, published in Nature Health
@@ -172,7 +262,13 @@ datasets_Measles <- list(         # Measles
   d8  = list(median = 14, min = 10, max = 21, n = 34, source = "Papania (1999), doi: doi.org/10.1542/peds.104.5.e59"),
   d9  = list(mean   = 13.8, sd = 2.7,         n = 22, source = "Komabayashi (2018), doi: doi.org/10.7883/yoken.JJID.2018.083"),
   d10 = list(mean   = 14.2, sd = 2.9,         n = 38, source = "Komabayashi (2018), doi: doi.org/10.7883/yoken.JJID.2018.083"),
-  d11 = list(median = 14,   min = 13, max = 17, n =  9, source = "Sheline (1987)")   # QA concern: see PHAC dataset notes
+  d11 = list(median = 14,   min = 13, max = 17, n =  9, source = "Sheline (1987)"),   # QA concern: see PHAC dataset notes
+  d12 = list(
+    freq_lower = c(12),
+    freq_upper = c(15),
+    freq_count = c(38),   # sum of the counts above
+    source     = "Panum (1847), republished translation"
+  )
 )
 
 
