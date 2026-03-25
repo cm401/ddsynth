@@ -270,14 +270,60 @@ datasets_Measles <- list(         # Measles
   )
 )
 
-
-datasets_Oropouche <- list(       # Oropouche Fever
-
-)
-
+# Underlying data based on mpox Systematic Review by Diaz Brochero et al (2025)
+# published in BMJ Global Health: https://gh.bmj.com/content/10/1/e016906
 
 datasets_Mpox <- list(            # Mpox
-
+  d1  = list(median =  8, min =  2, max = 40, n =  78, source = "Angelo (2023), doi: 10.1016/S1473-3099(22)00651-X"),
+  d2  = list(median =  6, Q1  =  4, Q3  =  9, n =  77, source = "Catala (2022), doi: 10.1111/bjd.21790"),
+  d3  = list(median =  7, Q1  =  4, Q3  = 10, n = 179, source = "Choudury (2022), doi: 10.3238/arztebl.m2022.0340"),
+  d4  = list(median =  9, min =  4, max = 15, n =  30, source = "Gaspari (2022), doi: 10.1128/jcm.01365-22"),
+  d5  = list(mean   = 8.2, sd = 4.7,          n = 209, source = "Kroger (2023), doi: 10.1007/s15010-023-01997-x"),
+  d6  = list(median =  6, Q1  =  3, Q3  =  8, n =  86, source = "Mailhe (2023), doi: 10.1016/j.cmi.2022.08.012"),
+  d7  = list(mean   = 8.1, sd = 4.4,          n =  18, source = "Muira (2023), doi: 10.1093/infdis/jiad091"),
+  d8  = list(median = 11, Q1  = 11, Q3  = 16, n =  16, source = "Moschese (2023), doi: 10.1016/j.jinf.2022.08.019"),
+  d9  = list(median =  8, Q1  =  4, Q3  =  9, n =  18, source = "Nunez (2023), doi: 10.1016/j.lana.2022.100392"),
+  d10 = list(median =  7, Q1  =  5, Q3  = 11, n = 181, source = "Tarin-Vicente (2022), doi: 10.1016/S0140-6736(22)01436-2"),
+  d11 = list(median =  7, Q1  =  4, Q3  = 11, n =  51, source = "Thornhill (2022), doi: 10.1016/S0140-6736(22)02187-0"),
+  d12 = list(median =  7, min =  3, max = 20, n =  23, source = "Thornhill (2022a), doi: 10.1056/NEJMoa2207323"),
+  d13 = list(
+    freq_lower = c( 4, 0.1,   1, 2,   3, 0.1,  9, 0.1, 10, 1,  6, 0.1,  7, 0.1,  8,  1,  2,  1, 0.1,  1,  3, 0.1 ),
+    freq_upper = c( 6,   8,  23, 5,   6,  14, 11,  24, 12, 6,  8,  18, 16,   2, 17, 29, 10,  6,  23,  3,  8,  12 ),
+    freq_count = c( 1,   1,   1, 1,   1,   1,  1,   1,  1, 1,  1,   1,  1,   1,  1,  1,  1,  1,   1,  1,  1,   1 ),
+    source     = "Charniga (2022), doi: 10.1101/2022.06.22.22276713"
+  ),
+  d14 = list(
+    freq_value = c(  2,  3,  5,  7,  8,  9, 10, 11, 17 ),
+    freq_count = c(  2,  1,  4,  2,  2,  2,  4,  1,  1 ),
+    source     = "Cobos (2023), doi: 10.37201/req/112.2022"
+  ),
+  d15 = list(
+    freq_lower = c( 0.1, 0.1, 0.1, 0.1,  1,  2,  2,  3,  3,  4,  5,  6,  6,  6,  
+                    6,  7,  7,  7,  8,  9,  9, 10, 11, 11, 12, 15, 19, 19 ),
+    freq_upper = c(   2,   3,   7,  12,  4,  2,  9,  3,  8,  4,  5,  6, 12, 13, 
+                      15,  7, 14, 14,  13,  9, 24,  10, 11, 11, 22, 22, 19, 24 ),
+    freq_count = c(   1,   1,   1,   1,  1,  1,  1,  1,  1,  1,  1,  2,  1,  1,   
+                      1,  2,  1,  1,   1,  2,  1,   1,  3,  1,  1,  1,  1,  1 ),
+    source     = "Guzzetta (2022), doi: 10.3201/eid2810.221126"
+  ),
+  d16 = list(
+    freq_lower = c( 0.1, 0.1, 0.1,   1,   1,   1,   2,   2,   2,   2,   2,   3,   3,   
+                    3,   4,   4,   5,   5,   5,   6,   6,   6,   6,   7,   7,   7,   
+                    7,   8,   8,   8,   9,   9,   9,   9,  10,  10,  10,  11,  11,  
+                    12,  12,  13,  13,  14,  14,  15,  15,  15,  15,  16,  16,  17,  
+                    18,  18,  18,  19,  19,  20,  20,  21,  21,  22,  30 ),
+    freq_upper = c(   2,   3,   4,   1,   3,   6,   2,   3,   4,   6,   7,   3,   4,   
+                      7,   4,   7,   5,   6,   8,   6,   7,  10,  11,   7,  10,  11,  
+                      12,   8,   9,  13,   9,  10,  12,  14,  10,  11,  13,  11,  12,  
+                      12,  15,  13,  15,  14,  19,  15,  16,  19,  20,  17,  20,  17,  
+                      18,  19,  23,  19,  20,  21,  24,  23,  25,  26,  35 ),
+    freq_count = c(   1,   1,   2,   1,   1,   1,   1,   1,   2,   1,   1,   2,   2,   
+                      3,   7,   1,   6,   1,   1,   5,   2,   1,   1,   6,   1,   1,   
+                      1,   4,   1,   4,   5,   1,   1,   1,   8,   2,   1,   4,   2,   
+                      2,   3,   1,   1,   2,   2,   2,   1,   1,   4,   1,   1,   1,   
+                      1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1 ),
+    source     = "McFarland (2023), doi: 10.2807/1560-7917.ES.2023.28.27.2200806"
+  )
 )
 
 
