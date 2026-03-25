@@ -119,14 +119,18 @@ compute_predictive_cdf <- function(fit, dist_name, x_seq = seq(0, 30, length.out
   }
   
   # Compute summary statistics
-  data.frame(
-    x = x_seq,
-    median = apply(cdf_mat, 2, median, na.rm = TRUE),
-    mean = apply(cdf_mat, 2, mean, na.rm = TRUE),
-    low = apply(cdf_mat, 2, quantile, 0.025, na.rm = TRUE),
-    high = apply(cdf_mat, 2, quantile, 0.975, na.rm = TRUE),
-    model = dist_name
+  summary_df <- data.frame(
+    x      = x_seq,
+    median = apply(cdf_mat, 2, median,   na.rm = TRUE),
+    mean   = apply(cdf_mat, 2, mean,     na.rm = TRUE),
+    low    = apply(cdf_mat, 2, quantile, 0.025, na.rm = TRUE),
+    high   = apply(cdf_mat, 2, quantile, 0.975, na.rm = TRUE),
+    model  = dist_name
   )
+
+  # Return both the summary (for plotting the ribbon/line) and the raw matrix
+  # (for computing consistent PI bounds on derived quantiles via extract_quantiles)
+  list(summary = summary_df, cdf_mat = cdf_mat)
 }
 
 # -------------------------- 
@@ -142,28 +146,64 @@ compute_predictive_cdf <- function(fit, dist_name, x_seq = seq(0, 30, length.out
 #'   with columns `x`, `median`, `low`, and `high`.
 #' @param probs Numeric vector of probabilities to extract (default:
 #'   `c(0.5, 0.95)`).
+#' @param cdf_mat Numeric matrix of posterior CDF draws as returned by
+#'   [compute_predictive_cdf()] (rows = posterior draws, columns = `x_seq`
+#'   grid points). When supplied, the 95% prediction interval bounds
+#'   (`x_low`, `x_high`) are computed by interpolating each draw's CDF to
+#'   find the x at which it crosses `p`, then taking the 2.5% and 97.5%
+#'   quantiles across draws. This is fully consistent with the ribbon in
+#'   the CDF plot (both derive from the same `cdf_mat`). If `NULL`, falls
+#'   back to inverting the summary credible bands, which can fail near the
+#'   tails.
 #'
-#' @return A data frame with columns `quantile`, `quantile_label`, `x_median`,
-#'   `x_low`, and `x_high`.
+#' @return A data frame with columns `quantile`, `quantile_label`, `x_low`,
+#'   and `x_high`. `x_low` and `x_high` are the 2.5% and 97.5% bounds of
+#'   the 95% prediction interval for that quantile, on the same scale as
+#'   the `x` column of `cdf_summary`.
 #' @export
-extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95)) {  # CHANGED: added 0.95
+extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95), cdf_mat = NULL) {
+
+  x_seq   <- cdf_summary$x
   results <- list()
-  
+
   for (p in probs) {
-    # Find x value where CDF crosses probability p
-    idx_median <- which.min(abs(cdf_summary$median - p))
-    idx_low <- which.min(abs(cdf_summary$low - p))
-    idx_high <- which.min(abs(cdf_summary$high - p))
-    
-    results[[paste0("q", p*100)]] <- data.frame(
-      quantile = p,
-      quantile_label = paste0("Q", p*100),  # NEW: for labeling
-      x_median = cdf_summary$x[idx_median],
-      x_low = cdf_summary$x[idx_low],
-      x_high = cdf_summary$x[idx_high]
+
+    if (!is.null(cdf_mat)) {
+      # For each posterior draw, interpolate the x at which the CDF crosses p.
+      # approx() with rule = 1 returns NA when p lies outside the CDF range
+      # (i.e. x_seq does not extend far enough); na.rm = TRUE handles this
+      # gracefully — but a high NA rate suggests x_seq should be widened.
+      x_at_p <- apply(cdf_mat, 1, function(cdf_row) {
+        approx(x = cdf_row, y = x_seq, xout = p, rule = 1)$y
+      })
+
+      na_frac <- mean(is.na(x_at_p))
+      if (na_frac > 0.05)
+        warning(sprintf(
+          "extract_quantiles: %.0f%% of draws did not reach p = %.2f within ",
+          na_frac * 100, p,
+          "x_seq. Consider increasing max(x_seq) in compute_predictive_cdf()."
+        ))
+
+      x_lo  <- quantile(x_at_p, 0.025, na.rm = TRUE)
+      x_hi  <- quantile(x_at_p, 0.975, na.rm = TRUE)
+
+    } else {
+      # Fallback: invert summary credible bands.
+      # x where the upper CDF band crosses p → lower x bound of PI
+      # x where the lower CDF band crosses p → upper x bound of PI
+      x_lo  <- x_seq[which.min(abs(cdf_summary$high - p))]
+      x_hi  <- x_seq[which.min(abs(cdf_summary$low  - p))]
+    }
+
+    results[[paste0("q", p * 100)]] <- data.frame(
+      quantile       = p,
+      quantile_label = paste0("Q", p * 100),
+      x_low          = x_lo,
+      x_high         = x_hi
     )
   }
-  
+
   dplyr::bind_rows(results)
 }
 
@@ -174,20 +214,29 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95)) {  # CHANGED: a
 #' and a sample size) into the named list expected by the
 #' `hierarchical_data_synthesis_summary_stats` Stan model.
 #'
-#' @param datasets A named list of lists.  Each element must contain `n` (sample
-#'   size) and one of the following combinations of summary statistics:
+#' @param datasets A named list of lists. Each element must contain one of the
+#'   following combinations of summary statistics:
 #'   \describe{
-#'     \item{`median`, `min`, `max`}{Median and range (summary type 1).}
-#'     \item{`median`, `Q1`, `Q3`}{Median and inter-quartile range (summary type 2).}
-#'     \item{`mean`, `sd`}{Mean and standard deviation (summary type 3).}
-#'     \item{`freq_value`, `freq_count`}{Frequency table of (value, count) pairs
-#'       (summary type 4). `n` is optional and defaults to `sum(freq_count)`.}
-#'     \item{`freq_lower`, `freq_upper`, `freq_count`}{Interval-censored frequency
-#'       table (summary type 5). Each entry gives the lower and upper bound of the
-#'       censoring interval and the count of individuals in that interval.  When
-#'       `freq_lower[i] == freq_upper[i]` the observation is treated as exact.
-#'       `n` is optional and defaults to `sum(freq_count)`.}
+#'     \item{`median`, `min`, `max`}{Median and range (summary type 1). `n`
+#'       (sample size) is required.}
+#'     \item{`median`, `Q1`, `Q3`}{Median and inter-quartile range (summary
+#'       type 2). `n` is required.}
+#'     \item{`mean`, `sd`}{Mean and standard deviation (summary type 3). `n`
+#'       is required.}
+#'     \item{`freq_value`, `freq_count`}{Frequency table of (value, count)
+#'       pairs (summary type 4). `n` is optional and defaults to
+#'       `sum(freq_count)`.}
+#'     \item{`freq_lower`, `freq_upper`, `freq_count`}{Interval-censored
+#'       frequency table (summary type 5). Each entry gives the lower and
+#'       upper bound of the censoring interval and the count of individuals
+#'       in that interval. When `freq_lower[i] == freq_upper[i]` the
+#'       observation is treated as exact. `n` is optional and defaults to
+#'       `sum(freq_count)`.}
 #'   }
+#'   Each element may also contain an optional `source` field — a free-text
+#'   character string recording the bibliographic reference for that dataset
+#'   (e.g. `"Surname (year), doi: doi.org/xyz"`). This field is ignored
+#'   during Stan data preparation and is never passed to the model.
 #' @param dist_type Integer distribution code: `1` = log-normal, `2` = gamma,
 #'   `3` = Weibull. Defaults to `1`.
 #' @param use_custom_priors Integer flag (0 or 1) for custom prior use.
