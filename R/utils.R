@@ -460,6 +460,170 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
 }
 
 
+# Data-driven phi prior ----------------------------------------------------
+
+#' Update the log_phi prior mean from method-of-moments estimates
+#'
+#' @description
+#' Estimates \eqn{\phi} from each dataset individually using moment-based
+#' approximations (the same approach used in check 1 of
+#' [pre_inference_checks()]), then overwrites `log_phi_mean` in `stan_data`
+#' with the log of the median implied \eqn{\phi} across all datasets.
+#'
+#' This replaces the fixed distribution-specific default with a value anchored
+#' to the actual data scale, which is particularly useful for the gamma
+#' distribution: the default prior mean (shape ≈ 12) can be far above the
+#' data-implied shape (typically 2–8 for incubation periods), causing
+#' `gamma_lccdf` to evaluate to `log(0) = -Inf` during Stan's initialisation
+#' phase.
+#'
+#' `log_phi_sd` is left unchanged so the prior remains diffuse around the
+#' data-derived centre.
+#'
+#' @param stan_data A named list returned by [prepare_stan_data_from_datasets()].
+#' @param datasets The same named list of datasets passed to
+#'   [prepare_stan_data_from_datasets()].  Used only for moment calculations.
+#'
+#' @return `stan_data` with `log_phi_mean` replaced by
+#'   `log(median(implied_phi))`.  All other fields are unchanged.  If no
+#'   finite implied-\eqn{\phi} values can be derived, a warning is issued and
+#'   `stan_data` is returned unmodified.
+#'
+#' @details
+#' **Moment approximations per distribution:**
+#' \describe{
+#'   \item{lognormal}{\eqn{\phi = \log(1 + (\mathrm{sd}/\mathrm{mean})^2)}
+#'     (approximate log-variance)}
+#'   \item{gamma}{\eqn{\phi = (\mathrm{mean}/\mathrm{sd})^2}
+#'     (method-of-moments shape)}
+#'   \item{Weibull}{\eqn{\phi} solved numerically from the CV via
+#'     \eqn{CV^2 = \Gamma(1+2/k)/\Gamma(1+1/k)^2 - 1}}
+#' }
+#' For datasets that report only median + IQR, the SD is approximated as
+#' \eqn{(Q3-Q1)/1.35}; for median + range, as \eqn{(\max-\min)/4};
+#' for frequency tables, the weighted SD of the (mid-)points is used.
+#'
+#' @examples
+#' \dontrun{
+#'   stan_data <- prepare_stan_data_from_datasets(datasets_Mpox, dist_type = 2)
+#'   stan_data <- update_phi_prior(stan_data, datasets_Mpox)
+#'   fit <- rstan::sampling(stan_model, data = stan_data, chains = 4, iter = 2000)
+#' }
+#' @export
+update_phi_prior <- function(stan_data, datasets) {
+
+  dist_name <- c("1" = "lognormal", "2" = "gamma", "3" = "weibull")[[
+    as.character(stan_data$dist_type)
+  ]]
+  if (is.null(dist_name)) {
+    stop("update_phi_prior: unrecognised dist_type (", stan_data$dist_type,
+         "); expected 1, 2, or 3.", call. = FALSE)
+  }
+
+  # Per-dataset moment estimates of mean and SD, covering all five summary types
+  implied_phis <- vapply(datasets, function(d) {
+    mean_est <- sd_est <- NA_real_
+
+    if (!is.null(d$mean) && !is.null(d$sd)) {
+      mean_est <- d$mean
+      sd_est   <- d$sd
+    } else if (!is.null(d$median) && !is.null(d$Q1) && !is.null(d$Q3)) {
+      mean_est <- d$median
+      sd_est   <- (d$Q3 - d$Q1) / 1.35
+    } else if (!is.null(d$median) && !is.null(d$min) && !is.null(d$max)) {
+      mean_est <- d$median
+      sd_est   <- (d$max - d$min) / 4
+    } else if (!is.null(d$freq_value) && !is.null(d$freq_count)) {
+      w        <- d$freq_count / sum(d$freq_count)
+      mean_est <- sum(d$freq_value * w)
+      sd_est   <- sqrt(sum(w * (d$freq_value - mean_est)^2))
+    } else if (!is.null(d$freq_lower) && !is.null(d$freq_upper) &&
+               !is.null(d$freq_count)) {
+      mid      <- (d$freq_lower + d$freq_upper) / 2
+      w        <- d$freq_count / sum(d$freq_count)
+      mean_est <- sum(mid * w)
+      sd_est   <- sqrt(sum(w * (mid - mean_est)^2))
+    }
+
+    if (is.na(mean_est) || is.na(sd_est) || sd_est <= 0) return(NA_real_)
+
+    switch(dist_name,
+      lognormal = log(1 + (sd_est / mean_est)^2),
+      gamma     = (mean_est / sd_est)^2,
+      weibull   = {
+        cv  <- sd_est / mean_est
+        obj <- function(k) sqrt(gamma(1 + 2/k) / gamma(1 + 1/k)^2 - 1) - cv
+        tryCatch(stats::uniroot(obj, c(0.1, 200))$root,
+                 error = function(e) NA_real_)
+      }
+    )
+  }, numeric(1))
+
+  med_phi <- stats::median(implied_phis, na.rm = TRUE)
+
+  if (is.na(med_phi) || med_phi <= 0) {
+    warning("update_phi_prior: could not derive a finite positive phi estimate ",
+            "from the data; log_phi_mean has not been changed.", call. = FALSE)
+    return(stan_data)
+  }
+
+  stan_data$log_phi_mean <- log(med_phi)
+  stan_data
+}
+
+
+# Dataset filtering --------------------------------------------------------
+
+#' Filter a dataset list by subgroup and/or location
+#'
+#' Retains only those entries whose `subgroup` and/or `location` fields match
+#' the requested values.  Entries that do not carry the field at all are
+#' **kept** when the corresponding filter argument is `NULL` and **dropped**
+#' when a filter is active (because their group membership is unknown).
+#' Setting both arguments to `NULL` returns the list unchanged.
+#'
+#' @param datasets A named list of datasets in the format accepted by
+#'   [prepare_stan_data_from_datasets()].  Each entry may optionally contain
+#'   `subgroup` and/or `location` character fields.
+#' @param subgroup Character vector of subgroup values to retain, or `NULL`
+#'   (default) to skip subgroup filtering.
+#' @param location Character vector of location values to retain, or `NULL`
+#'   (default) to skip location filtering.
+#'
+#' @return A named list containing only the datasets that satisfy all active
+#'   filter criteria.
+#'
+#' @examples
+#' datasets <- list(
+#'   d1 = list(mean = 4.0, sd = 2.4, n = 49,
+#'             subgroup = "tick-bite", location = "Turkey"),
+#'   d2 = list(mean = 6.0, sd = 3.1, n = 12,
+#'             subgroup = "nosocomial", location = "Iran"),
+#'   d3 = list(mean = 5.0, sd = 2.0, n = 30)   # no subgroup/location
+#' )
+#' filter_datasets(datasets, subgroup = "tick-bite")
+#' filter_datasets(datasets, location = c("Turkey", "Iran"))
+#' filter_datasets(datasets, subgroup = "nosocomial", location = "Iran")
+#'
+#' @export
+filter_datasets <- function(datasets, subgroup = NULL, location = NULL) {
+  if (is.null(subgroup) && is.null(location)) return(datasets)
+
+  keep <- vapply(datasets, function(d) {
+    if (!is.null(subgroup)) {
+      val <- d$subgroup
+      if (is.null(val) || !(val %in% subgroup)) return(FALSE)
+    }
+    if (!is.null(location)) {
+      val <- d$location
+      if (is.null(val) || !(val %in% location)) return(FALSE)
+    }
+    TRUE
+  }, logical(1))
+
+  datasets[keep]
+}
+
 
 # Pre-inference checks -----------------------------------------------------
 
@@ -510,6 +674,10 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
 #'   `2`.
 #' @param verbose Logical. If `TRUE` (default), prints a formatted summary of
 #'   all check results to the console.
+#' @param filter Logical. If `TRUE`, any dataset flagged by at least one
+#'   per-dataset check (method-of-moments outlier, outside prior predictive
+#'   interval, or non-overlapping LOO phi posterior) is removed from the
+#'   returned dataset list.  Defaults to `FALSE`.
 #'
 #' @return A named list with elements:
 #'   \describe{
@@ -523,6 +691,8 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
 #'       scan.}
 #'     \item{`loo_fits`}{Data frame of per-dataset `phi` posterior summaries
 #'       from the leave-one-out fits.}
+#'     \item{`datasets`}{The input `datasets` list, filtered to remove flagged
+#'       datasets when `filter = TRUE`, otherwise identical to the input.}
 #'   }
 #' @export
 pre_inference_checks <- function(datasets,
@@ -534,7 +704,8 @@ pre_inference_checks <- function(datasets,
                                  n_sim                 = 2000,
                                  loo_iter              = 4000,
                                  loo_chains            = 2,
-                                 verbose               = TRUE) {
+                                 verbose               = TRUE,
+                                 filter                = FALSE) {
 
   dist_name <- c("1" = "lognormal", "2" = "gamma", "3" = "weibull")[[as.character(dist_type)]]
   stan_data <- prepare_stan_data_from_datasets(datasets, dist_type = dist_type,
@@ -696,6 +867,31 @@ pre_inference_checks <- function(datasets,
   })
   results$loo_fits <- loo_fits
 
+  # ── Per-dataset LOO overlap flag (needed for filter, computed unconditionally)
+  loo_flagged <- dplyr::mutate(
+    loo_fits,
+    no_overlap = {
+      med_lo <- stats::median(loo_fits$phi_lo, na.rm = TRUE)
+      med_hi <- stats::median(loo_fits$phi_hi, na.rm = TRUE)
+      !is.na(phi_lo) & (phi_hi < med_lo | phi_lo > med_hi)
+    }
+  )
+
+  # ── Union of all per-dataset flags ────────────────────────────────────────
+  flagged_datasets <- unique(c(
+    mom_df$dataset[!is.na(mom_df$is_outlier)        & mom_df$is_outlier],
+    prior_df$dataset[!is.na(prior_df$outside_prior_pi) & prior_df$outside_prior_pi],
+    loo_flagged$dataset[!is.na(loo_flagged$no_overlap)  & loo_flagged$no_overlap]
+  ))
+
+  # ── Optionally filter datasets ─────────────────────────────────────────────
+  datasets_out <- if (filter && length(flagged_datasets) > 0) {
+    datasets[setdiff(names(datasets), flagged_datasets)]
+  } else {
+    datasets
+  }
+  results$datasets <- datasets_out
+
   # ── Verbose summary ───────────────────────────────────────────────────────
   if (verbose) {
     cli::cli_h1("Pre-inference checks ({dist_name}, {length(datasets)} datasets)")
@@ -738,14 +934,6 @@ pre_inference_checks <- function(datasets,
 
     cli::cli_h2("5. Leave-one-out single-dataset phi posteriors")
     print(loo_fits)
-    phi_ranges_overlap <- function(df) {
-      # Flag any dataset whose 95% CI does not overlap the majority
-      med_lo <- stats::median(df$phi_lo, na.rm = TRUE)
-      med_hi <- stats::median(df$phi_hi, na.rm = TRUE)
-      dplyr::mutate(df,
-        no_overlap = !is.na(phi_lo) & (phi_hi < med_lo | phi_lo > med_hi))
-    }
-    loo_flagged <- phi_ranges_overlap(loo_fits)
     n_no_overlap <- sum(loo_flagged$no_overlap, na.rm = TRUE)
     if (n_no_overlap > 0) {
       cli::cli_alert_warning(
@@ -753,6 +941,19 @@ pre_inference_checks <- function(datasets,
       )
     } else {
       cli::cli_alert_success("All per-dataset phi posteriors broadly overlap")
+    }
+
+    if (filter) {
+      if (length(flagged_datasets) > 0) {
+        cli::cli_h2("Filtering")
+        cli::cli_alert_warning(
+          "{length(flagged_datasets)} dataset(s) removed: {flagged_datasets}. ",
+          "{length(datasets_out)} dataset(s) retained."
+        )
+      } else {
+        cli::cli_h2("Filtering")
+        cli::cli_alert_success("No datasets flagged — all {length(datasets)} retained.")
+      }
     }
   }
 
