@@ -590,7 +590,7 @@ update_phi_prior <- function(stan_data, datasets) {
     if (is.na(mean_est) || is.na(sd_est) || sd_est <= 0) return(NA_real_)
 
     switch(dist_name,
-      lognormal = log(1 + (sd_est / mean_est)^2),
+      lognormal = sqrt(log(1 + (sd_est / mean_est)^2)),
       gamma     = (mean_est / sd_est)^2,
       weibull   = {
         cv  <- sd_est / mean_est
@@ -815,7 +815,7 @@ pre_inference_checks <- function(datasets,
     implied_phi <- NA_real_
     if (!is.na(mean_est) && !is.na(sd_est) && sd_est > 0) {
       implied_phi <- switch(dist_name,
-        lognormal = log(1 + (sd_est / mean_est)^2),        # approx log-variance
+        lognormal = sqrt(log(1 + (sd_est / mean_est)^2)),    # approx sdlog (sigma)
         gamma     = (mean_est / sd_est)^2,                 # shape = (mean/sd)^2
         weibull   = {                                       # invert CV numerically
           cv <- sd_est / mean_est
@@ -1419,103 +1419,90 @@ compute_iqd <- function(fit, true_params, dist_type, x_grid = NULL) {
   draws <- rstan::extract(fit)
 
   # Extract posterior samples
-  mu0_samples  <- draws$mu0
-  tau_samples  <- exp(draws$log_tau)
-  phi_samples  <- exp(draws$log_phi)
+  mu0_samples   <- draws$mu0
+  tau_samples   <- exp(draws$log_tau)
+  phi_samples   <- exp(draws$log_phi)
+  kappa_samples <- draws$kappa
   loc_d_samples <- draws$loc_d          # [n_samples x n_datasets]
 
   n_samples  <- length(mu0_samples)
   n_datasets <- dim(loc_d_samples)[2]
-  
+
+  # Internal density function for all 5 distribution types
+  .ddist <- function(x, loc, phi, kappa, dist_type) {
+    if (dist_type == "lognormal") {
+      dlnorm(x, meanlog = loc, sdlog = phi)
+    } else if (dist_type == "gamma") {
+      dgamma(x, shape = phi, rate = phi / exp(loc))
+    } else if (dist_type == "weibull") {
+      dweibull(x, shape = phi, scale = exp(loc))
+    } else if (dist_type == "burr12") {
+      # Burr XII PDF: (c*k/lambda)*(x/lambda)^(c-1)*(1+(x/lambda)^c)^(-(k+1))
+      lambda <- exp(loc)
+      r      <- x / lambda
+      phi * kappa / lambda * r^(phi - 1) * (1 + r^phi)^(-(kappa + 1))
+    } else if (dist_type == "gengamma") {
+      # Generalised Gamma (Prentice) PDF
+      gs <- 1 / kappa^2
+      w  <- (log(x) - loc) / phi
+      exp(log(kappa) - log(phi) - log(x) +
+          gs * log(gs) + gs * kappa * w - gs * exp(kappa * w) - lgamma(gs))
+    }
+  }
+
   # Create grid if not provided
   if (is.null(x_grid)) {
-    if (dist_type == "lognormal") {
-      x_grid <- seq(0.01, exp(true_params$mu0 + 3*true_params$tau), length.out = 200)
+    if (dist_type %in% c("lognormal", "burr12", "gengamma")) {
+      x_grid <- seq(0.01, exp(true_params$mu0 + 3 * true_params$tau), length.out = 200)
     } else if (dist_type == "gamma") {
-      mean_max <- exp(true_params$mu0 + 3*true_params$tau)
+      mean_max <- exp(true_params$mu0 + 3 * true_params$tau)
       x_grid <- seq(0.01, mean_max * 3, length.out = 200)
     } else if (dist_type == "weibull") {
-      scale_max <- exp(true_params$mu0 + 3*true_params$tau)
+      scale_max <- exp(true_params$mu0 + 3 * true_params$tau)
       x_grid <- seq(0.01, scale_max * 3, length.out = 200)
     }
   }
-  
+
+  kappa_true <- if (!is.null(true_params$kappa)) true_params$kappa else 1.0
+
   # Compute true predictive density
   true_density <- numeric(length(x_grid))
   for (i in seq_along(x_grid)) {
     x <- x_grid[i]
-    
-    # Integrate over random effects distribution
+
     integrand <- function(loc) {
-      if (dist_type == "lognormal") {
-        dlnorm(x, meanlog = loc, sdlog = true_params$phi) * 
-          dnorm(loc, mean = true_params$mu0, sd = true_params$tau)
-      } else if (dist_type == "gamma") {
-        mean_d <- exp(loc)
-        shape <- true_params$phi
-        rate <- shape / mean_d
-        dgamma(x, shape = shape, rate = rate) * 
-          dnorm(loc, mean = true_params$mu0, sd = true_params$tau)
-      } else if (dist_type == "weibull") {
-        scale <- exp(loc)
-        shape <- true_params$phi
-        dweibull(x, shape = shape, scale = scale) * 
-          dnorm(loc, mean = true_params$mu0, sd = true_params$tau)
-      }
+      .ddist(x, loc, true_params$phi, kappa_true, dist_type) *
+        dnorm(loc, mean = true_params$mu0, sd = true_params$tau)
     }
-    
-    true_density[i] <- integrate(integrand, 
-                                 lower = true_params$mu0 - 5*true_params$tau,
-                                 upper = true_params$mu0 + 5*true_params$tau)$value
+
+    true_density[i] <- integrate(integrand,
+                                 lower = true_params$mu0 - 5 * true_params$tau,
+                                 upper = true_params$mu0 + 5 * true_params$tau)$value
   }
-  
+
   # Compute estimated predictive density (average over posterior samples)
   est_density <- numeric(length(x_grid))
-  
+
   # Subsample for computational efficiency
   sample_idx <- sample(1:n_samples, min(500, n_samples))
-  
+
   for (i in seq_along(x_grid)) {
     x <- x_grid[i]
-    
+
     density_samples <- numeric(length(sample_idx))
     for (s in seq_along(sample_idx)) {
-      idx <- sample_idx[s]
+      idx     <- sample_idx[s]
+      phi_s   <- phi_samples[idx]
+      kappa_s <- kappa_samples[idx]
 
       if (n_datasets < 5) {
-        # When n_datasets < 5, tau is not identified and mu0 is confounded
-        # with tau * loc_d_raw. Use mean(loc_d) as a point estimate of the
-        # study-level location, consistent with the Stan generated quantities
-        # block and compute_predictive_cdf().
         loc_point <- mean(loc_d_samples[idx, ])
-        phi_s     <- phi_samples[idx]
-
-        density_samples[s] <- if (dist_type == "lognormal") {
-          dlnorm(x, meanlog = loc_point, sdlog = phi_s)
-        } else if (dist_type == "gamma") {
-          mean_d <- exp(loc_point)
-          dgamma(x, shape = phi_s, rate = phi_s / mean_d)
-        } else if (dist_type == "weibull") {
-          dweibull(x, shape = phi_s, scale = exp(loc_point))
-        }
+        density_samples[s] <- .ddist(x, loc_point, phi_s, kappa_s, dist_type)
 
       } else {
-        # n_datasets >= 5: integrate over Normal(mu0, tau) random effects
         integrand <- function(loc) {
-          if (dist_type == "lognormal") {
-            dlnorm(x, meanlog = loc, sdlog = phi_samples[idx]) *
-              dnorm(loc, mean = mu0_samples[idx], sd = tau_samples[idx])
-          } else if (dist_type == "gamma") {
-            mean_d <- exp(loc)
-            shape  <- phi_samples[idx]
-            dgamma(x, shape = shape, rate = shape / mean_d) *
-              dnorm(loc, mean = mu0_samples[idx], sd = tau_samples[idx])
-          } else if (dist_type == "weibull") {
-            scale <- exp(loc)
-            shape <- phi_samples[idx]
-            dweibull(x, shape = shape, scale = scale) *
-              dnorm(loc, mean = mu0_samples[idx], sd = tau_samples[idx])
-          }
+          .ddist(x, loc, phi_s, kappa_s, dist_type) *
+            dnorm(loc, mean = mu0_samples[idx], sd = tau_samples[idx])
         }
 
         density_samples[s] <- integrate(integrand,
@@ -1523,15 +1510,15 @@ compute_iqd <- function(fit, true_params, dist_type, x_grid = NULL) {
                                         upper = mu0_samples[idx] + 5 * tau_samples[idx])$value
       }
     }
-    
+
     est_density[i] <- mean(density_samples)
   }
-  
+
   # Compute IQD using trapezoidal rule
   dx <- diff(x_grid)
   squared_diff <- (true_density - est_density)^2
   iqd <- sum((squared_diff[-1] + squared_diff[-length(squared_diff)]) / 2 * dx)
-  
+
   return(iqd)
 }
 
@@ -2117,7 +2104,7 @@ generate_hierarchical_data_mixed <- function(n_datasets,
       freq_upper   = rep(0.0, length(freq_value_flat)),
       # Priors — calibrated defaults matching prepare_stan_data_from_datasets()
       mu0_mean     = 1.0,
-      mu0_sd       = 2.0,
+      mu0_sd       = 1.0,
       log_tau_mean = 0.2,
       log_tau_sd   = 0.5,
       log_phi_mean = switch(dist_type,

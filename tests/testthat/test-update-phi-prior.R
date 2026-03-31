@@ -2,17 +2,17 @@
 # Fixtures (.make_sd, .five_meansd, .ds_freq4, .ds_freq5) are in helper-fixtures.R.
 
 # ---------------------------------------------------------------------------
-# Lognormal (dist_type = 1): phi = log(1 + (sd/mean)^2)
+# Lognormal (dist_type = 1): phi = sqrt(log(1 + (sd/mean)^2))  (sdlog, not variance)
 # ---------------------------------------------------------------------------
 
-test_that("lognormal: log_phi_mean = log(median(log(1 + (sd/mean)^2)))", {
+test_that("lognormal: log_phi_mean = log(median(sqrt(log(1 + (sd/mean)^2))))", {
   means  <- c(5, 6, 7, 8, 9)
   sds    <- c(2, 3, 2, 4, 3)
   ds     <- .five_meansd(means, sds)
   sd_obj <- .make_sd(ds, dist_type = 1)
   result <- update_phi_prior(sd_obj, ds)
 
-  implied  <- log(1 + (sds / means)^2)
+  implied  <- sqrt(log(1 + (sds / means)^2))
   expect_equal(result$log_phi_mean, log(median(implied)), tolerance = 1e-10)
 })
 
