@@ -66,7 +66,7 @@ test_that("works with IQR datasets: sd approximated as (Q3-Q1)/1.35", {
   result <- update_phi_prior(sd_obj, ds)
 
   sd_est  <- (9 - 5) / 1.35
-  implied <- log(1 + (sd_est / 7)^2)
+  implied <- sqrt(log(1 + (sd_est / 7)^2))
   expect_equal(result$log_phi_mean, log(median(rep(implied, 5))), tolerance = 1e-10)
 })
 
@@ -76,7 +76,7 @@ test_that("works with range datasets: sd approximated as (max-min)/4", {
   result <- update_phi_prior(sd_obj, ds)
 
   sd_est  <- (13 - 1) / 4
-  implied <- log(1 + (sd_est / 6)^2)
+  implied <- sqrt(log(1 + (sd_est / 6)^2))
   expect_equal(result$log_phi_mean, log(median(rep(implied, 5))), tolerance = 1e-10)
 })
 
@@ -90,7 +90,7 @@ test_that("works with freq_value datasets: uses weighted SD", {
   w        <- fc / sum(fc)
   mean_est <- sum(fv * w)
   sd_est   <- sqrt(sum(w * (fv - mean_est)^2))
-  implied  <- log(1 + (sd_est / mean_est)^2)
+  implied  <- sqrt(log(1 + (sd_est / mean_est)^2))
   expect_equal(result$log_phi_mean, log(median(rep(implied, 5))), tolerance = 1e-10)
 })
 
@@ -104,7 +104,7 @@ test_that("works with interval-censored datasets: uses midpoint weighted SD", {
   w        <- fc / sum(fc)
   mean_est <- sum(mid * w)
   sd_est   <- sqrt(sum(w * (mid - mean_est)^2))
-  implied  <- log(1 + (sd_est / mean_est)^2)
+  implied  <- sqrt(log(1 + (sd_est / mean_est)^2))
   expect_equal(result$log_phi_mean, log(implied), tolerance = 1e-10)
 })
 
