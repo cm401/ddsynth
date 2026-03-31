@@ -9,13 +9,15 @@ compute_predictive_cdf(
   dist_name,
   x_seq = seq(0, 30, length.out = 500),
   n_draws = 500,
-  L = 50
+  L = 2000
 )
 }
 \arguments{
 \item{fit}{A \code{stanfit} object returned by \code{\link[rstan:stanmodel-method-sampling]{rstan::sampling()}}.}
 
-\item{dist_name}{Character string: \code{"lognormal"}, \code{"gamma"}, or \code{"weibull"}.}
+\item{dist_name}{Character string: \code{"lognormal"}, \code{"gamma"}, \code{"weibull"},
+\code{"burr12"} (Burr Type XII), or \code{"gengamma"} (Generalised Gamma, Prentice
+parameterisation).}
 
 \item{x_seq}{Numeric vector of evaluation points (default: 500 points on
 \verb{[0, 30]}).}
@@ -23,7 +25,10 @@ compute_predictive_cdf(
 \item{n_draws}{Number of posterior draws to use (default: 500).}
 
 \item{L}{Number of study-level locations to integrate over per draw
-(default: 50).}
+(default: 2000). When \code{n_datasets < 5}, \code{mean(loc_d)} is used directly
+for all \code{L} locations (i.e. no between-study sampling) for consistency
+with the Stan generated quantities block — see
+\code{\link[=prepare_stan_data_from_datasets]{prepare_stan_data_from_datasets()}} for details.}
 }
 \value{
 A data frame with columns \code{x}, \code{median}, \code{mean}, \code{low}, \code{high}, and

@@ -8,19 +8,33 @@ prepare_stan_data_from_datasets(
   datasets,
   dist_type = 1,
   use_custom_priors = 0,
-  custom_priors = NULL
+  custom_priors = list()
 )
 }
 \arguments{
-\item{datasets}{A named list of lists.  Each element must contain \code{n} (sample
-size) and one of the following combinations of summary statistics:
+\item{datasets}{A named list of lists. Each element must contain one of the
+following combinations of summary statistics:
 \describe{
-\item{\code{median}, \code{min}, \code{max}}{Median and range (summary type 1).}
-\item{\code{median}, \code{Q1}, \code{Q3}}{Median and inter-quartile range (summary type 2).}
-\item{\code{mean}, \code{sd}}{Mean and standard deviation (summary type 3).}
-\item{\code{freq_value}, \code{freq_count}}{Frequency table of (value, count) pairs
-(summary type 4). \code{n} is optional and defaults to \code{sum(freq_count)}.}
-}}
+\item{\code{median}, \code{min}, \code{max}}{Median and range (summary type 1). \code{n}
+(sample size) is required.}
+\item{\code{median}, \code{Q1}, \code{Q3}}{Median and inter-quartile range (summary
+type 2). \code{n} is required.}
+\item{\code{mean}, \code{sd}}{Mean and standard deviation (summary type 3). \code{n}
+is required.}
+\item{\code{freq_value}, \code{freq_count}}{Frequency table of (value, count)
+pairs (summary type 4). \code{n} is optional and defaults to
+\code{sum(freq_count)}.}
+\item{\code{freq_lower}, \code{freq_upper}, \code{freq_count}}{Interval-censored
+frequency table (summary type 5). Each entry gives the lower and
+upper bound of the censoring interval and the count of individuals
+in that interval. When \code{freq_lower[i] == freq_upper[i]} the
+observation is treated as exact. \code{n} is optional and defaults to
+\code{sum(freq_count)}.}
+}
+Each element may also contain an optional \code{source} field — a free-text
+character string recording the bibliographic reference for that dataset
+(e.g. \code{"Surname (year), doi: doi.org/xyz"}). This field is ignored
+during Stan data preparation and is never passed to the model.}
 
 \item{dist_type}{Integer distribution code: \code{1} = log-normal, \code{2} = gamma,
 \code{3} = Weibull. Defaults to \code{1}.}
@@ -28,14 +42,47 @@ size) and one of the following combinations of summary statistics:
 \item{use_custom_priors}{Integer flag (0 or 1) for custom prior use.
 Currently unused; reserved for future extension. Defaults to \code{0}.}
 
-\item{custom_priors}{Optional list of custom prior values. Currently unused.}
+\item{custom_priors}{Named list of prior overrides. Any values not supplied
+fall back to distribution-appropriate defaults (see Details). Recognised
+names: \code{mu0_sd}, \code{log_tau_mean}, \code{log_tau_sd}, \code{log_phi_mean},
+\code{log_phi_sd}.}
 }
 \value{
 A named list suitable for passing to \code{\link[rstan:stanmodel-method-sampling]{rstan::sampling()}} as the
-\code{data} argument.
+\code{data} argument. The list always includes \code{freq_lower} and \code{freq_upper}
+fields (populated with zeros for non-type-5 datasets), as these are
+required by the Stan model regardless of which summary types are present.
 }
 \description{
 Converts a list of dataset descriptors (each providing summary statistics
 and a sample size) into the named list expected by the
 \code{hierarchical_data_synthesis_summary_stats} Stan model.
+}
+\details{
+\strong{Distribution-specific defaults for \code{log_phi}:}
+
+Because \code{phi} has a different meaning in each distribution, the default
+prior for \code{log_phi_mean} is chosen per \code{dist_type}:\tabular{lllll}{
+   \code{dist_type} \tab Distribution \tab \code{phi} \tab Default \code{log_phi_mean} \tab Prior median phi \cr
+   1 \tab Lognormal \tab log-SD (σ) \tab -0.7 \tab 0.50 \cr
+   2 \tab Gamma \tab shape \tab 2.5 \tab 12.2 \cr
+   3 \tab Weibull \tab shape \tab 1.0 \tab 2.7 \cr
+}
+
+
+Users can override any individual prior by passing only the relevant
+element(s) in \code{custom_priors}, e.g.
+\code{custom_priors = list(log_phi_mean = 3.0)} — all other priors will use
+the distribution-appropriate defaults above.
+}
+\note{
+\strong{Backward compatibility:} The Stan model requires \code{freq_lower} and
+\code{freq_upper} to be present in the data list for all runs, including those
+that contain only type 1--4 datasets. This is handled automatically when
+using this function. If you construct the Stan data list manually (rather
+than via this function), you must include these fields explicitly, e.g.:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{stan_data$freq_lower <- rep(0, stan_data$n_freq_total)
+stan_data$freq_upper <- rep(0, stan_data$n_freq_total)
+}\if{html}{\out{</div>}}
 }

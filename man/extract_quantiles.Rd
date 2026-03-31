@@ -4,7 +4,7 @@
 \alias{extract_quantiles}
 \title{Extract quantiles from a predictive CDF summary}
 \usage{
-extract_quantiles(cdf_summary, probs = c(0.5, 0.95))
+extract_quantiles(cdf_summary, probs = c(0.5, 0.95), cdf_mat = NULL)
 }
 \arguments{
 \item{cdf_summary}{A data frame produced by \code{\link[=compute_predictive_cdf]{compute_predictive_cdf()}},
@@ -12,10 +12,22 @@ with columns \code{x}, \code{median}, \code{low}, and \code{high}.}
 
 \item{probs}{Numeric vector of probabilities to extract (default:
 \code{c(0.5, 0.95)}).}
+
+\item{cdf_mat}{Numeric matrix of posterior CDF draws as returned by
+\code{\link[=compute_predictive_cdf]{compute_predictive_cdf()}} (rows = posterior draws, columns = \code{x_seq}
+grid points). When supplied, the 95\% prediction interval bounds
+(\code{x_low}, \code{x_high}) are computed by interpolating each draw's CDF to
+find the x at which it crosses \code{p}, then taking the 2.5\% and 97.5\%
+quantiles across draws. This is fully consistent with the ribbon in
+the CDF plot (both derive from the same \code{cdf_mat}). If \code{NULL}, falls
+back to inverting the summary credible bands, which can fail near the
+tails.}
 }
 \value{
-A data frame with columns \code{quantile}, \code{quantile_label}, \code{x_median},
-\code{x_low}, and \code{x_high}.
+A data frame with columns \code{quantile}, \code{quantile_label}, \code{x_low},
+and \code{x_high}. \code{x_low} and \code{x_high} are the 2.5\% and 97.5\% bounds of
+the 95\% prediction interval for that quantile, on the same scale as
+the \code{x} column of \code{cdf_summary}.
 }
 \description{
 For each requested probability, finds the x value where the CDF (and its
