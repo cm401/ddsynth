@@ -1,7 +1,7 @@
 // hierarchical_data_synthesis_summary_stats.stan
 functions {
   // CDF for each distribution
-  real dist_cdf_fun(real x, int dist_type, real loc, real phi) {
+  real dist_cdf_fun(real x, int dist_type, real loc, real phi, real kappa) {
     if (dist_type == 1) {  // lognormal
       return lognormal_cdf(x | loc, phi);
     } else if (dist_type == 2) {  // gamma
@@ -13,12 +13,19 @@ functions {
       real scale = exp(loc);
       real shape = phi;
       return weibull_cdf(x | shape, scale);
+    } else if (dist_type == 4) {  // burr XII: lambda=exp(loc), c=phi, k=kappa
+      real u = log(x) - loc;
+      return -expm1(-kappa * log1p_exp(phi * u));
+    } else if (dist_type == 5) {  // generalised gamma (Prentice): mu=loc, sigma=phi, Q=kappa
+      real gamma_shape = 1.0 / (kappa * kappa);
+      real w = (log(x) - loc) / phi;
+      return gamma_cdf(gamma_shape * exp(kappa * w) | gamma_shape, 1);
     }
     return 0;
   }
-  
+
   // "log pdf" for each distribution
-  real dist_logpdf_fun(real x, int dist_type, real loc, real phi) {
+  real dist_logpdf_fun(real x, int dist_type, real loc, real phi, real kappa) {
     if (dist_type == 1) {  // lognormal
       return lognormal_lpdf(x | loc, phi);
     } else if (dist_type == 2) {  // gamma
@@ -30,14 +37,26 @@ functions {
       real scale = exp(loc);
       real shape = phi;
       return weibull_lpdf(x | shape, scale);
+    } else if (dist_type == 4) {  // burr XII: lambda=exp(loc), c=phi, k=kappa
+      real u = log(x) - loc;
+      real log_term = log1p_exp(phi * u);  // log(1 + (x/lambda)^c)
+      return log(phi) + log(kappa) + (phi - 1) * u - loc - (kappa + 1) * log_term;
+    } else if (dist_type == 5) {  // generalised gamma (Prentice): mu=loc, sigma=phi, Q=kappa
+      real gamma_shape = 1.0 / (kappa * kappa);
+      real w = (log(x) - loc) / phi;
+      return log(kappa) - log(phi) - log(x)
+             + gamma_shape * log(gamma_shape)
+             + gamma_shape * kappa * w
+             - gamma_shape * exp(kappa * w)
+             - lgamma(gamma_shape);
     }
     return 0;
   }
-  
+
   // Log-scale CDF for each distribution.
   // Used in order statistic and interval-censored likelihoods to avoid
   // probability-scale clipping and catastrophic cancellation.
-  real dist_log_cdf_fun(real x, int dist_type, real loc, real phi) {
+  real dist_log_cdf_fun(real x, int dist_type, real loc, real phi, real kappa) {
     if (dist_type == 1) {  // lognormal
       return lognormal_lcdf(x | loc, phi);
     } else if (dist_type == 2) {  // gamma
@@ -47,6 +66,13 @@ functions {
     } else if (dist_type == 3) {  // weibull
       real scale = exp(loc);
       return weibull_lcdf(x | phi, scale);
+    } else if (dist_type == 4) {  // burr XII: lambda=exp(loc), c=phi, k=kappa
+      real u = log(x) - loc;
+      return log1m_exp(-kappa * log1p_exp(phi * u));
+    } else if (dist_type == 5) {  // generalised gamma (Prentice): mu=loc, sigma=phi, Q=kappa
+      real gamma_shape = 1.0 / (kappa * kappa);
+      real w = (log(x) - loc) / phi;
+      return gamma_lcdf(gamma_shape * exp(kappa * w) | gamma_shape, 1);
     }
     return negative_infinity();
   }
@@ -64,10 +90,10 @@ functions {
   // 0 * (-Inf) = NaN in Stan's autodiff:
   //   k == 1 (minimum): coefficient of log_F  is (k-1) = 0 — term omitted
   //   k == n (maximum): coefficient of log_1mF is (n-k) = 0 — term omitted
-  real order_stat_logpdf_fun(real x, int n, int k, int dist_type, real loc, real phi) {
+  real order_stat_logpdf_fun(real x, int n, int k, int dist_type, real loc, real phi, real kappa) {
     real log_f;
-    real log_F;    // log CDF  = log P(X <= x)
-    real log_1mF;  // log CCDF = log P(X >  x)
+    real log_F   = 0.0;  // log CDF  = log P(X <= x); default safe (unused when k==1)
+    real log_1mF = 0.0;  // log CCDF = log P(X >  x); default safe (unused when k==n)
 
     if (dist_type == 1) {  // lognormal
       log_f   = lognormal_lpdf(x  | loc, phi);
@@ -86,6 +112,25 @@ functions {
       log_f   = weibull_lpdf(x  | phi, scale);
       log_F   = weibull_lcdf(x  | phi, scale);
       log_1mF = weibull_lccdf(x | phi, scale);
+
+    } else if (dist_type == 4) {  // burr XII: lambda=exp(loc), c=phi, k=kappa
+      real u        = log(x) - loc;
+      real log_term = log1p_exp(phi * u);  // log(1 + (x/lambda)^c)
+      log_f   = log(phi) + log(kappa) + (phi - 1) * u - loc - (kappa + 1) * log_term;
+      log_1mF = -kappa * log_term;                    // log CCDF = log((1+(x/lam)^c)^(-k))
+      log_F   = log1m_exp(log_1mF);                   // log CDF  = log(1 - CCDF)
+
+    } else if (dist_type == 5) {  // generalised gamma (Prentice): mu=loc, sigma=phi, Q=kappa
+      real gamma_shape = 1.0 / (kappa * kappa);
+      real w    = (log(x) - loc) / phi;
+      real arg  = gamma_shape * exp(kappa * w);  // gamma_shape * exp(Q*w)
+      log_f   = log(kappa) - log(phi) - log(x)
+                + gamma_shape * log(gamma_shape)
+                + gamma_shape * kappa * w
+                - arg
+                - lgamma(gamma_shape);
+      if (k > 1) log_F   = gamma_lcdf(arg  | gamma_shape, 1);
+      if (k < n) log_1mF = gamma_lccdf(arg | gamma_shape, 1);
     }
 
     real log_dens = lchoose(n, k) + log_f;
@@ -110,8 +155,8 @@ data {
   int<lower=1> n_datasets;              // Number of datasets
   array[n_datasets] int<lower=1> n_obs; // Sample sizes for each dataset
   array[n_datasets] int<lower=1,upper=5> summary_type; // 1=median+range, 2=median+IQR, 3=mean+sd, 4=raw freq table, 5=interval-censored freq table
-  int<lower=1,upper=3> dist_type;       // 1=lognormal, 2=gamma, 3=weibull
-  
+  int<lower=1,upper=5> dist_type;       // 1=lognormal, 2=gamma, 3=weibull, 4=burr XII, 5=gen. gamma
+
   // Observed summaries - organized by dataset (used for summary_type 1, 2, 3)
   array[n_datasets] real<lower=0> obs_stat1;     // median or mean
   array[n_datasets] real<lower=0> obs_stat2;     // min, q25, or sd
@@ -135,22 +180,29 @@ data {
   // Prior hyperparameters for mu0 ~ normal(mu0_mean, mu0_sd)
   real mu0_mean;
   real<lower=0> mu0_sd;
-  
+
   // Prior hyperparameters for log_tau ~ normal(log_tau_mean, log_tau_sd)
   real log_tau_mean;
   real<lower=0> log_tau_sd;
-  
+
   // Prior hyperparameters for log_phi ~ normal(log_phi_mean, log_phi_sd)
   real log_phi_mean;
   real<lower=0> log_phi_sd;
+
+  // Prior hyperparameters for log_kappa ~ normal(log_kappa_mean, log_kappa_sd)
+  // kappa = exp(log_kappa) > 0; used by dist_type 4 (Burr XII k) and 5 (GG Q).
+  // For dist_type 1-3 supply wide uninformative priors (e.g. mean=0, sd=1);
+  // kappa will be sampled from its prior but does not enter the likelihood.
+  real log_kappa_mean;
+  real<lower=0> log_kappa_sd;
 }
 
 transformed data {
-  real z_q25 = -0.6745;       
-  real z_q75 = 0.6745;       
+  real z_q25 = -0.6745;
+  real z_q75 = 0.6745;
   real z_q90 = 1.28155;
   real z_q95 = 1.64485;
-  
+
   // Validate data
   for (d in 1:n_datasets) {
     if (summary_type[d] == 1) {
@@ -176,69 +228,73 @@ transformed data {
 parameters {
   real mu0;                        // Population mean (location)
   real log_tau;                    // Log of between-study SD
-  real log_phi;                    // Log of distribution-specific parameter
+  real log_phi;                    // Log of distribution-specific shape/scale parameter
+  real log_kappa;                  // Log of 3rd distribution parameter (Burr XII k; GG Q)
   vector[n_datasets] loc_d_raw;    // Non-centered parameterization
 }
 
 transformed parameters {
-  real<lower=0> tau = exp(log_tau);
-  real<lower=0> phi = exp(log_phi);
+  real<lower=0> tau   = exp(log_tau);
+  real<lower=0> phi   = exp(log_phi);
+  real<lower=0> kappa = exp(log_kappa);
   vector[n_datasets] loc_d = mu0 + tau * loc_d_raw;
 }
 
 model {
-  mu0 ~ normal(mu0_mean, mu0_sd);
-  log_tau ~ normal(log_tau_mean, log_tau_sd);
-  log_phi ~ normal(log_phi_mean, log_phi_sd);
-  
+  mu0       ~ normal(mu0_mean, mu0_sd);
+  log_tau   ~ normal(log_tau_mean, log_tau_sd);
+  log_phi   ~ normal(log_phi_mean, log_phi_sd);
+  log_kappa ~ normal(log_kappa_mean, log_kappa_sd);
+
   loc_d_raw ~ std_normal();
-  
+
   for (d in 1:n_datasets) {
     real loc = loc_d[d];
     int n = n_obs[d];
-    
+
     if (summary_type[d] == 1) {  // median + range (min, max)
       int k_median = (n + 1) %/% 2;
-      target += order_stat_logpdf_fun(obs_stat1[d], n, k_median, dist_type, loc, phi);
-      target += order_stat_logpdf_fun(obs_stat2[d], n, 1, dist_type, loc, phi);
-      target += order_stat_logpdf_fun(obs_stat3[d], n, n, dist_type, loc, phi);
+      target += order_stat_logpdf_fun(obs_stat1[d], n, k_median, dist_type, loc, phi, kappa);
+      target += order_stat_logpdf_fun(obs_stat2[d], n, 1, dist_type, loc, phi, kappa);
+      target += order_stat_logpdf_fun(obs_stat3[d], n, n, dist_type, loc, phi, kappa);
     }
-    
+
     else if (summary_type[d] == 2) {  // median + IQR (q25, q75)
       int k_median = (n + 1) %/% 2;
-      target += order_stat_logpdf_fun(obs_stat1[d], n, k_median, dist_type, loc, phi);
-      
+      target += order_stat_logpdf_fun(obs_stat1[d], n, k_median, dist_type, loc, phi, kappa);
+
       int k_q25 = (n + 1) %/% 4;
       if (k_q25 < 1) k_q25 = 1;
-      target += order_stat_logpdf_fun(obs_stat2[d], n, k_q25, dist_type, loc, phi);
+      target += order_stat_logpdf_fun(obs_stat2[d], n, k_q25, dist_type, loc, phi, kappa);
 
       int k_q75 = (3 * (n + 1)) %/% 4;
       if (k_q75 <= k_q25) k_q75 = k_q25 + 1;
       if (k_q75 > n) k_q75 = n;
-      target += order_stat_logpdf_fun(obs_stat3[d], n, k_q75, dist_type, loc, phi);
+      target += order_stat_logpdf_fun(obs_stat3[d], n, k_q75, dist_type, loc, phi, kappa);
     }
-    
+
     else if (summary_type[d] == 3) {  // mean + sd
       real expected_mean;
       real expected_sd;
       real se_mean;
       real se_sd;
-      
+
       if (dist_type == 1) {  // lognormal
         expected_mean = exp(loc + phi^2 / 2);
         real var_ = (exp(phi^2) - 1) * exp(2 * loc + phi^2);
         expected_sd = sqrt(var_);
         se_mean = expected_sd / sqrt(n);
         se_sd = expected_sd / sqrt(2 * (n - 1));
-        
+
       } else if (dist_type == 2) {  // gamma
         real mean_d = exp(loc);
         real shape = phi;
         real scale_param = mean_d / shape;
         expected_mean = mean_d;
-        expected_sd = sqrt(shape * scale_param^2);  
+        expected_sd = sqrt(shape * scale_param^2);
         se_mean = expected_sd / sqrt(n);
         se_sd = expected_sd / sqrt(2 * (n - 1));
+
       } else if (dist_type == 3) {  // weibull
         real scale = exp(loc);
         real shape = phi;
@@ -247,12 +303,49 @@ model {
         expected_sd = sqrt(var_);
         se_mean = expected_sd / sqrt(n);
         se_sd = expected_sd / sqrt(2 * (n - 1));
+
+      } else if (dist_type == 4) {  // burr XII: lambda=exp(loc), c=phi, k=kappa
+        // E[X^r] = lambda^r * k * B(k - r/c, 1 + r/c), requires k*c > r
+        // Mean requires kappa*phi > 1; variance requires kappa*phi > 2.
+        // Hard barrier: reject this region of parameter space.
+        if (kappa * phi <= 2.0) {
+          target += negative_infinity();
+        } else {
+          real lam = exp(loc);
+          expected_mean = lam * kappa * exp(lbeta(kappa - 1.0/phi, 1.0 + 1.0/phi));
+          real e2       = lam^2 * kappa * exp(lbeta(kappa - 2.0/phi, 1.0 + 2.0/phi));
+          expected_sd   = sqrt(fabs(e2 - expected_mean^2));
+          se_mean = expected_sd / sqrt(n);
+          se_sd   = expected_sd / sqrt(2 * (n - 1));
+          obs_stat1[d] ~ normal(expected_mean, se_mean);
+          obs_stat2[d] ~ normal(expected_sd,   se_sd);
+        }
+
+      } else if (dist_type == 5) {  // generalised gamma (Prentice): mu=loc, sigma=phi, Q=kappa
+        // E[T^r] = exp(r*loc) * kappa^(2*r*phi/kappa)
+        //          * Gamma(gamma_shape + r*phi/kappa) / Gamma(gamma_shape)
+        // where gamma_shape = 1/kappa^2
+        real gamma_shape = 1.0 / (kappa * kappa);
+        real log_ET  = loc + 2.0*phi/kappa * log(kappa)
+                       + lgamma(gamma_shape + phi/kappa) - lgamma(gamma_shape);
+        real log_ET2 = 2.0*loc + 4.0*phi/kappa * log(kappa)
+                       + lgamma(gamma_shape + 2.0*phi/kappa) - lgamma(gamma_shape);
+        expected_mean = exp(log_ET);
+        expected_sd   = sqrt(fabs(exp(log_ET2) - expected_mean^2));
+        se_mean = expected_sd / sqrt(n);
+        se_sd   = expected_sd / sqrt(2 * (n - 1));
+        obs_stat1[d] ~ normal(expected_mean, se_mean);
+        obs_stat2[d] ~ normal(expected_sd,   se_sd);
       }
-      
-      obs_stat1[d] ~ normal(expected_mean, se_mean);
-      obs_stat2[d] ~ normal(expected_sd, se_sd);
+
+      // For dist_type 1-3 the likelihood is added below (after the if-else chain).
+      // For dist_type 4-5 it is added inside their own branches above.
+      if (dist_type <= 3) {
+        obs_stat1[d] ~ normal(expected_mean, se_mean);
+        obs_stat2[d] ~ normal(expected_sd, se_sd);
+      }
     }
-    
+
     else if (summary_type[d] == 4) {  // raw frequency table
       // Direct likelihood: for each distinct observed value, add count * log_pdf(value).
       // This is equivalent to fitting the distribution directly to all individual observations,
@@ -260,7 +353,7 @@ model {
       int s = freq_start[d];
       int len = freq_len[d];
       for (i in s:(s + len - 1)) {
-        target += freq_count[i] * dist_logpdf_fun(freq_value[i], dist_type, loc, phi);
+        target += freq_count[i] * dist_logpdf_fun(freq_value[i], dist_type, loc, phi, kappa);
       }
     }
 
@@ -274,10 +367,10 @@ model {
       int len = freq_len[d];
       for (i in s:(s + len - 1)) {
         if (freq_lower[i] == freq_upper[i]) {
-          target += freq_count[i] * dist_logpdf_fun(freq_lower[i], dist_type, loc, phi);
+          target += freq_count[i] * dist_logpdf_fun(freq_lower[i], dist_type, loc, phi, kappa);
         } else {
-          real log_cdf_u = dist_log_cdf_fun(freq_upper[i], dist_type, loc, phi);
-          real log_cdf_l = dist_log_cdf_fun(freq_lower[i], dist_type, loc, phi);
+          real log_cdf_u = dist_log_cdf_fun(freq_upper[i], dist_type, loc, phi, kappa);
+          real log_cdf_l = dist_log_cdf_fun(freq_lower[i], dist_type, loc, phi, kappa);
           target += freq_count[i] * log_diff_exp(log_cdf_u, log_cdf_l);
         }
       }
@@ -294,10 +387,10 @@ generated quantities {
   real pred_q95;
   real pred_sd;
   vector[n_datasets * 3] log_lik;
-  
+
   // Predicted quantities:
   // - When n_datasets < 5, tau is not identifiable from data (prior-dominated).
-  //   pred_* are computed at mu0 directly to avoid tau^2/2 inflation.
+  //   pred_* are computed at mean(loc_d) directly to avoid tau^2/2 inflation.
   //   See: Higgins & Thompson (2002) doi:10.1002/sim.1186
   //        Gelman (2006) doi:10.1214/06-BA117A
   //        Rover et al. (2021) doi:10.1002/jrsm.1475
@@ -305,13 +398,6 @@ generated quantities {
   //   to include between-study heterogeneity. L=2000 for MC stability.
   {
     if (n_datasets < 5) {
-      // With fewer than 5 datasets, tau is not reliably identified and mu0 is
-      // confounded with tau * loc_d_raw (their sum is identified, not each
-      // individually). Using mu0 directly therefore produces wide posteriors
-      // that reflect prior uncertainty rather than data. Instead we use
-      // mean(loc_d), which is the quantity the data actually constrains:
-      //   n_datasets == 1 : mean(loc_d) == loc_d[1], tightly identified
-      //   n_datasets 2-4  : sample mean of study-level estimates
       real loc_pred = mean(loc_d);
 
       if (dist_type == 1) {  // lognormal
@@ -343,80 +429,162 @@ generated quantities {
         pred_q90    = scale * pow(log(10.0),      1.0 / phi);
         pred_q95    = scale * pow(log(20.0),      1.0 / phi);
         pred_sd     = sqrt(scale^2 * (tgamma(1 + 2.0/phi) - pow(tgamma(1 + 1.0/phi), 2)));
+
+      } else if (dist_type == 4) {  // burr XII: closed-form quantiles
+        // Q(p) = lambda * ((1-p)^(-1/k) - 1)^(1/c)
+        real lam    = exp(loc_pred);
+        pred_median = lam * pow(pow(0.5,  -1.0/kappa) - 1.0, 1.0/phi);
+        pred_q25    = lam * pow(pow(0.75, -1.0/kappa) - 1.0, 1.0/phi);
+        pred_q75    = lam * pow(pow(0.25, -1.0/kappa) - 1.0, 1.0/phi);
+        pred_q90    = lam * pow(pow(0.10, -1.0/kappa) - 1.0, 1.0/phi);
+        pred_q95    = lam * pow(pow(0.05, -1.0/kappa) - 1.0, 1.0/phi);
+        // E[X^r] = lambda^r * k * B(k-r/c, 1+r/c), requires k*c > r
+        if (kappa * phi > 1.0) {
+          pred_mean = lam * kappa * exp(lbeta(kappa - 1.0/phi, 1.0 + 1.0/phi));
+        } else {
+          pred_mean = positive_infinity();
+        }
+        if (kappa * phi > 2.0) {
+          real e2 = lam^2 * kappa * exp(lbeta(kappa - 2.0/phi, 1.0 + 2.0/phi));
+          pred_sd = sqrt(fabs(e2 - pred_mean^2));
+        } else {
+          pred_sd = positive_infinity();
+        }
+
+      } else if (dist_type == 5) {  // generalised gamma: Monte Carlo via gamma_rng
+        // Sample T = exp(mu + sigma/Q * log(Q^2 * Y)), Y ~ Gamma(1/Q^2, 1)
+        int L_gg = 200;
+        vector[L_gg] gg_samples;
+        real gs = 1.0 / (kappa * kappa);
+        for (l in 1:L_gg) {
+          real y = gamma_rng(gs, 1);
+          gg_samples[l] = exp(loc_pred + phi / kappa * log(kappa * kappa * y));
+        }
+        gg_samples  = sort_asc(gg_samples);
+        pred_mean   = mean(gg_samples);
+        pred_sd     = sd(gg_samples);
+        pred_median = gg_samples[100];
+        pred_q25    = gg_samples[50];
+        pred_q75    = gg_samples[150];
+        pred_q90    = gg_samples[180];
+        pred_q95    = gg_samples[190];
       }
 
     } else {
       // n_datasets >= 5: tau identifiable; include between-study heterogeneity
       // via Monte Carlo integration over Normal(mu0, tau). L=2000 for stability.
       int L = 2000;
-      vector[L] means;
-      vector[L] medians;
-      vector[L] q25s;
-      vector[L] q75s;
-      vector[L] q90s;
-      vector[L] q95s;
-      vector[L] sds;
 
-      for (l in 1:L) {
-        real loc_sample = normal_rng(mu0, tau);
-
-        if (dist_type == 1) {  // lognormal
-          means[l]   = exp(loc_sample + phi^2 / 2);
-          medians[l] = exp(loc_sample);
-          q25s[l]    = exp(loc_sample - 0.6745  * phi);
-          q75s[l]    = exp(loc_sample + 0.6745  * phi);
-          q90s[l]    = exp(loc_sample + 1.28155 * phi);
-          q95s[l]    = exp(loc_sample + 1.64485 * phi);
-          sds[l]     = sqrt((exp(phi^2) - 1) * exp(2 * loc_sample + phi^2));
-
-        } else if (dist_type == 2) {  // gamma
-          real mean_d      = exp(loc_sample);
-          real scale_param = mean_d / phi;
-          means[l]   = mean_d;
-          sds[l]     = sqrt(mean_d * scale_param);
-          medians[l] = gamma_quantile_approx(0.5,  phi, scale_param);
-          q25s[l]    = gamma_quantile_approx(0.25, phi, scale_param);
-          q75s[l]    = gamma_quantile_approx(0.75, phi, scale_param);
-          q90s[l]    = gamma_quantile_approx(0.90, phi, scale_param);
-          q95s[l]    = gamma_quantile_approx(0.95, phi, scale_param);
-
-        } else if (dist_type == 3) {  // weibull
-          real scale    = exp(loc_sample);
-          means[l]      = scale * tgamma(1 + 1.0 / phi);
-          medians[l]    = scale * pow(log(2),         1.0 / phi);
-          q25s[l]       = scale * pow(log(4.0 / 3.0), 1.0 / phi);
-          q75s[l]       = scale * pow(log(4.0),       1.0 / phi);
-          q90s[l]       = scale * pow(log(10.0),      1.0 / phi);
-          q95s[l]       = scale * pow(log(20.0),      1.0 / phi);
-          real var_weib = scale^2 * (tgamma(1 + 2.0/phi) - pow(tgamma(1 + 1.0/phi), 2));
-          sds[l]        = sqrt(var_weib);
+      if (dist_type == 5) {
+        // GG: sample one T per study draw to get the full predictive distribution
+        // T = exp(mu + sigma/Q * log(Q^2 * Y)), Y ~ Gamma(1/Q^2, 1)
+        int L_gg = 200;
+        vector[L_gg] gg_t_samples;
+        real gs = 1.0 / (kappa * kappa);
+        for (l in 1:L_gg) {
+          real loc_sample = normal_rng(mu0, tau);
+          real y = gamma_rng(gs, 1);
+          gg_t_samples[l] = exp(loc_sample + phi / kappa * log(kappa * kappa * y));
         }
-      }
+        gg_t_samples = sort_asc(gg_t_samples);
+        pred_mean   = mean(gg_t_samples);
+        pred_sd     = sd(gg_t_samples);
+        pred_median = gg_t_samples[100];
+        pred_q25    = gg_t_samples[50];
+        pred_q75    = gg_t_samples[150];
+        pred_q90    = gg_t_samples[180];
+        pred_q95    = gg_t_samples[190];
 
-      pred_mean   = mean(means);
-      pred_median = mean(medians);
-      pred_q25    = mean(q25s);
-      pred_q75    = mean(q75s);
-      pred_q90    = mean(q90s);
-      pred_q95    = mean(q95s);
-      pred_sd     = mean(sds);
+      } else {
+        // dist_type 1-4: compute per-study analytic moments/quantiles, then average
+        vector[L] means;
+        vector[L] medians;
+        vector[L] q25s;
+        vector[L] q75s;
+        vector[L] q90s;
+        vector[L] q95s;
+        vector[L] sds;
+
+        for (l in 1:L) {
+          real loc_sample = normal_rng(mu0, tau);
+
+          if (dist_type == 1) {  // lognormal
+            means[l]   = exp(loc_sample + phi^2 / 2);
+            medians[l] = exp(loc_sample);
+            q25s[l]    = exp(loc_sample - 0.6745  * phi);
+            q75s[l]    = exp(loc_sample + 0.6745  * phi);
+            q90s[l]    = exp(loc_sample + 1.28155 * phi);
+            q95s[l]    = exp(loc_sample + 1.64485 * phi);
+            sds[l]     = sqrt((exp(phi^2) - 1) * exp(2 * loc_sample + phi^2));
+
+          } else if (dist_type == 2) {  // gamma
+            real mean_d      = exp(loc_sample);
+            real scale_param = mean_d / phi;
+            means[l]   = mean_d;
+            sds[l]     = sqrt(mean_d * scale_param);
+            medians[l] = gamma_quantile_approx(0.5,  phi, scale_param);
+            q25s[l]    = gamma_quantile_approx(0.25, phi, scale_param);
+            q75s[l]    = gamma_quantile_approx(0.75, phi, scale_param);
+            q90s[l]    = gamma_quantile_approx(0.90, phi, scale_param);
+            q95s[l]    = gamma_quantile_approx(0.95, phi, scale_param);
+
+          } else if (dist_type == 3) {  // weibull
+            real scale    = exp(loc_sample);
+            means[l]      = scale * tgamma(1 + 1.0 / phi);
+            medians[l]    = scale * pow(log(2),         1.0 / phi);
+            q25s[l]       = scale * pow(log(4.0 / 3.0), 1.0 / phi);
+            q75s[l]       = scale * pow(log(4.0),       1.0 / phi);
+            q90s[l]       = scale * pow(log(10.0),      1.0 / phi);
+            q95s[l]       = scale * pow(log(20.0),      1.0 / phi);
+            real var_weib = scale^2 * (tgamma(1 + 2.0/phi) - pow(tgamma(1 + 1.0/phi), 2));
+            sds[l]        = sqrt(var_weib);
+
+          } else if (dist_type == 4) {  // burr XII: closed-form quantiles
+            real lam_l  = exp(loc_sample);
+            medians[l]  = lam_l * pow(pow(0.5,  -1.0/kappa) - 1.0, 1.0/phi);
+            q25s[l]     = lam_l * pow(pow(0.75, -1.0/kappa) - 1.0, 1.0/phi);
+            q75s[l]     = lam_l * pow(pow(0.25, -1.0/kappa) - 1.0, 1.0/phi);
+            q90s[l]     = lam_l * pow(pow(0.10, -1.0/kappa) - 1.0, 1.0/phi);
+            q95s[l]     = lam_l * pow(pow(0.05, -1.0/kappa) - 1.0, 1.0/phi);
+            if (kappa * phi > 1.0) {
+              means[l] = lam_l * kappa * exp(lbeta(kappa - 1.0/phi, 1.0 + 1.0/phi));
+            } else {
+              means[l] = positive_infinity();
+            }
+            if (kappa * phi > 2.0) {
+              real e2_l = lam_l^2 * kappa * exp(lbeta(kappa - 2.0/phi, 1.0 + 2.0/phi));
+              sds[l] = (kappa * phi > 1.0) ? sqrt(fabs(e2_l - means[l]^2)) : positive_infinity();
+            } else {
+              sds[l] = positive_infinity();
+            }
+          }
+        }
+
+        pred_mean   = mean(means);
+        pred_median = mean(medians);
+        pred_q25    = mean(q25s);
+        pred_q75    = mean(q75s);
+        pred_q90    = mean(q90s);
+        pred_q95    = mean(q95s);
+        pred_sd     = mean(sds);
+      }
     }
   }
-  
+
   // Log likelihood
   {
     int idx = 1;
-    
+
     for (d in 1:n_datasets) {
       real loc = loc_d[d];
       int n = n_obs[d];
-      
+
       if (summary_type[d] == 1) {  // median + range
         int k_median = (n + 1) %/% 2;
-        log_lik[idx]     = order_stat_logpdf_fun(obs_stat1[d], n, k_median, dist_type, loc, phi);
-        log_lik[idx + 1] = order_stat_logpdf_fun(obs_stat2[d], n, 1,         dist_type, loc, phi);
-        log_lik[idx + 2] = order_stat_logpdf_fun(obs_stat3[d], n, n,         dist_type, loc, phi);
-        
+        log_lik[idx]     = order_stat_logpdf_fun(obs_stat1[d], n, k_median, dist_type, loc, phi, kappa);
+        log_lik[idx + 1] = order_stat_logpdf_fun(obs_stat2[d], n, 1,        dist_type, loc, phi, kappa);
+        log_lik[idx + 2] = order_stat_logpdf_fun(obs_stat3[d], n, n,        dist_type, loc, phi, kappa);
+
       } else if (summary_type[d] == 2) {  // median + IQR
         int k_median = (n + 1) %/% 2;
         int k_q25    = (n + 1) %/% 4;
@@ -424,45 +592,62 @@ generated quantities {
         int k_q75    = (3 * (n + 1)) %/% 4;
         if (k_q75 <= k_q25) k_q75 = k_q25 + 1;
         if (k_q75 > n) k_q75 = n;
-        
-        log_lik[idx]     = order_stat_logpdf_fun(obs_stat1[d], n, k_median, dist_type, loc, phi);
-        log_lik[idx + 1] = order_stat_logpdf_fun(obs_stat2[d], n, k_q25,    dist_type, loc, phi);
-        log_lik[idx + 2] = order_stat_logpdf_fun(obs_stat3[d], n, k_q75,    dist_type, loc, phi);
-        
+
+        log_lik[idx]     = order_stat_logpdf_fun(obs_stat1[d], n, k_median, dist_type, loc, phi, kappa);
+        log_lik[idx + 1] = order_stat_logpdf_fun(obs_stat2[d], n, k_q25,   dist_type, loc, phi, kappa);
+        log_lik[idx + 2] = order_stat_logpdf_fun(obs_stat3[d], n, k_q75,   dist_type, loc, phi, kappa);
+
       } else if (summary_type[d] == 3) {  // mean + sd
         real expected_mean;
         real expected_sd;
-        real se_mean;
-        real se_sd;
-        
+
         if (dist_type == 1) {
           expected_mean = exp(loc + phi^2 / 2);
           real var_ = (exp(phi^2) - 1) * exp(2 * loc + phi^2);
           expected_sd = sqrt(var_);
-          se_mean = expected_sd / sqrt(n);
-          se_sd = expected_sd / sqrt(2 * (n - 1));
         } else if (dist_type == 2) {
           real mean_d = exp(loc);
           real shape = phi;
           real scale_param = mean_d / shape;
           expected_mean = mean_d;
           expected_sd = sqrt(mean_d * scale_param);
-          se_mean = expected_sd / sqrt(n);
-          se_sd = expected_sd / sqrt(2 * (n - 1));
         } else if (dist_type == 3) {
           real scale = exp(loc);
           real shape = phi;
           expected_mean = scale * tgamma(1 + 1.0 / shape);
           real var_ = scale^2 * (tgamma(1 + 2.0 / shape) - pow(tgamma(1 + 1.0 / shape), 2));
           expected_sd = sqrt(var_);
-          se_mean = expected_sd / sqrt(n);
-          se_sd = expected_sd / sqrt(2 * (n - 1));
+        } else if (dist_type == 4) {
+          // Moments require kappa*phi > 2; model block already rejects that region,
+          // so this fallback (negative_infinity) should never be reached in practice.
+          if (kappa * phi > 2.0) {
+            real lam = exp(loc);
+            expected_mean = lam * kappa * exp(lbeta(kappa - 1.0/phi, 1.0 + 1.0/phi));
+            real e2       = lam^2 * kappa * exp(lbeta(kappa - 2.0/phi, 1.0 + 2.0/phi));
+            expected_sd   = sqrt(fabs(e2 - expected_mean^2));
+          } else {
+            log_lik[idx]     = negative_infinity();
+            log_lik[idx + 1] = negative_infinity();
+            log_lik[idx + 2] = 0;
+          }
+        } else if (dist_type == 5) {
+          real gamma_shape = 1.0 / (kappa * kappa);
+          real log_ET  = loc + 2.0*phi/kappa * log(kappa)
+                         + lgamma(gamma_shape + phi/kappa) - lgamma(gamma_shape);
+          real log_ET2 = 2.0*loc + 4.0*phi/kappa * log(kappa)
+                         + lgamma(gamma_shape + 2.0*phi/kappa) - lgamma(gamma_shape);
+          expected_mean = exp(log_ET);
+          expected_sd   = sqrt(fabs(exp(log_ET2) - expected_mean^2));
         }
-        
-        log_lik[idx]     = normal_lpdf(obs_stat1[d] | expected_mean, expected_sd / sqrt(n));
-        log_lik[idx + 1] = normal_lpdf(obs_stat2[d] | expected_sd,   expected_sd / sqrt(2 * (n - 1)));
-        log_lik[idx + 2] = 0;  // placeholder
-        
+
+        // For dist_type 4 when moments don't exist the log_lik slots were
+        // already assigned above; skip the normal_lpdf for that case.
+        if (dist_type != 4 || kappa * phi > 2.0) {
+          log_lik[idx]     = normal_lpdf(obs_stat1[d] | expected_mean, expected_sd / sqrt(n));
+          log_lik[idx + 1] = normal_lpdf(obs_stat2[d] | expected_sd,   expected_sd / sqrt(2 * (n - 1)));
+          log_lik[idx + 2] = 0;  // placeholder
+        }
+
       } else if (summary_type[d] == 4) {  // raw frequency table
         // Sum log-likelihoods over all individuals, using the frequency table.
         // Stored as a single scalar in log_lik[idx]; slots idx+1 and idx+2 are 0 (unused).
@@ -470,7 +655,7 @@ generated quantities {
         int s = freq_start[d];
         int len = freq_len[d];
         for (i in s:(s + len - 1)) {
-          ll_type4 += freq_count[i] * dist_logpdf_fun(freq_value[i], dist_type, loc, phi);
+          ll_type4 += freq_count[i] * dist_logpdf_fun(freq_value[i], dist_type, loc, phi, kappa);
         }
         log_lik[idx]     = ll_type4;
         log_lik[idx + 1] = 0;  // unused
@@ -482,10 +667,10 @@ generated quantities {
         int len = freq_len[d];
         for (i in s:(s + len - 1)) {
           if (freq_lower[i] == freq_upper[i]) {
-            ll_type5 += freq_count[i] * dist_logpdf_fun(freq_lower[i], dist_type, loc, phi);
+            ll_type5 += freq_count[i] * dist_logpdf_fun(freq_lower[i], dist_type, loc, phi, kappa);
           } else {
-            real log_cdf_u = dist_log_cdf_fun(freq_upper[i], dist_type, loc, phi);
-            real log_cdf_l = dist_log_cdf_fun(freq_lower[i], dist_type, loc, phi);
+            real log_cdf_u = dist_log_cdf_fun(freq_upper[i], dist_type, loc, phi, kappa);
+            real log_cdf_l = dist_log_cdf_fun(freq_lower[i], dist_type, loc, phi, kappa);
             ll_type5 += freq_count[i] * log_diff_exp(log_cdf_u, log_cdf_l);
           }
         }
@@ -493,7 +678,7 @@ generated quantities {
         log_lik[idx + 1] = 0;  // unused
         log_lik[idx + 2] = 0;  // unused
       }
-      
+
       idx += 3;
     }
   }

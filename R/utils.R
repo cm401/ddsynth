@@ -41,7 +41,9 @@ check_scalar <- function(x, arg = deparse(substitute(x))) {
 #' a predictive CDF with pointwise credible bands.
 #'
 #' @param fit A `stanfit` object returned by [rstan::sampling()].
-#' @param dist_name Character string: `"lognormal"`, `"gamma"`, or `"weibull"`.
+#' @param dist_name Character string: `"lognormal"`, `"gamma"`, `"weibull"`,
+#'   `"burr12"` (Burr Type XII), or `"gengamma"` (Generalised Gamma, Prentice
+#'   parameterisation).
 #' @param x_seq Numeric vector of evaluation points (default: 500 points on
 #'   `[0, 30]`).
 #' @param n_draws Number of posterior draws to use (default: 500).
@@ -72,9 +74,10 @@ compute_predictive_cdf <- function(fit, dist_name, x_seq = seq(0, 30, length.out
 
   for (i in seq_along(draws_idx)) {
     idx <- draws_idx[i]
-    mu0 <- sims$mu0[idx]
-    tau <- sims$tau[idx]
-    phi <- sims$phi[idx]
+    mu0   <- sims$mu0[idx]
+    tau   <- sims$tau[idx]
+    phi   <- sims$phi[idx]
+    kappa <- sims$kappa[idx]
 
     # Integrate over L study-level locations.
     # When n_datasets < 5, mu0 is confounded with tau * loc_d_raw and is not
@@ -94,26 +97,41 @@ compute_predictive_cdf <- function(fit, dist_name, x_seq = seq(0, 30, length.out
 
     # Compute CDF for each location and average
     cdf_l <- matrix(NA, nrow = L, ncol = length(x_seq))
-    
+
     for (l in 1:L) {
       loc_d <- locs[l]
-      
+
       if (dist_name == "lognormal") {
         cdf_l[l, ] <- plnorm(x_seq, meanlog = loc_d, sdlog = phi)
-        
+
       } else if (dist_name == "gamma") {
         mean_d <- exp(loc_d)
-        shape <- phi
-        rate <- shape / mean_d
+        shape  <- phi
+        rate   <- shape / mean_d
         cdf_l[l, ] <- pgamma(x_seq, shape = shape, rate = rate)
-        
+
       } else if (dist_name == "weibull") {
         scale <- exp(loc_d)
         shape <- phi
         cdf_l[l, ] <- pweibull(x_seq, shape = shape, scale = scale)
+
+      } else if (dist_name == "burr12") {
+        # Burr XII CDF: F(x) = 1 - (1 + (x/lambda)^c)^(-k)
+        # lambda = exp(loc_d), c = phi, k = kappa
+        lambda  <- exp(loc_d)
+        cdf_l[l, ] <- 1 - (1 + (x_seq / lambda)^phi)^(-kappa)
+
+      } else if (dist_name == "gengamma") {
+        # Generalised Gamma (Prentice): mu = loc_d, sigma = phi, Q = kappa
+        # CDF = pgamma(gamma_shape * exp(Q * w), shape = gamma_shape, rate = 1)
+        # where gamma_shape = 1/Q^2, w = (log(x) - mu) / sigma
+        gamma_shape <- 1 / kappa^2
+        w           <- (log(x_seq) - loc_d) / phi
+        cdf_l[l, ] <- pgamma(gamma_shape * exp(kappa * w),
+                             shape = gamma_shape, rate = 1)
       }
     }
-    
+
     # Average over study-level locations
     cdf_mat[i, ] <- colMeans(cdf_l)
   }
@@ -180,9 +198,8 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95), cdf_mat = NULL)
       na_frac <- mean(is.na(x_at_p))
       if (na_frac > 0.05)
         warning(sprintf(
-          "extract_quantiles: %.0f%% of draws did not reach p = %.2f within ",
-          na_frac * 100, p,
-          "x_seq. Consider increasing max(x_seq) in compute_predictive_cdf()."
+          "extract_quantiles: %.0f%% of draws did not reach p = %.2f within x_seq. Consider increasing max(x_seq) in compute_predictive_cdf().",
+          na_frac * 100, p
         ))
 
       x_lo  <- quantile(x_at_p, 0.025, na.rm = TRUE)
@@ -282,24 +299,40 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
                                             use_custom_priors = 0,
                                             custom_priors = list()) {
 
-  # Apply distribution-specific defaults for log_phi_mean/log_phi_sd.
-  # phi has a different meaning in each distribution:
-  #   lognormal : phi = log-SD (sigma),  typical range 0.2-0.7  -> log_phi_mean = -0.7
-  #   gamma     : phi = shape,           typical range 5-30     -> log_phi_mean =  2.5
-  #   weibull   : phi = shape,           typical range 2-6      -> log_phi_mean =  1.0
-  # All other priors share the same sensible defaults regardless of dist_type.
-  phi_defaults <- list(
-    `1` = list(log_phi_mean = -0.7, log_phi_sd = 0.5),   # lognormal
-    `2` = list(log_phi_mean =  2.5, log_phi_sd = 0.5),   # gamma
-    `3` = list(log_phi_mean =  1.0, log_phi_sd = 0.5)    # weibull
+  # Apply distribution-specific defaults for log_phi_mean/log_phi_sd and
+  # log_kappa_mean/log_kappa_sd.
+  #
+  # phi meaning per distribution:
+  #   lognormal  (1): phi = log-SD (sigma),  typical range 0.2-0.7  -> log_phi_mean = -0.7
+  #   gamma      (2): phi = shape,           typical range 5-30     -> log_phi_mean =  2.5
+  #   weibull    (3): phi = shape,           typical range 2-6      -> log_phi_mean =  1.0
+  #   burr XII   (4): phi = c (shape1),      typical range 1-5      -> log_phi_mean =  0.7
+  #   gen. gamma (5): phi = sigma (log-disp),typical range 0.2-1.0  -> log_phi_mean = -0.5
+  #
+  # kappa meaning per distribution:
+  #   dist 1-3: kappa is unused; wide uninformative prior centred at 1.
+  #   burr XII (4): kappa = k (shape2), typical range 1-10  -> log_kappa_mean = 1.0
+  #   gen. gamma (5): kappa = Q (shape), typical range 0.3-3 -> log_kappa_mean = 0.0
+  dist_defaults <- list(
+    `1` = list(log_phi_mean = -0.7, log_phi_sd = 0.5, log_kappa_mean = 0.0, log_kappa_sd = 1.0),
+    `2` = list(log_phi_mean =  2.5, log_phi_sd = 0.5, log_kappa_mean = 0.0, log_kappa_sd = 1.0),
+    `3` = list(log_phi_mean =  1.0, log_phi_sd = 0.5, log_kappa_mean = 0.0, log_kappa_sd = 1.0),
+    `4` = list(log_phi_mean =  0.7, log_phi_sd = 0.5, log_kappa_mean = 1.0, log_kappa_sd = 0.5),
+    `5` = list(log_phi_mean = -0.5, log_phi_sd = 0.5, log_kappa_mean = 0.0, log_kappa_sd = 0.5)
   )[[as.character(dist_type)]]
 
+  if (is.null(dist_defaults)) {
+    stop(sprintf("'dist_type' must be 1, 2, 3, 4, or 5 (got %s).", dist_type), call. = FALSE)
+  }
+
   defaults <- list(
-    mu0_sd       = 1.0,
-    log_tau_mean = 0.2,
-    log_tau_sd   = 0.5,
-    log_phi_mean = phi_defaults$log_phi_mean,
-    log_phi_sd   = phi_defaults$log_phi_sd
+    mu0_sd        = 1.0,
+    log_tau_mean  = 0.2,
+    log_tau_sd    = 0.5,
+    log_phi_mean  = dist_defaults$log_phi_mean,
+    log_phi_sd    = dist_defaults$log_phi_sd,
+    log_kappa_mean = dist_defaults$log_kappa_mean,
+    log_kappa_sd   = dist_defaults$log_kappa_sd
   )
 
   # User-supplied values in custom_priors override defaults; anything not
@@ -449,12 +482,14 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
     freq_len     = as.array(freq_len_vec)
   )
 
-  stan_data$mu0_mean     <- if (length(valid_centrals) > 0) log(mean(valid_centrals)) else 0
-  stan_data$mu0_sd       <- custom_priors$mu0_sd
-  stan_data$log_tau_mean <- custom_priors$log_tau_mean
-  stan_data$log_tau_sd   <- custom_priors$log_tau_sd
-  stan_data$log_phi_mean <- custom_priors$log_phi_mean
-  stan_data$log_phi_sd   <- custom_priors$log_phi_sd
+  stan_data$mu0_mean      <- if (length(valid_centrals) > 0) log(mean(valid_centrals)) else 0
+  stan_data$mu0_sd        <- custom_priors$mu0_sd
+  stan_data$log_tau_mean  <- custom_priors$log_tau_mean
+  stan_data$log_tau_sd    <- custom_priors$log_tau_sd
+  stan_data$log_phi_mean  <- custom_priors$log_phi_mean
+  stan_data$log_phi_sd    <- custom_priors$log_phi_sd
+  stan_data$log_kappa_mean <- custom_priors$log_kappa_mean
+  stan_data$log_kappa_sd   <- custom_priors$log_kappa_sd
 
   return(stan_data)
 }
@@ -512,13 +547,20 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
 #' @export
 update_phi_prior <- function(stan_data, datasets) {
 
-  dist_name <- c("1" = "lognormal", "2" = "gamma", "3" = "weibull")[[
+  dist_name <- c("1" = "lognormal", "2" = "gamma", "3" = "weibull",
+                 "4" = "burr12",   "5" = "gengamma")[[
     as.character(stan_data$dist_type)
   ]]
   if (is.null(dist_name)) {
     stop("update_phi_prior: unrecognised dist_type (", stan_data$dist_type,
-         "); expected 1, 2, or 3.", call. = FALSE)
+         "); expected 1, 2, 3, 4, or 5.", call. = FALSE)
   }
+  # For Burr XII and GG, phi cannot be identified from the CV alone because the
+  # CV depends on both phi and kappa.  We fix kappa at its current prior mean
+  # (exp(log_kappa_mean)) and solve for phi numerically — the same conditional
+  # moment-of-moments approach used for Weibull.  If log_kappa_mean has already
+  # been set to a domain-specific value via custom_priors, that will be used.
+  kappa_val <- exp(stan_data$log_kappa_mean)
 
   # Per-dataset moment estimates of mean and SD, covering all five summary types
   implied_phis <- vapply(datasets, function(d) {
@@ -548,12 +590,41 @@ update_phi_prior <- function(stan_data, datasets) {
     if (is.na(mean_est) || is.na(sd_est) || sd_est <= 0) return(NA_real_)
 
     switch(dist_name,
-      lognormal = log(1 + (sd_est / mean_est)^2),
+      lognormal = sqrt(log(1 + (sd_est / mean_est)^2)),
       gamma     = (mean_est / sd_est)^2,
       weibull   = {
         cv  <- sd_est / mean_est
         obj <- function(k) sqrt(gamma(1 + 2/k) / gamma(1 + 1/k)^2 - 1) - cv
         tryCatch(stats::uniroot(obj, c(0.1, 200))$root,
+                 error = function(e) NA_real_)
+      },
+      gengamma  = {
+        # CV² = Γ(γ + 2σ/κ)·Γ(γ) / Γ(γ + σ/κ)² − 1  where γ = 1/κ²
+        # CV is an increasing function of σ (phi), starting at 0 as σ→0⁺.
+        cv <- sd_est / mean_est
+        gs <- 1.0 / kappa_val^2          # gamma_shape = 1/Q^2
+        obj <- function(sigma) {
+          a1 <- gs + sigma / kappa_val
+          a2 <- gs + 2.0 * sigma / kappa_val
+          cv_sq <- exp(lgamma(a2) + lgamma(gs) - 2.0 * lgamma(a1)) - 1.0
+          sqrt(max(cv_sq, 0.0)) - cv
+        }
+        tryCatch(stats::uniroot(obj, c(1e-6, 20.0))$root,
+                 error = function(e) NA_real_)
+      },
+      burr12    = {
+        # CV² = B(k−2/c, 1+2/c) / (k · B(k−1/c, 1+1/c)²) − 1
+        # Moments require k·c > 2, i.e. c > 2/k.  CV is decreasing in c,
+        # so uniroot searches from (2/k + ε) upward.
+        cv      <- sd_est / mean_est
+        lower_c <- 2.0 / kappa_val + 1e-6
+        obj <- function(c_val) {
+          lb1 <- lbeta(kappa_val - 1.0 / c_val, 1.0 + 1.0 / c_val)
+          lb2 <- lbeta(kappa_val - 2.0 / c_val, 1.0 + 2.0 / c_val)
+          cv_model <- sqrt(exp(lb2 - log(kappa_val) - 2.0 * lb1) - 1.0)
+          cv_model - cv
+        }
+        tryCatch(stats::uniroot(obj, c(lower_c, 50.0))$root,
                  error = function(e) NA_real_)
       }
     )
@@ -744,7 +815,7 @@ pre_inference_checks <- function(datasets,
     implied_phi <- NA_real_
     if (!is.na(mean_est) && !is.na(sd_est) && sd_est > 0) {
       implied_phi <- switch(dist_name,
-        lognormal = log(1 + (sd_est / mean_est)^2),        # approx log-variance
+        lognormal = sqrt(log(1 + (sd_est / mean_est)^2)),    # approx sdlog (sigma)
         gamma     = (mean_est / sd_est)^2,                 # shape = (mean/sd)^2
         weibull   = {                                       # invert CV numerically
           cv <- sd_est / mean_est
@@ -1251,6 +1322,30 @@ generate_scenario_library <- function(include_homogeneous = TRUE,
   return(scenarios_df)
 }
 
+#' Create a Stan initialisation function from prior means
+#'
+#' Returns a zero-argument function that initialises each chain at the prior
+#' means stored in \code{stan_data}.  Passing this to \code{rstan::sampling()}
+#' via \code{init = make_stan_init_fn(stan_data)} avoids the default
+#' \code{Uniform(-2, 2)} draws on the unconstrained scale, which send the GG
+#' and Burr XII log-posteriors to \eqn{-\infty} during initialisation.
+#'
+#' @param stan_data Stan data list as returned by
+#'   \code{\link{prepare_stan_data_from_datasets}}.
+#' @return A zero-argument function suitable for \code{rstan::sampling(init = ...)}.
+#' @export
+make_stan_init_fn <- function(stan_data) {
+  function() {
+    list(
+      mu0       = stan_data$mu0_mean,
+      log_tau   = stan_data$log_tau_mean,
+      log_phi   = stan_data$log_phi_mean,
+      log_kappa = stan_data$log_kappa_mean,
+      loc_d_raw = rep(0.0, stan_data$n_datasets)
+    )
+  }
+}
+
 #' Fit Stan model to simulated data
 #'
 #' @param sim_data Simulated data from generate_hierarchical_data
@@ -1259,12 +1354,14 @@ generate_scenario_library <- function(include_homogeneous = TRUE,
 #' @return Stan fit object
 #' @export
 fit_model <- function(sim_data, stan_model, ...) {
+  od <- sim_data$obs_data
   rstan::sampling(
     stan_model,
-    data = sim_data$obs_data,
-    chains = 4,
-    iter = 10000,
-    warmup = 1000,
+    data    = od,
+    chains  = 4,
+    iter    = 10000,
+    warmup  = 1000,
+    init    = make_stan_init_fn(od),
     ...
   )
 }
@@ -1322,103 +1419,90 @@ compute_iqd <- function(fit, true_params, dist_type, x_grid = NULL) {
   draws <- rstan::extract(fit)
 
   # Extract posterior samples
-  mu0_samples  <- draws$mu0
-  tau_samples  <- exp(draws$log_tau)
-  phi_samples  <- exp(draws$log_phi)
+  mu0_samples   <- draws$mu0
+  tau_samples   <- exp(draws$log_tau)
+  phi_samples   <- exp(draws$log_phi)
+  kappa_samples <- draws$kappa
   loc_d_samples <- draws$loc_d          # [n_samples x n_datasets]
 
   n_samples  <- length(mu0_samples)
   n_datasets <- dim(loc_d_samples)[2]
-  
+
+  # Internal density function for all 5 distribution types
+  .ddist <- function(x, loc, phi, kappa, dist_type) {
+    if (dist_type == "lognormal") {
+      dlnorm(x, meanlog = loc, sdlog = phi)
+    } else if (dist_type == "gamma") {
+      dgamma(x, shape = phi, rate = phi / exp(loc))
+    } else if (dist_type == "weibull") {
+      dweibull(x, shape = phi, scale = exp(loc))
+    } else if (dist_type == "burr12") {
+      # Burr XII PDF: (c*k/lambda)*(x/lambda)^(c-1)*(1+(x/lambda)^c)^(-(k+1))
+      lambda <- exp(loc)
+      r      <- x / lambda
+      phi * kappa / lambda * r^(phi - 1) * (1 + r^phi)^(-(kappa + 1))
+    } else if (dist_type == "gengamma") {
+      # Generalised Gamma (Prentice) PDF
+      gs <- 1 / kappa^2
+      w  <- (log(x) - loc) / phi
+      exp(log(kappa) - log(phi) - log(x) +
+          gs * log(gs) + gs * kappa * w - gs * exp(kappa * w) - lgamma(gs))
+    }
+  }
+
   # Create grid if not provided
   if (is.null(x_grid)) {
-    if (dist_type == "lognormal") {
-      x_grid <- seq(0.01, exp(true_params$mu0 + 3*true_params$tau), length.out = 200)
+    if (dist_type %in% c("lognormal", "burr12", "gengamma")) {
+      x_grid <- seq(0.01, exp(true_params$mu0 + 3 * true_params$tau), length.out = 200)
     } else if (dist_type == "gamma") {
-      mean_max <- exp(true_params$mu0 + 3*true_params$tau)
+      mean_max <- exp(true_params$mu0 + 3 * true_params$tau)
       x_grid <- seq(0.01, mean_max * 3, length.out = 200)
     } else if (dist_type == "weibull") {
-      scale_max <- exp(true_params$mu0 + 3*true_params$tau)
+      scale_max <- exp(true_params$mu0 + 3 * true_params$tau)
       x_grid <- seq(0.01, scale_max * 3, length.out = 200)
     }
   }
-  
+
+  kappa_true <- if (!is.null(true_params$kappa)) true_params$kappa else 1.0
+
   # Compute true predictive density
   true_density <- numeric(length(x_grid))
   for (i in seq_along(x_grid)) {
     x <- x_grid[i]
-    
-    # Integrate over random effects distribution
+
     integrand <- function(loc) {
-      if (dist_type == "lognormal") {
-        dlnorm(x, meanlog = loc, sdlog = true_params$phi) * 
-          dnorm(loc, mean = true_params$mu0, sd = true_params$tau)
-      } else if (dist_type == "gamma") {
-        mean_d <- exp(loc)
-        shape <- true_params$phi
-        rate <- shape / mean_d
-        dgamma(x, shape = shape, rate = rate) * 
-          dnorm(loc, mean = true_params$mu0, sd = true_params$tau)
-      } else if (dist_type == "weibull") {
-        scale <- exp(loc)
-        shape <- true_params$phi
-        dweibull(x, shape = shape, scale = scale) * 
-          dnorm(loc, mean = true_params$mu0, sd = true_params$tau)
-      }
+      .ddist(x, loc, true_params$phi, kappa_true, dist_type) *
+        dnorm(loc, mean = true_params$mu0, sd = true_params$tau)
     }
-    
-    true_density[i] <- integrate(integrand, 
-                                 lower = true_params$mu0 - 5*true_params$tau,
-                                 upper = true_params$mu0 + 5*true_params$tau)$value
+
+    true_density[i] <- integrate(integrand,
+                                 lower = true_params$mu0 - 5 * true_params$tau,
+                                 upper = true_params$mu0 + 5 * true_params$tau)$value
   }
-  
+
   # Compute estimated predictive density (average over posterior samples)
   est_density <- numeric(length(x_grid))
-  
+
   # Subsample for computational efficiency
   sample_idx <- sample(1:n_samples, min(500, n_samples))
-  
+
   for (i in seq_along(x_grid)) {
     x <- x_grid[i]
-    
+
     density_samples <- numeric(length(sample_idx))
     for (s in seq_along(sample_idx)) {
-      idx <- sample_idx[s]
+      idx     <- sample_idx[s]
+      phi_s   <- phi_samples[idx]
+      kappa_s <- kappa_samples[idx]
 
       if (n_datasets < 5) {
-        # When n_datasets < 5, tau is not identified and mu0 is confounded
-        # with tau * loc_d_raw. Use mean(loc_d) as a point estimate of the
-        # study-level location, consistent with the Stan generated quantities
-        # block and compute_predictive_cdf().
         loc_point <- mean(loc_d_samples[idx, ])
-        phi_s     <- phi_samples[idx]
-
-        density_samples[s] <- if (dist_type == "lognormal") {
-          dlnorm(x, meanlog = loc_point, sdlog = phi_s)
-        } else if (dist_type == "gamma") {
-          mean_d <- exp(loc_point)
-          dgamma(x, shape = phi_s, rate = phi_s / mean_d)
-        } else if (dist_type == "weibull") {
-          dweibull(x, shape = phi_s, scale = exp(loc_point))
-        }
+        density_samples[s] <- .ddist(x, loc_point, phi_s, kappa_s, dist_type)
 
       } else {
-        # n_datasets >= 5: integrate over Normal(mu0, tau) random effects
         integrand <- function(loc) {
-          if (dist_type == "lognormal") {
-            dlnorm(x, meanlog = loc, sdlog = phi_samples[idx]) *
-              dnorm(loc, mean = mu0_samples[idx], sd = tau_samples[idx])
-          } else if (dist_type == "gamma") {
-            mean_d <- exp(loc)
-            shape  <- phi_samples[idx]
-            dgamma(x, shape = shape, rate = shape / mean_d) *
-              dnorm(loc, mean = mu0_samples[idx], sd = tau_samples[idx])
-          } else if (dist_type == "weibull") {
-            scale <- exp(loc)
-            shape <- phi_samples[idx]
-            dweibull(x, shape = shape, scale = scale) *
-              dnorm(loc, mean = mu0_samples[idx], sd = tau_samples[idx])
-          }
+          .ddist(x, loc, phi_s, kappa_s, dist_type) *
+            dnorm(loc, mean = mu0_samples[idx], sd = tau_samples[idx])
         }
 
         density_samples[s] <- integrate(integrand,
@@ -1426,15 +1510,15 @@ compute_iqd <- function(fit, true_params, dist_type, x_grid = NULL) {
                                         upper = mu0_samples[idx] + 5 * tau_samples[idx])$value
       }
     }
-    
+
     est_density[i] <- mean(density_samples)
   }
-  
+
   # Compute IQD using trapezoidal rule
   dx <- diff(x_grid)
   squared_diff <- (true_density - est_density)^2
   iqd <- sum((squared_diff[-1] + squared_diff[-length(squared_diff)]) / 2 * dx)
-  
+
   return(iqd)
 }
 
@@ -1859,12 +1943,14 @@ run_simulation_study_generalized_non_parallel <- function(n_sim,
 #' @return List containing true parameters and observed summary statistics
 generate_hierarchical_data_mixed <- function(n_datasets,
                                              n_obs,
-                                             dist_type = c("lognormal", "gamma", "weibull"),
+                                             dist_type = c("lognormal", "gamma", "weibull",
+                                                           "burr12", "gengamma"),
                                              mu0,
                                              tau,
                                              phi,
+                                             kappa = 1.0,
                                              summary_type = NULL) {
-  
+
   dist_type <- match.arg(dist_type)
   
   # If n_obs is a single value, replicate it
@@ -1912,17 +1998,31 @@ generate_hierarchical_data_mixed <- function(n_datasets,
     # Generate raw data based on distribution type
     if (dist_type == "lognormal") {
       data_d <- rlnorm(n, meanlog = loc, sdlog = phi)
-      
+
     } else if (dist_type == "gamma") {
       mean_d <- exp(loc)
-      shape <- phi
-      rate <- shape / mean_d
+      shape  <- phi
+      rate   <- shape / mean_d
       data_d <- rgamma(n, shape = shape, rate = rate)
-      
+
     } else if (dist_type == "weibull") {
-      scale <- exp(loc)
-      shape <- phi
+      scale  <- exp(loc)
+      shape  <- phi
       data_d <- rweibull(n, shape = shape, scale = scale)
+
+    } else if (dist_type == "burr12") {
+      # Burr XII via inverse-CDF: Q(u) = lambda * (u^(-1/k) - 1)^(1/c)
+      # lambda = exp(loc), c = phi, k = kappa.
+      lambda <- exp(loc)
+      u      <- runif(n)
+      data_d <- lambda * (u^(-1.0 / kappa) - 1.0)^(1.0 / phi)
+
+    } else if (dist_type == "gengamma") {
+      # Generalised Gamma (Prentice): mu = loc, sigma = phi, Q = kappa.
+      # T = exp(mu + sigma/Q * log(Q^2 * Y)),  Y ~ Gamma(1/Q^2, 1).
+      gs     <- 1.0 / kappa^2
+      y      <- rgamma(n, shape = gs, rate = 1)
+      data_d <- exp(loc + phi / kappa * log(kappa^2 * y))
     }
     
     # Compute summary statistics based on type for this specific dataset
@@ -1974,9 +2074,10 @@ generate_hierarchical_data_mixed <- function(n_datasets,
 
   list(
     true_params = list(
-      mu0 = mu0,
-      tau = tau,
-      phi = phi,
+      mu0   = mu0,
+      tau   = tau,
+      phi   = phi,
+      kappa = kappa,
       loc_d = loc_d
     ),
     obs_data = list(
@@ -1984,9 +2085,11 @@ generate_hierarchical_data_mixed <- function(n_datasets,
       n_obs        = as.array(n_obs),
       summary_type = as.array(summary_type),
       dist_type    = switch(dist_type,
-                            "lognormal" = 1,
-                            "gamma"     = 2,
-                            "weibull"   = 3),
+                            "lognormal" = 1L,
+                            "gamma"     = 2L,
+                            "weibull"   = 3L,
+                            "burr12"    = 4L,
+                            "gengamma"  = 5L),
       obs_stat1    = as.array(obs_stat1),
       obs_stat2    = as.array(obs_stat2),
       obs_stat3    = as.array(obs_stat3),
@@ -1996,14 +2099,24 @@ generate_hierarchical_data_mixed <- function(n_datasets,
       freq_count   = freq_count_flat,
       freq_start   = as.array(freq_start_vec),
       freq_len     = as.array(freq_len_vec),
-      # Default priors
-      mu0_mean     = 1,
-      mu0_sd       = 2,
+      # Frequency-table interval bounds (type-5 datasets only; zeros for types 1-4)
+      freq_lower   = rep(0.0, length(freq_value_flat)),
+      freq_upper   = rep(0.0, length(freq_value_flat)),
+      # Priors — calibrated defaults matching prepare_stan_data_from_datasets()
+      mu0_mean     = 1.0,
+      mu0_sd       = 1.0,
       log_tau_mean = 0.2,
       log_tau_sd   = 0.5,
-      log_phi_mean = ifelse(dist_type == "lognormal", 0.2,
-                            ifelse(dist_type == "gamma", 1.0, 1.0)),
-      log_phi_sd   = 1
+      log_phi_mean = switch(dist_type,
+        lognormal = -0.7, gamma = 2.5, weibull = 1.0,
+        burr12    =  0.7, gengamma = -0.5),
+      log_phi_sd   = 0.5,
+      log_kappa_mean = switch(dist_type,
+        lognormal = 0.0, gamma = 0.0, weibull = 0.0,
+        burr12    = 1.0, gengamma = 0.0),
+      log_kappa_sd   = switch(dist_type,
+        lognormal = 1.0, gamma = 1.0, weibull = 1.0,
+        burr12    = 0.5, gengamma = 0.5)
     )
   )
 }
