@@ -3,7 +3,7 @@
 create_results_summary <- function(results, scenarios)
 {
   summary_results <- results %>% filter(converged) %>%
-    group_by(scenario_idx, dist_type, n_datasets) %>%
+    group_by(scenario_name, dist_type, n_datasets) %>%
     summarise( n_converged = n(), # Coverage (should be close to 0.95)
                coverage_mu0 = mean(coverage_mu0, na.rm = TRUE),
                coverage_tau = mean(coverage_tau, na.rm = TRUE),
@@ -18,7 +18,11 @@ create_results_summary <- function(results, scenarios)
                median_iqd = median(iqd, na.rm = TRUE),
                sd_iqd = sd(iqd, na.rm = TRUE),.groups = "drop" )
 
-  summary_results <- summary_results %>% left_join(scenarios,by = c('scenario_idx','dist_type','n_datasets'))
+  summary_results <- summary_results %>%
+    left_join(dplyr::select(scenarios, scenario_name, scenario_group,
+                            summary_type, n_obs_mean, n_obs_sd,
+                            n_obs_min, n_obs_max, vary_n),
+              by = "scenario_name")
 
   return(summary_results)
 }
@@ -176,10 +180,14 @@ create_iqd_plot <- function(summary_res)
 #' @export
 create_convergence_plot <- function(res_out, scenarios)
 {
-  res_tmp <- res_out %>% dplyr::select(-c(scenario_name,n_obs_mean, n_obs_sd,n_obs_min,n_obs_max,prop_summary_type_1,prop_summary_type_2,prop_summary_type_3,prop_summary_type_4)) %>%
-    left_join(scenarios,by = c('scenario_idx','dist_type','n_datasets')) %>%
-    mutate(summary_type_label = factor(summary_type, levels = 1:5, labels = c("Median+Range", "Median+IQR", "Mean+SD","Freq Table", "Mixed"))) %>%
-    mutate(n_obs=n_obs_mean) %>%
+  res_tmp <- res_out %>%
+    left_join(dplyr::select(scenarios, scenario_name, summary_type, n_obs_mean,
+                            n_obs_sd, n_obs_min, n_obs_max),
+              by = "scenario_name") %>%
+    mutate(summary_type_label = factor(summary_type, levels = 1:5,
+                                       labels = c("Median+Range", "Median+IQR",
+                                                  "Mean+SD", "Freq Table", "Mixed")),
+           n_obs = n_obs_mean) %>%
     mutate(
       n_obs_bucket = case_when(
         n_obs == 5  ~ "5",
