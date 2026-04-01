@@ -180,9 +180,13 @@ create_iqd_plot <- function(summary_res)
 #' @export
 create_convergence_plot <- function(res_out, scenarios)
 {
+  # Join only summary_type from scenarios (n_obs_mean and the other n_obs_*
+  # columns are already present in res_out from both the old and new runners).
+  # Drop summary_type from res_out first to avoid .x/.y suffixes in case the
+  # new runner already includes it.
   res_tmp <- res_out %>%
-    left_join(dplyr::select(scenarios, scenario_name, summary_type, n_obs_mean,
-                            n_obs_sd, n_obs_min, n_obs_max),
+    dplyr::select(-dplyr::any_of("summary_type")) %>%
+    left_join(dplyr::select(scenarios, scenario_name, summary_type),
               by = "scenario_name") %>%
     mutate(summary_type_label = factor(summary_type, levels = 1:5,
                                        labels = c("Median+Range", "Median+IQR",
