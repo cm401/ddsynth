@@ -1516,17 +1516,30 @@ make_stan_init_fn <- function(stan_data) {
 #'
 #' @param sim_data Simulated data from generate_hierarchical_data
 #' @param stan_model Compiled Stan model
-#' @param ... Additional arguments to pass to sampling()
+#' @param chains Number of Markov chains (default 4)
+#' @param iter Total number of iterations per chain (default 10000)
+#' @param warmup Number of warmup iterations per chain (default 1000)
+#' @param refresh How often to print progress (default 0)
+#' @param control List of control parameters passed to Stan (e.g. adapt_delta)
+#' @param ... Additional arguments to pass to rstan::sampling()
 #' @return Stan fit object
 #' @export
-fit_model <- function(sim_data, stan_model, ...) {
+fit_model <- function(sim_data, stan_model,
+                      chains  = 4L,
+                      iter    = 10000L,
+                      warmup  = 1000L,
+                      refresh = 0L,
+                      control = list(adapt_delta = 0.95, max_treedepth = 12L),
+                      ...) {
   od <- sim_data$obs_data
   rstan::sampling(
     stan_model,
     data    = od,
-    chains  = 4,
-    iter    = 10000,
-    warmup  = 1000,
+    chains  = chains,
+    iter    = iter,
+    warmup  = warmup,
+    refresh = refresh,
+    control = control,
     init    = make_stan_init_fn(od),
     ...
   )
