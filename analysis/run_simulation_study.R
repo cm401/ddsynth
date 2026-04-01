@@ -203,7 +203,7 @@ run_one_sim <- function(sc, sim_idx, stan_model, seed) {
                           else NA_real_,
         bias_kappa      = bk,
         relbias_kappa   = if (has_kappa) bk / tp$kappa else NA_real_,
-        iqd             = NA_real_   # reserved for future compute_iqd() extension
+        iqd             = compute_iqd(fit, tp, sc$dist_type)
       )
   }, error = function(e) {
     warning(sprintf("[scenario %s | sim %d] %s", sc$scenario_name, sim_idx, e$message))
