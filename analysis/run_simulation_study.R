@@ -83,9 +83,11 @@ summary_type_arg <- function(sc) {
 }
 
 # n_obs for one scenario replicate (either fixed or randomly varied).
-draw_n_obs <- function(sc, seed_offset) {
+# NOTE: no set.seed() here — draw from the RNG stream already seeded by
+# run_one_sim() so that fixed-n and varied-n scenarios use a consistent
+# seeding strategy and the full replicate remains reproducible.
+draw_n_obs <- function(sc) {
   if (!isTRUE(sc$vary_n)) return(sc$n_obs_mean)
-  set.seed(seed_offset)
   n <- round(rnorm(sc$n_datasets, mean = sc$n_obs_mean, sd = sc$n_obs_sd))
   pmax(pmin(n, sc$n_obs_max), sc$n_obs_min)
 }
@@ -133,7 +135,7 @@ if (!is.null(RUN_ONLY)) {
 # in R/ploting_utils.R.
 run_one_sim <- function(sc, sim_idx, stan_model, seed) {
   set.seed(seed + sc$scenario_idx * 10000L + sim_idx)
-  n_obs_vec <- draw_n_obs(sc, seed + sc$scenario_idx * 10000L + sim_idx + 99999L)
+  n_obs_vec <- draw_n_obs(sc)
 
   na_row <- tibble(
     scenario_name        = sc$scenario_name,
