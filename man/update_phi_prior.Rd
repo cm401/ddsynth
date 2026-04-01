@@ -37,8 +37,8 @@ data-derived centre.
 \details{
 \strong{Moment approximations per distribution:}
 \describe{
-\item{lognormal}{\eqn{\phi = \sqrt{\log(1 + (\mathrm{sd}/\mathrm{mean})^2)}}
-(approximate log-SD on the log scale; i.e., \code{sdlog})}
+\item{lognormal}{\eqn{\phi = \log(1 + (\mathrm{sd}/\mathrm{mean})^2)}
+(approximate log-variance)}
 \item{gamma}{\eqn{\phi = (\mathrm{mean}/\mathrm{sd})^2}
 (method-of-moments shape)}
 \item{Weibull}{\eqn{\phi} solved numerically from the CV via

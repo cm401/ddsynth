@@ -294,6 +294,7 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95), cdf_mat = NULL)
 #'   stan_data$freq_lower <- rep(0, stan_data$n_freq_total)
 #'   stan_data$freq_upper <- rep(0, stan_data$n_freq_total)
 #'   ```
+#' @importFrom utils modifyList
 #' @export
 prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
                                             use_custom_priors = 0,

@@ -321,6 +321,7 @@ bsl_combine_chains <- function(fit_list) {
 #' @param fits_multi Named list of chain lists (one per model).
 #' @param diagnostic_dir Directory to save diagnostic outputs (created if absent).
 #' @return Invisibly, a data frame of diagnostics across all models.
+#' @importFrom utils write.csv
 #' @export
 bsl_run_diagnostics <- function(fits_multi, diagnostic_dir = "bsl_diagnostics") {
   results <- list()
