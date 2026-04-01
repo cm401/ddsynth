@@ -9,7 +9,7 @@
 #   (c) Any subgroup analyses defined in `subgroup_config` below
 #
 # Each of these is fitted with all three parametric distributions (log-normal,
-# gamma, Weibull), giving 6+ fits per pathogen.
+# gamma, Weibull, Burr), giving 6+ fits per pathogen.
 #
 # Results are written to `results/main_results.rds` as a nested list:
 #
