@@ -335,20 +335,20 @@ bsl_run_diagnostics <- function(fits_multi, diagnostic_dir = "bsl_diagnostics") 
     mcmc_obj <- bsl_combine_chains(fit_list)
     
     # === TRACEPLOT ===
-    png(file.path(model_dir, paste0("traceplot_", model_name, ".png")),
+    grDevices::png(file.path(model_dir, paste0("traceplot_", model_name, ".png")),
         width = 1800, height = 1000, res = 150)
     traceplot(mcmc_obj, main = paste("Traceplots for", model_name))
-    dev.off()
-    
+    grDevices::dev.off()
+
     # === AUTOCORRELATION PLOTS ===
-    png(file.path(model_dir, paste0("acf_", model_name, ".png")),
+    grDevices::png(file.path(model_dir, paste0("acf_", model_name, ".png")),
         width = 1600, height = 800, res = 150)
-    par(mfrow = c(1, min(3, ncol(as.matrix(mcmc_obj[[1]])))), mar = c(4,4,2,1))
+    graphics::par(mfrow = c(1, min(3, ncol(as.matrix(mcmc_obj[[1]])))), mar = c(4,4,2,1))
     for (p in seq_len(ncol(as.matrix(mcmc_obj[[1]])))) {
-      acf(as.numeric(as.matrix(mcmc_obj[[1]])[, p]),
+      graphics::acf(as.numeric(as.matrix(mcmc_obj[[1]])[, p]),
           main = paste("ACF -", model_name, "param", p))
     }
-    dev.off()
+    grDevices::dev.off()
     
     # === DIAGNOSTICS ===
     gel <- gelman.diag(mcmc_obj)
