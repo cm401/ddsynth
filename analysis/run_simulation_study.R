@@ -20,7 +20,14 @@
 
 # ── 0. Configuration ──────────────────────────────────────────────────────────
 
-MAIN_FOLDER <- "/home/incubation/delay_distribution_data_synthesis/"
+MAIN_FOLDER <- Sys.getenv("DDSYNTH_ROOT")
+if (!nzchar(MAIN_FOLDER)) {
+  # Default: project root = parent of the analysis/ directory this script lives in
+  MAIN_FOLDER <- normalizePath(
+    file.path(dirname(sys.frame(1)$ofile), ".."),
+    winslash = "/", mustWork = FALSE
+  )
+}
 
 RESULTS_DIR <- file.path(MAIN_FOLDER, "results", "by_scenario")
 N_SIM       <- 100    # replications per scenario
