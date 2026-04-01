@@ -1147,19 +1147,39 @@ create_scenario <- function(scenario_name,
 
 #' Generate a comprehensive set of scenarios
 #'
+#' Builds the master scenario grid used by both \code{run_simulation_study.R}
+#' and the \code{simulation_study} vignette.  All four distribution families
+#' that are identifiable from summary statistics (lognormal, gamma, Weibull,
+#' Burr XII) are supported, plus the generalised gamma for identifiability
+#' research.
+#'
 #' @param include_homogeneous Include scenarios with fixed summary types
 #' @param include_mixed Include scenarios with mixed summary types
 #' @param include_varied_n Include scenarios with varied sample sizes
-#' @return Data frame of scenarios
+#' @param include_freq_table Include frequency-table summary scenarios
+#' @param include_burr12 Include Burr XII (dist_type 4) scenarios
+#' @param include_gengamma Include generalised gamma (dist_type 5) standard
+#'   scenarios
+#' @param include_gg_limitation Include generalised gamma limitation scenarios
+#'   (only used when \code{include_gengamma = TRUE})
+#' @return Data frame with one row per scenario and columns:
+#'   \code{scenario_name}, \code{scenario_group}, \code{scenario_idx},
+#'   \code{dist_type}, \code{n_datasets}, \code{mu0}, \code{tau}, \code{phi},
+#'   \code{kappa}, \code{n_obs_mean}, \code{n_obs_sd}, \code{n_obs_min},
+#'   \code{n_obs_max}, \code{summary_type_1_prop}–\code{summary_type_4_prop},
+#'   \code{summary_type}, \code{vary_n}.
 #' @export
 generate_scenario_library <- function(include_homogeneous = TRUE,
                                       include_mixed = TRUE,
                                       include_varied_n = TRUE,
-                                      include_freq_table = FALSE) {
-  
+                                      include_freq_table = FALSE,
+                                      include_burr12 = FALSE,
+                                      include_gengamma = FALSE,
+                                      include_gg_limitation = FALSE) {
+
   scenarios <- list()
   idx <- 1
-  
+
   distributions <- c("lognormal", "gamma", "weibull")
   
   # ===== HOMOGENEOUS SCENARIOS =====
@@ -1295,30 +1315,173 @@ generate_scenario_library <- function(include_homogeneous = TRUE,
     }
   }
   
-  # Convert to data frame for easier handling
+  # Helper: derive summary_type integer (1–4 = homogeneous; 5 = mixed)
+  .st_int <- function(s1, s2, s3, s4) {
+    if (s1 == 1) 1L else if (s2 == 1) 2L else if (s3 == 1) 3L else
+      if (s4 == 1) 4L else 5L
+  }
+
+  # Convert base (dist 1–3) scenario list to unified data frame
   scenarios_df <- dplyr::bind_rows(lapply(scenarios, function(s) {
+    nv  <- s$n_obs
+    st1 <- mean(s$summary_type == 1)
+    st2 <- mean(s$summary_type == 2)
+    st3 <- mean(s$summary_type == 3)
+    st4 <- mean(s$summary_type == 4)
     data.frame(
-      scenario_name = s$scenario_name,
-      dist_type = s$dist_type,
-      n_datasets = s$n_datasets,
-      mu0 = s$mu0,
-      tau = s$tau,
-      phi = s$phi,
-      n_obs_mean = mean(s$n_obs),
-      n_obs_sd = sd(s$n_obs),
-      n_obs_min = min(s$n_obs),
-      n_obs_max = max(s$n_obs),
-      summary_type_1_prop = mean(s$summary_type == 1),
-      summary_type_2_prop = mean(s$summary_type == 2),
-      summary_type_3_prop = mean(s$summary_type == 3),
-      summary_type_4_prop = mean(s$summary_type == 4),
-      stringsAsFactors = FALSE
+      scenario_name       = s$scenario_name,
+      scenario_group      = paste0("base_", s$dist_type),
+      dist_type           = s$dist_type,
+      n_datasets          = s$n_datasets,
+      mu0                 = s$mu0,
+      tau                 = s$tau,
+      phi                 = s$phi,
+      kappa               = 1.0,
+      n_obs_mean          = mean(nv),
+      n_obs_sd            = if (length(nv) > 1) stats::sd(nv) else 0,
+      n_obs_min           = min(nv),
+      n_obs_max           = max(nv),
+      summary_type_1_prop = st1,
+      summary_type_2_prop = st2,
+      summary_type_3_prop = st3,
+      summary_type_4_prop = st4,
+      summary_type        = .st_int(st1, st2, st3, st4),
+      vary_n              = length(unique(nv)) > 1L,
+      stringsAsFactors    = FALSE
     )
   }))
-  
-  # Store full scenario details as attribute
+
+  # Store full scenario details for backward compatibility with the old parallel
+  # runner (run_simulation_study_generalized).  Burr XII / GG are NOT added to
+  # this attribute because those runners do not support them.
   attr(scenarios_df, "full_scenarios") <- scenarios
-  
+
+  # ===== BURR XII SCENARIOS (dist_type 4) =====
+  if (include_burr12) {
+    burr_grid <- expand.grid(
+      phi        = c(2.0, 3.0),
+      kappa      = c(2.0, 5.0),
+      n_datasets = c(5L, 10L, 20L),
+      n_obs      = c(20, 50),
+      stringsAsFactors = FALSE
+    )
+    burr_rows <- dplyr::bind_rows(lapply(seq_len(nrow(burr_grid)), function(i) {
+      r <- burr_grid[i, ]
+      data.frame(
+        scenario_name       = sprintf("Burr12_c%.1f_k%.1f_D%d_N%d_ST1",
+                                      r$phi, r$kappa, r$n_datasets, r$n_obs),
+        scenario_group      = "burr12",
+        dist_type           = "burr12",
+        n_datasets          = as.integer(r$n_datasets),
+        mu0                 = log(7),
+        tau                 = 0.4,
+        phi                 = r$phi,
+        kappa               = r$kappa,
+        n_obs_mean          = r$n_obs,
+        n_obs_sd            = 0,
+        n_obs_min           = NA_real_,
+        n_obs_max           = NA_real_,
+        summary_type_1_prop = 1,
+        summary_type_2_prop = 0,
+        summary_type_3_prop = 0,
+        summary_type_4_prop = 0,
+        summary_type        = 1L,
+        vary_n              = FALSE,
+        stringsAsFactors    = FALSE
+      )
+    }))
+
+    # Extra Burr XII scenarios: mixed summaries, varied N, large N, mean+SD
+    vn_min <- max(5L, round(30 * 0.3))
+    vn_max <- round(30 * 2)
+    burr_extra <- data.frame(
+      scenario_name       = c("Burr12_c2.5_k3_D10_N30_Mixed12",
+                              "Burr12_c2.5_k3_D10_N30_Mixed123",
+                              "Burr12_c2.5_k3_D20_VarN_ST1",
+                              "Burr12_c2.5_k3_D20_N100_ST1",
+                              "Burr12_c2.5_k3_D10_N30_ST3"),
+      scenario_group      = "burr12",
+      dist_type           = "burr12",
+      n_datasets          = c(10L, 10L, 20L, 20L, 10L),
+      mu0                 = log(7),
+      tau                 = 0.4,
+      phi                 = 2.5,
+      kappa               = 3.0,
+      n_obs_mean          = c(30, 30, 30, 100, 30),
+      n_obs_sd            = c(0, 0, 15, 0, 0),
+      n_obs_min           = c(NA_real_, NA_real_, vn_min, NA_real_, NA_real_),
+      n_obs_max           = c(NA_real_, NA_real_, vn_max, NA_real_, NA_real_),
+      summary_type_1_prop = c(0.5, 1/3, 1.0, 1.0, 0.0),
+      summary_type_2_prop = c(0.5, 1/3, 0.0, 0.0, 0.0),
+      summary_type_3_prop = c(0.0, 1/3, 0.0, 0.0, 1.0),
+      summary_type_4_prop = c(0.0, 0.0, 0.0, 0.0, 0.0),
+      summary_type        = c(5L, 5L, 1L, 1L, 3L),
+      vary_n              = c(FALSE, FALSE, TRUE, FALSE, FALSE),
+      stringsAsFactors    = FALSE
+    )
+
+    scenarios_df <- dplyr::bind_rows(scenarios_df, burr_rows, burr_extra)
+  }
+
+  # ===== GENERALISED GAMMA SCENARIOS (dist_type 5) =====
+  if (include_gengamma) {
+    gg_std <- data.frame(
+      scenario_name       = c("GG_s0.5_Q0.5_D10_N30_ST1",
+                              "GG_s0.5_Q1.0_D10_N30_ST1",
+                              "GG_s0.5_Q2.0_D10_N30_ST1",
+                              "GG_s0.5_Q1.0_D5_N30_ST1",
+                              "GG_s0.5_Q1.0_D20_N30_ST1",
+                              "GG_s0.5_Q1.0_D10_N10_ST1"),
+      scenario_group      = "gg_standard",
+      dist_type           = "gengamma",
+      n_datasets          = c(10L, 10L, 10L, 5L, 20L, 10L),
+      mu0                 = log(7),
+      tau                 = 0.4,
+      phi                 = 0.5,
+      kappa               = c(0.5, 1.0, 2.0, 1.0, 1.0, 1.0),
+      n_obs_mean          = c(30, 30, 30, 30, 30, 10),
+      n_obs_sd            = 0,
+      n_obs_min           = NA_real_,
+      n_obs_max           = NA_real_,
+      summary_type_1_prop = 1,
+      summary_type_2_prop = 0,
+      summary_type_3_prop = 0,
+      summary_type_4_prop = 0,
+      summary_type        = 1L,
+      vary_n              = FALSE,
+      stringsAsFactors    = FALSE
+    )
+    scenarios_df <- dplyr::bind_rows(scenarios_df, gg_std)
+
+    if (include_gg_limitation) {
+      gg_lim <- data.frame(
+        scenario_name       = c("GG_Limit_NearLognormal_Q0.1_D10_N30_ST1",
+                                "GG_Limit_HighQ_Q3_D10_N30_ST1"),
+        scenario_group      = "gg_limitation",
+        dist_type           = "gengamma",
+        n_datasets          = 10L,
+        mu0                 = log(7),
+        tau                 = 0.4,
+        phi                 = 0.5,
+        kappa               = c(0.1, 3.0),
+        n_obs_mean          = 30,
+        n_obs_sd            = 0,
+        n_obs_min           = NA_real_,
+        n_obs_max           = NA_real_,
+        summary_type_1_prop = 1,
+        summary_type_2_prop = 0,
+        summary_type_3_prop = 0,
+        summary_type_4_prop = 0,
+        summary_type        = 1L,
+        vary_n              = FALSE,
+        stringsAsFactors    = FALSE
+      )
+      scenarios_df <- dplyr::bind_rows(scenarios_df, gg_lim)
+    }
+  }
+
+  scenarios_df$scenario_idx <- seq_len(nrow(scenarios_df))
+
   return(scenarios_df)
 }
 
