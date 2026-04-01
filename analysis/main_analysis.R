@@ -8,8 +8,8 @@
 #   (b) "filtered" — datasets flagged by pre_inference_checks() removed
 #   (c) Any subgroup analyses defined in `subgroup_config` below
 #
-# Each of these is fitted with all three parametric distributions (log-normal,
-# gamma, Weibull, Burr), giving 6+ fits per pathogen.
+# Each of these is fitted with all four parametric distributions (log-normal,
+# gamma, Weibull, Burr), giving 8+ fits per pathogen.
 #
 # Results are written to `results/main_results.rds` as a nested list:
 #
