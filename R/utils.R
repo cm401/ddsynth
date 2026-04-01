@@ -1157,14 +1157,16 @@ create_scenario <- function(scenario_name,
 #' @param include_mixed Include scenarios with mixed summary types
 #' @param include_varied_n Include scenarios with varied sample sizes
 #' @param include_freq_table Include frequency-table summary scenarios
-#' @param include_burr12 Include Burr XII (dist_type 4) scenarios
-#' @param include_gengamma Include generalised gamma (dist_type 5) standard
-#'   scenarios
+#' @param include_burr12 Include Burr XII scenarios (\code{dist_type = "burr12"})
+#' @param include_gengamma Include generalised gamma standard scenarios
+#'   (\code{dist_type = "gengamma"})
 #' @param include_gg_limitation Include generalised gamma limitation scenarios
 #'   (only used when \code{include_gengamma = TRUE})
 #' @return Data frame with one row per scenario and columns:
 #'   \code{scenario_name}, \code{scenario_group}, \code{scenario_idx},
-#'   \code{dist_type}, \code{n_datasets}, \code{mu0}, \code{tau}, \code{phi},
+#'   \code{dist_type} (one of \code{"lognormal"}, \code{"gamma"},
+#'   \code{"weibull"}, \code{"burr12"}, \code{"gengamma"}),
+#'   \code{n_datasets}, \code{mu0}, \code{tau}, \code{phi},
 #'   \code{kappa}, \code{n_obs_mean}, \code{n_obs_sd}, \code{n_obs_min},
 #'   \code{n_obs_max}, \code{summary_type_1_prop}–\code{summary_type_4_prop},
 #'   \code{summary_type}, \code{vary_n}.
