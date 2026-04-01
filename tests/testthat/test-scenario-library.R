@@ -251,10 +251,13 @@ test_that("vary_n scenarios have finite n_obs_min and n_obs_max", {
   expect_true(all(is.finite(vary_rows$n_obs_max)))
 })
 
-test_that("non-vary_n scenarios have NA n_obs_min and n_obs_max (or equal to n_obs_mean)", {
-  sc         <- .base_only()
+test_that("non-vary_n scenarios have n_obs_min = n_obs_max = n_obs_mean for all dist types", {
+  sc          <- generate_scenario_library(include_burr12 = TRUE,
+                                           include_gengamma = TRUE,
+                                           include_gg_limitation = TRUE)
   stable_rows <- sc[!sc$vary_n, ]
-  # Fixed scenarios: n_obs_min = n_obs_max = n_obs_mean
-  expect_true(all(stable_rows$n_obs_min == stable_rows$n_obs_mean))
-  expect_true(all(stable_rows$n_obs_max == stable_rows$n_obs_mean))
+  expect_true(all(stable_rows$n_obs_min == stable_rows$n_obs_mean),
+              info = "n_obs_min != n_obs_mean for some fixed-n scenario")
+  expect_true(all(stable_rows$n_obs_max == stable_rows$n_obs_mean),
+              info = "n_obs_max != n_obs_mean for some fixed-n scenario")
 })
