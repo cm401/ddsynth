@@ -584,7 +584,7 @@ datasets_COVID_19 <- list(
   d2  = list( median = 4.3,  Q1 = 2.5,  Q3 = 6.5,    n = 53,   source = "Bender (2021), doi: 10.3201/eid2704.204576",                     country = "Germany",     subgroup = "Wildtype" ),
   d3  = list( median = 6,    min = 1,    max = 13,    n = 27,   source = "Liu (2020), doi: 10.1097/JCMA.0000000000000411",                country = "China",       subgroup = "Wildtype" ),
   d4  = list( mean = 8.23,   sd = 3.58,              n = 22,   source = "Song (2020), doi: 10.1016/j.jinf.2020.04.018",                   country = "China",       subgroup = "Wildtype" ),
-  d5  = list( median = 3,    min = 0,    max = 15,    n = 10,   source = "Ki (2020), doi: 10.4178/epih.e2020007",                         country = "South Korea", subgroup = "Wildtype" ),
+  d5  = list( median = 3,    min = 0.1,  max = 15,    n = 10,   source = "Ki (2020), doi: 10.4178/epih.e2020007",                         country = "South Korea", subgroup = "Wildtype" ),
   d6  = list( median = 8.5,  min = 1,    max = 24,    n = 28,   source = "Mao (2020), doi: 10.1186/s12889-020-09606-4",                   country = "China",       subgroup = "Wildtype" ),
   d7  = list( median = 7,    min = 2,    max = 12,    n = 8,    source = "Zhang (2020), doi: 10.1186/s12879-020-05570-x",                 country = "China",       subgroup = "Wildtype" ),
   d8  = list( median = 8,    min = 4,    max = 13,    n = 23,   source = "Zhang (2020), doi: 10.1186/s12879-020-05570-x",                 country = "China",       subgroup = "Wildtype" ),
@@ -792,3 +792,8 @@ datasets_YFV <- list(
 # Flu ---------------------------------------------------------------------
 
 # USE SUBGROUP FOR WHICH FLU
+
+
+# Anthrax ---------------------------------------------------------------------
+
+# Note the importance of dose-response model (can cite https://doi.org/10.1073/pnas.0509551103) 

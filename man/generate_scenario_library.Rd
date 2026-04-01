@@ -8,7 +8,10 @@ generate_scenario_library(
   include_homogeneous = TRUE,
   include_mixed = TRUE,
   include_varied_n = TRUE,
-  include_freq_table = FALSE
+  include_freq_table = FALSE,
+  include_burr12 = FALSE,
+  include_gengamma = FALSE,
+  include_gg_limitation = FALSE
 )
 }
 \arguments{
@@ -17,10 +20,31 @@ generate_scenario_library(
 \item{include_mixed}{Include scenarios with mixed summary types}
 
 \item{include_varied_n}{Include scenarios with varied sample sizes}
+
+\item{include_freq_table}{Include frequency-table summary scenarios}
+
+\item{include_burr12}{Include Burr XII scenarios (\code{dist_type = "burr12"})}
+
+\item{include_gengamma}{Include generalised gamma standard scenarios
+(\code{dist_type = "gengamma"})}
+
+\item{include_gg_limitation}{Include generalised gamma limitation scenarios
+(only used when \code{include_gengamma = TRUE})}
 }
 \value{
-Data frame of scenarios
+Data frame with one row per scenario and columns:
+\code{scenario_name}, \code{scenario_group}, \code{scenario_idx},
+\code{dist_type} (one of \code{"lognormal"}, \code{"gamma"},
+\code{"weibull"}, \code{"burr12"}, \code{"gengamma"}),
+\code{n_datasets}, \code{mu0}, \code{tau}, \code{phi},
+\code{kappa}, \code{n_obs_mean}, \code{n_obs_sd}, \code{n_obs_min},
+\code{n_obs_max}, \code{summary_type_1_prop}–\code{summary_type_4_prop},
+\code{summary_type}, \code{vary_n}.
 }
 \description{
-Generate a comprehensive set of scenarios
+Builds the master scenario grid used by both \code{run_simulation_study.R}
+and the \code{simulation_study} vignette.  All four distribution families
+that are identifiable from summary statistics (lognormal, gamma, Weibull,
+Burr XII) are supported, plus the generalised gamma for identifiability
+research.
 }
