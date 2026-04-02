@@ -192,7 +192,7 @@ run_one_sim <- function(sc, sim_idx, stan_model, seed) {
       mutate(
         max_rhat        = .env$max_rhat,
         min_neff        = .env$min_neff,
-        converged       = (.env$max_rhat <= 1.1) & (.env$min_neff >= 100),
+        converged       = (.env$max_rhat <= 1.05) & (.env$min_neff >= 100),
         coverage_mu0    = check_coverage(fit, "mu0", tp$mu0),
         bias_mu0        = compute_median_bias(fit, "mu0", tp$mu0),
         coverage_tau    = check_coverage(fit, "tau", tp$tau),
