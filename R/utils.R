@@ -115,13 +115,13 @@ compute_predictive_cdf <- function(fit, dist_name, x_seq = seq(0, 30, length.out
         shape <- phi
         cdf_l[l, ] <- pweibull(x_seq, shape = shape, scale = scale)
 
-      } else if (dist_name == "burr12") {
+      } else if (dist_name == "burr") {
         # Burr XII CDF: F(x) = 1 - (1 + (x/lambda)^c)^(-k)
         # lambda = exp(loc_d), c = phi, k = kappa
         lambda  <- exp(loc_d)
         cdf_l[l, ] <- 1 - (1 + (x_seq / lambda)^phi)^(-kappa)
 
-      } else if (dist_name == "gengamma") {
+      } else if (dist_name == "gg") {
         # Generalised Gamma (Prentice): mu = loc_d, sigma = phi, Q = kappa
         # CDF = pgamma(gamma_shape * exp(Q * w), shape = gamma_shape, rate = 1)
         # where gamma_shape = 1/Q^2, w = (log(x) - mu) / sigma
@@ -129,11 +129,18 @@ compute_predictive_cdf <- function(fit, dist_name, x_seq = seq(0, 30, length.out
         w           <- (log(x_seq) - loc_d) / phi
         cdf_l[l, ] <- pgamma(gamma_shape * exp(kappa * w),
                              shape = gamma_shape, rate = 1)
+      } else {
+        stop(sprintf(
+          "compute_predictive_cdf: unknown dist_name '%s'. ",
+          "Must be one of: 'lognormal', 'gamma', 'weibull', 'burr', 'gg'.",
+          dist_name
+        ), call. = FALSE)
       }
     }
 
-    # Average over study-level locations
-    cdf_mat[i, ] <- colMeans(cdf_l)
+    # Average over study-level locations (na.rm = TRUE guards against rare
+    # numerical edge cases in individual draws without silently hiding them)
+    cdf_mat[i, ] <- colMeans(cdf_l, na.rm = TRUE)
   }
   
   # Compute summary statistics
@@ -697,6 +704,117 @@ filter_datasets <- function(datasets, subgroup = NULL, location = NULL) {
 }
 
 
+# GG identifiability heuristic ------------------------------------------------
+
+#' Check whether the Generalised Gamma is likely identifiable from a dataset
+#'
+#' @description
+#' The Generalised Gamma (GG, dist_type = 5) has three parameters: location
+#' (\eqn{\mu}), scale (\eqn{\sigma}/phi), and shape (\eqn{Q}/kappa).  All
+#' datasets share a single (\eqn{\sigma}, \eqn{Q}) pair, so the GG is only
+#' identifiable when datasets consistently imply the same distributional shape.
+#' If different studies show widely different coefficients of variation (CV =
+#' SD/mean), the sampler cannot find a coherent (\eqn{\sigma}, \eqn{Q}) and
+#' will exhibit poor mixing or divergences.
+#'
+#' Two fast, pre-fit checks are applied:
+#' \describe{
+#'   \item{CV spread}{Computes the CV for every dataset using moment
+#'     approximations (same logic as [update_phi_prior()]).  If
+#'     \code{max(CV) / min(CV) > cv_spread_threshold} the CVs are too
+#'     inconsistent to identify the extra GG parameter.}
+#'   \item{Information richness}{The \eqn{Q} parameter encodes tail behaviour
+#'     beyond mean and variance.  Datasets that supply only summary statistics
+#'     (mean + SD, median + IQR, median + range) provide at most two moments
+#'     and give weak leverage on \eqn{Q}.  If the fraction of datasets with
+#'     frequency-table or interval-censored data (summary types 4 and 5) is
+#'     below \code{min_rich_fraction}, the shape is too poorly constrained.}
+#' }
+#'
+#' @param datasets A named list of datasets in the format accepted by
+#'   [prepare_stan_data_from_datasets()].
+#' @param cv_spread_threshold Numeric scalar (default 2.5).  Maximum tolerated
+#'   ratio of the largest to the smallest per-dataset CV.  Increase to be more
+#'   permissive, decrease to be stricter.
+#' @param min_rich_fraction Numeric scalar in (0, 1] (default 0.30).  Minimum
+#'   fraction of datasets that must be frequency-table or interval-censored
+#'   (summary types 4 / 5).  Set to 0 to disable this check.
+#' @param verbose Logical (default TRUE).  Print a one-line verdict with the
+#'   reason a check failed.
+#'
+#' @return `TRUE` if both checks pass (GG fitting is worth attempting),
+#'   `FALSE` otherwise.
+#'
+#' @examples
+#' should_attempt_gg(datasets_SARS)    # expected: FALSE
+#' should_attempt_gg(datasets_Mpox)
+#'
+#' @export
+should_attempt_gg <- function(datasets,
+                               cv_spread_threshold = 2.5,
+                               min_rich_fraction   = 0.30,
+                               verbose             = TRUE) {
+
+  # ── Per-dataset CV estimates ────────────────────────────────────────────────
+  cvs <- vapply(datasets, function(d) {
+    mean_est <- sd_est <- NA_real_
+
+    if (!is.null(d$mean) && !is.null(d$sd)) {
+      mean_est <- d$mean;  sd_est <- d$sd
+    } else if (!is.null(d$median) && !is.null(d$Q1) && !is.null(d$Q3)) {
+      mean_est <- d$median;  sd_est <- (d$Q3 - d$Q1) / 1.35
+    } else if (!is.null(d$median) && !is.null(d$min) && !is.null(d$max)) {
+      mean_est <- d$median;  sd_est <- (d$max - d$min) / 4
+    } else if (!is.null(d$freq_value) && !is.null(d$freq_count)) {
+      w        <- d$freq_count / sum(d$freq_count)
+      mean_est <- sum(d$freq_value * w)
+      sd_est   <- sqrt(sum(w * (d$freq_value - mean_est)^2))
+    } else if (!is.null(d$freq_lower) && !is.null(d$freq_upper) &&
+               !is.null(d$freq_count)) {
+      mid      <- (d$freq_lower + d$freq_upper) / 2
+      w        <- d$freq_count / sum(d$freq_count)
+      mean_est <- sum(mid * w)
+      sd_est   <- sqrt(sum(w * (mid - mean_est)^2))
+    }
+
+    if (is.na(mean_est) || is.na(sd_est) || mean_est <= 0 || sd_est <= 0)
+      return(NA_real_)
+    sd_est / mean_est
+  }, numeric(1))
+
+  cvs_valid <- cvs[!is.na(cvs)]
+
+  # ── Check 1: CV spread ──────────────────────────────────────────────────────
+  if (length(cvs_valid) >= 2) {
+    spread <- max(cvs_valid) / min(cvs_valid)
+    if (spread > cv_spread_threshold) {
+      if (verbose)
+        message("should_attempt_gg: SKIP — CV spread too large ",
+                "(max/min = ", round(spread, 2),
+                ", threshold = ", cv_spread_threshold, ").")
+      return(FALSE)
+    }
+  }
+
+  # ── Check 2: information richness ──────────────────────────────────────────
+  is_rich <- vapply(datasets, function(d) {
+    !is.null(d$freq_value) || (!is.null(d$freq_lower) && !is.null(d$freq_upper))
+  }, logical(1))
+
+  rich_frac <- mean(is_rich)
+  if (rich_frac < min_rich_fraction) {
+    if (verbose)
+      message("should_attempt_gg: SKIP — too few frequency-table datasets ",
+              "(", round(100 * rich_frac), "% rich, need >= ",
+              round(100 * min_rich_fraction), "%).")
+    return(FALSE)
+  }
+
+  if (verbose) message("should_attempt_gg: OK — GG fitting is worth attempting.")
+  TRUE
+}
+
+
 # Pre-inference checks -----------------------------------------------------
 
 #' Run pre-inference checks on a list of datasets
@@ -923,7 +1041,7 @@ pre_inference_checks <- function(datasets,
       ),
       error = function(e) NULL
     )
-    if (is.null(fit)) {
+    if (is.null(fit) || fit@mode != 0L) {
       return(tibble::tibble(dataset = name, phi_mean = NA_real_,
                             phi_lo = NA_real_, phi_hi = NA_real_,
                             rhat = NA_real_,   n_eff = NA_real_))
@@ -940,13 +1058,11 @@ pre_inference_checks <- function(datasets,
   results$loo_fits <- loo_fits
 
   # ── Per-dataset LOO overlap flag (needed for filter, computed unconditionally)
+  med_lo <- stats::median(loo_fits$phi_lo, na.rm = TRUE)
+  med_hi <- stats::median(loo_fits$phi_hi, na.rm = TRUE)
   loo_flagged <- dplyr::mutate(
     loo_fits,
-    no_overlap = {
-      med_lo <- stats::median(loo_fits$phi_lo, na.rm = TRUE)
-      med_hi <- stats::median(loo_fits$phi_hi, na.rm = TRUE)
-      !is.na(phi_lo) & (phi_hi < med_lo | phi_lo > med_hi)
-    }
+    no_overlap = !is.na(phi_lo) & (phi_hi < med_lo | phi_lo > med_hi)
   )
 
   # ── Union of all per-dataset flags ────────────────────────────────────────
@@ -1701,6 +1817,129 @@ compute_iqd <- function(fit, true_params, dist_type, x_grid = NULL) {
   return(iqd)
 }
 
+#' Compute true marginal quantiles of the predictive distribution
+#'
+#' Uses Monte Carlo integration over the study-level location hierarchy to
+#' compute the true population-level quantiles of the predictive distribution.
+#'
+#' @param dist_type Distribution type: one of \code{"lognormal"}, \code{"gamma"},
+#'   \code{"weibull"}, \code{"burr12"}, \code{"gengamma"}.
+#' @param mu0 True population mean (location hyperparameter).
+#' @param tau True between-study standard deviation.
+#' @param phi True distribution-specific shape/scale parameter.
+#' @param kappa True third distribution parameter (Burr XII k or GG Q).
+#'   Ignored for 2-parameter distributions.
+#' @param probs Numeric vector of probabilities for which quantiles are computed.
+#'   Default \code{c(0.5, 0.95)}.
+#' @param n_mc Number of Monte Carlo draws. Default 5000.
+#' @return A named numeric vector of quantiles (names are e.g. \code{"50\%"},
+#'   \code{"95\%"}).
+#' @export
+compute_true_marginal_quantile <- function(dist_type,
+                                           mu0,
+                                           tau,
+                                           phi,
+                                           kappa = 1.0,
+                                           probs  = c(0.5, 0.95),
+                                           n_mc   = 5000L) {
+  loc_draws <- rnorm(n_mc, mean = mu0, sd = tau)
+
+  if (dist_type == "lognormal") {
+    obs <- rlnorm(n_mc, meanlog = loc_draws, sdlog = phi)
+  } else if (dist_type == "gamma") {
+    obs <- rgamma(n_mc, shape = phi, rate = phi / exp(loc_draws))
+  } else if (dist_type == "weibull") {
+    obs <- rweibull(n_mc, shape = phi, scale = exp(loc_draws))
+  } else if (dist_type == "burr12") {
+    lambda <- exp(loc_draws)
+    u      <- runif(n_mc)
+    obs    <- lambda * (u^(-1.0 / kappa) - 1.0)^(1.0 / phi)
+  } else if (dist_type == "gengamma") {
+    gs  <- 1.0 / kappa^2
+    y   <- rgamma(n_mc, shape = gs, rate = 1)
+    obs <- exp(loc_draws + phi / kappa * log(kappa^2 * y))
+  } else {
+    stop(sprintf(
+      "compute_true_marginal_quantile: unknown dist_type '%s'.", dist_type
+    ), call. = FALSE)
+  }
+
+  quantile(obs, probs = probs, na.rm = TRUE)
+}
+
+#' Compute credible interval for posterior predictive quantiles
+#'
+#' For each requested probability \code{p}, draws from the posterior predictive
+#' distribution and returns the 2.5th, 50th, and 97.5th percentiles of the
+#' resulting quantile distribution across posterior draws.
+#'
+#' @param fit A \code{stanfit} object.
+#' @param dist_type Distribution type string.
+#' @param n_datasets Number of studies in the fitted data (used to decide
+#'   whether to integrate over mu0/tau or use mean(loc_d)).
+#' @param probs Probabilities for which predictive quantiles are computed.
+#'   Default \code{c(0.5, 0.95)}.
+#' @param n_post_draws Number of posterior draws to use. Default 500.
+#' @param n_mc_per_draw Number of predictive samples per posterior draw.
+#'   Default 1000.
+#' @return A list with elements \code{lower}, \code{median}, and \code{upper}:
+#'   the 2.5th, 50th, and 97.5th percentiles of the posterior distribution of
+#'   each quantile, each a numeric vector of length \code{length(probs)}.
+#' @export
+compute_posterior_predictive_quantile_ci <- function(fit,
+                                                     dist_type,
+                                                     n_datasets,
+                                                     probs         = c(0.5, 0.95),
+                                                     n_post_draws  = 500L,
+                                                     n_mc_per_draw = 1000L) {
+  draws    <- rstan::extract(fit)
+  n_post   <- length(draws$mu0)
+  draw_idx <- sample.int(n_post, min(n_post_draws, n_post))
+  q_mat    <- matrix(NA_real_, nrow = length(draw_idx), ncol = length(probs))
+
+  for (i in seq_along(draw_idx)) {
+    idx     <- draw_idx[i]
+    phi_s   <- draws$phi[idx]
+    kappa_s <- draws$kappa[idx]
+
+    # Mirror compute_predictive_cdf: when n_datasets < 5, mu0 and tau are
+    # poorly identified; use mean(loc_d) instead.
+    if (n_datasets < 5) {
+      locs <- rep(mean(draws$loc_d[idx, ]), n_mc_per_draw)
+    } else {
+      locs <- rnorm(n_mc_per_draw, mean = draws$mu0[idx], sd = draws$tau[idx])
+    }
+
+    if (dist_type == "lognormal") {
+      obs_s <- rlnorm(n_mc_per_draw, meanlog = locs, sdlog = phi_s)
+    } else if (dist_type == "gamma") {
+      obs_s <- rgamma(n_mc_per_draw, shape = phi_s, rate = phi_s / exp(locs))
+    } else if (dist_type == "weibull") {
+      obs_s <- rweibull(n_mc_per_draw, shape = phi_s, scale = exp(locs))
+    } else if (dist_type == "burr12") {
+      lambda_s <- exp(locs)
+      u_s      <- runif(n_mc_per_draw)
+      obs_s    <- lambda_s * (u_s^(-1.0 / kappa_s) - 1.0)^(1.0 / phi_s)
+    } else if (dist_type == "gengamma") {
+      gs_s  <- 1.0 / kappa_s^2
+      y_s   <- rgamma(n_mc_per_draw, shape = gs_s, rate = 1)
+      obs_s <- exp(locs + phi_s / kappa_s * log(kappa_s^2 * y_s))
+    } else {
+      stop(sprintf(
+        "compute_posterior_predictive_quantile_ci: unknown dist_type '%s'.", dist_type
+      ), call. = FALSE)
+    }
+
+    q_mat[i, ] <- quantile(obs_s, probs = probs, na.rm = TRUE)
+  }
+
+  list(
+    lower  = apply(q_mat, 2, quantile, probs = 0.025, na.rm = TRUE),
+    median = apply(q_mat, 2, median, na.rm = TRUE),
+    upper  = apply(q_mat, 2, quantile, probs = 0.975, na.rm = TRUE)
+  )
+}
+
 #' Run simulation study with generalized scenarios
 #'
 #' @importFrom foreach %dopar%
@@ -1789,6 +2028,7 @@ run_simulation_study_generalized <- function(n_sim,
       mu0          = scenario$mu0,
       tau          = scenario$tau,
       phi          = scenario$phi,
+      kappa        = scenario$kappa,
       summary_type = summary_type_arg
     )
 
@@ -1825,6 +2065,29 @@ run_simulation_study_generalized <- function(n_sim,
 
       iqd <- compute_iqd(fit, sim_data$true_params, scenario$dist_type)
 
+      # kappa coverage/bias (only for 3-parameter distributions)
+      has_kappa      <- scenario$dist_type %in% c("burr12", "gengamma")
+      coverage_kappa <- if (has_kappa) check_coverage(fit, "kappa", sim_data$true_params$kappa) else NA
+      bias_kappa     <- if (has_kappa) compute_median_bias(fit, "kappa", sim_data$true_params$kappa) else NA
+
+      # Quantile coverage: marginal median (Q50) and 95th percentile (Q95)
+      true_q  <- compute_true_marginal_quantile(
+        dist_type = scenario$dist_type,
+        mu0       = sim_data$true_params$mu0,
+        tau       = sim_data$true_params$tau,
+        phi       = sim_data$true_params$phi,
+        kappa     = sim_data$true_params$kappa
+      )
+      post_ci <- compute_posterior_predictive_quantile_ci(
+        fit        = fit,
+        dist_type  = scenario$dist_type,
+        n_datasets = scenario$n_datasets
+      )
+      coverage_median <- true_q["50%"] >= post_ci$lower[1] & true_q["50%"] <= post_ci$upper[1]
+      coverage_p95    <- true_q["95%"] >= post_ci$lower[2] & true_q["95%"] <= post_ci$upper[2]
+      bias_median     <- post_ci$median[1] - true_q["50%"]
+      bias_p95        <- post_ci$median[2] - true_q["95%"]
+
       data.frame(
         scenario_idx           = scenario_idx,
         scenario_name          = scenario$scenario_name,
@@ -1856,6 +2119,16 @@ run_simulation_study_generalized <- function(n_sim,
         max_rhat               = max_rhat,
         min_neff               = min_neff,
         converged              = max_rhat <= 1.1 & min_neff >= 100,
+        true_kappa             = scenario$kappa,
+        coverage_kappa         = coverage_kappa,
+        bias_kappa             = bias_kappa,
+        rel_bias_kappa         = if (has_kappa) bias_kappa / sim_data$true_params$kappa else NA_real_,
+        coverage_median        = coverage_median,
+        coverage_p95           = coverage_p95,
+        bias_median            = bias_median,
+        rel_bias_median        = bias_median / true_q["50%"],
+        bias_p95               = bias_p95,
+        rel_bias_p95           = bias_p95 / true_q["95%"],
         stringsAsFactors       = FALSE
       )
     }, error = function(e) {
@@ -1891,6 +2164,16 @@ run_simulation_study_generalized <- function(n_sim,
         max_rhat               = NA,
         min_neff               = NA,
         converged              = FALSE,
+        true_kappa             = scenario$kappa,
+        coverage_kappa         = NA,
+        bias_kappa             = NA,
+        rel_bias_kappa         = NA,
+        coverage_median        = NA,
+        coverage_p95           = NA,
+        bias_median            = NA,
+        rel_bias_median        = NA,
+        bias_p95               = NA,
+        rel_bias_p95           = NA,
         stringsAsFactors       = FALSE
       )
     })
@@ -1900,7 +2183,9 @@ run_simulation_study_generalized <- function(n_sim,
     i          = seq_len(nrow(tasks)),
     .combine   = dplyr::bind_rows,
     .packages  = c("rstan", "ddsynth"),
-    .export    = c("stan_model", "run_one")
+    .export    = c("stan_model", "run_one",
+                   "compute_true_marginal_quantile",
+                   "compute_posterior_predictive_quantile_ci")
   ) %dopar% {
     run_one(
       scenario_idx = tasks$scenario_idx[i],
