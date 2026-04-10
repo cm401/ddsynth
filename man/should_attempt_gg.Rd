@@ -54,7 +54,9 @@ below \code{min_rich_fraction}, the shape is too poorly constrained.}
 }
 }
 \examples{
+\dontrun{
 should_attempt_gg(datasets_SARS)    # expected: FALSE
 should_attempt_gg(datasets_Mpox)
+}
 
 }

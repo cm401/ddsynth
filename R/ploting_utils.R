@@ -96,7 +96,7 @@ create_bias_plot <- function(summary_res)
     scale_shape_manual(values = c("5" = 4, "10" = 3, "20" = 8, "25+" = 5)) +
     scale_color_aaas() +
     scale_x_discrete(labels = c("mu0" = expression(mu[0]), "phi" = expression(phi), "tau" = expression(tau))) +
-    facet_grid(summary_type_label ~ dist_type, labeller = label_value, scale='free_y') +
+    facet_grid(summary_type_label ~ dist_type, labeller = label_value, scales = 'free_y') +
     labs(title = "Median Bias of Parameter Estimates", subtitle = "Red line indicates zero bias",
          x = "Parameter", y = "Median Bias", color = "N datasets", shape = "N obs") +
     theme_minimal() +
@@ -134,7 +134,7 @@ create_mae_plot <- function(summary_res)
     scale_shape_manual(values = c("5" = 4, "10" = 3, "20" = 8, "25+" = 5)) +
     scale_color_aaas() +
     scale_x_discrete(labels = c("mu0" = expression(mu[0]), "phi" = expression(phi), "tau" = expression(tau))) +
-    facet_grid(summary_type_label ~ dist_type, labeller = label_value, scale='free_y') +
+    facet_grid(summary_type_label ~ dist_type, labeller = label_value, scales = 'free_y') +
     labs(title = "Mean Absolute Error of Parameter Estimates", subtitle = "Red line indicates Mean Absolute Error",
          x = "Parameter", y = "Mean Absolute Error", color = "N datasets", shape = "N obs") +
     theme_minimal() +

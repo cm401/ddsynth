@@ -746,8 +746,10 @@ filter_datasets <- function(datasets, subgroup = NULL, location = NULL) {
 #'   `FALSE` otherwise.
 #'
 #' @examples
+#' \dontrun{
 #' should_attempt_gg(datasets_SARS)    # expected: FALSE
 #' should_attempt_gg(datasets_Mpox)
+#' }
 #'
 #' @export
 should_attempt_gg <- function(datasets,
