@@ -74,7 +74,6 @@ datasets_EVD <- list(         # Ebola Virus Disease
   d3  = list(mean   =  9.2, sd  =  6.7,             n =   33, country = 'Sierra Leone', subgroup = 'West Africa',     source = "Yan (2015), doi: 10.1007/s10096-015-2457-z"),
   d4  = list(mean   =  8.6, sd  =  6.1,             n =   20, country = 'Sierra Leone', subgroup = 'West Africa',     source = "Yamin (2016), doi: 10.1016/j.ajic.2016.04.216"),
   d5  = list(mean   =  9.5, sd  =  4.0,             n =   76, country = 'Sierra Leone', subgroup = 'West Africa',     source = "Muoghalu (2017), doi: 10.3389/fpubh.2017.00160"),
-  d6  = list(mean   = 10.0, sd  =  1.0,             n =  291, country = 'DRC',          subgroup = 'non-West Africa', source = "Lekone (2006), doi: 10.1111/j.1541-0420.2006.00609.x"),  # NOTE: unusually low SD — flag for pre_inference_checks()
   d7  = list(mean   =  9.9, sd  =  5.5,             n =  152, country = 'Guinea',       subgroup = 'West Africa',     source = "Faye (2015), doi: 10.1016/S1473-3099(14)71075-8"),
   d8  = list(mean   =  9.7, sd  =  3.7,             n =    8, country = 'Sierra Leone', subgroup = 'West Africa',     source = "Ajelli (2015), doi: 10.1186/s12916-015-0524-z"),
   d9  = list(mean   =  9.3, sd  =  1.9,             n =   20, country = 'Nigeria',      subgroup = 'non-West Africa', source = "Chan (2020), doi: 10.1098/rsif.2020.0498"),

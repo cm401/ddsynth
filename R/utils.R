@@ -817,6 +817,133 @@ should_attempt_gg <- function(datasets,
 }
 
 
+# Gamma + type-2 reliability heuristic ----------------------------------------
+
+#' Check whether Gamma can be reliably fitted from median + IQR summary statistics
+#'
+#' @description
+#' The Gamma distribution (dist_type = 2) has a single shape parameter
+#' \eqn{\phi} that controls the coefficient of variation CV = 1/\eqn{\sqrt{\phi}}.
+#' When only median + IQR (summary type 2) data are available, the likelihood
+#' gradient with respect to \eqn{\phi} comes exclusively from central order
+#' statistics at p = 0.25, 0.50, 0.75.  These central quantiles are most
+#' sensitive to location and spread, but carry weak information about shape
+#' compared with tail quantiles (type-1: min/max) or full frequency data
+#' (types 4/5).
+#'
+#' As \eqn{\phi} grows large the gamma distribution approaches a normal
+#' distribution: the three central quantiles become nearly symmetric around the
+#' mean, and the likelihood surface flattens in the \eqn{\phi} direction.
+#' MCMC consequently exhibits very small step sizes, high autocorrelation, and
+#' inference that is dominated by the prior on \code{log_phi}.
+#'
+#' Note that this problem does not apply to type-1 (median + range) or type-3
+#' (mean + SD) data.  Type-1 uses extreme order statistics (min, max) which
+#' lie in the tails where gamma shape sensitivity is largest.  Type-3 directly
+#' identifies \eqn{\phi} via \eqn{\phi = (\text{mean}/\text{SD})^2}, giving a
+#' sharp, well-defined gradient regardless of how concentrated the distribution is.
+#'
+#' The heuristic uses the moment estimator
+#' \deqn{\hat{\phi} = \left(\frac{1.35 \times \text{median}}{\text{IQR}}\right)^2}
+#' (equivalent to CV\eqn{^{-2}}, the method-of-moments gamma shape estimate)
+#' computed from each type-2 dataset.  If the median implied shape across
+#' type-2 datasets exceeds \code{max_implied_shape}, the function returns
+#' \code{FALSE}.
+#'
+#' @param datasets A named list of datasets as accepted by
+#'   [prepare_stan_data_from_datasets()].
+#' @param max_implied_shape Numeric scalar (default 20).  Maximum tolerated
+#'   median implied shape across type-2 datasets.  Corresponds to
+#'   CV \eqn{\approx} 0.22 and IQR/median \eqn{\approx} 0.30.  Reduce to be
+#'   stricter; increase to be more permissive.
+#' @param min_n Integer scalar (default 50).  Minimum acceptable sample size
+#'   for a type-2 dataset.  If more than half of the type-2 datasets fall
+#'   below this threshold, an advisory message is printed but \code{FALSE} is
+#'   not returned — use this as a soft warning only.
+#' @param verbose Logical (default \code{TRUE}).  Print a one-line verdict with
+#'   the reason a check failed.
+#'
+#' @return \code{TRUE} if type-2 data appear adequate for gamma fitting,
+#'   \code{FALSE} if the implied shape is too large for reliable inference.
+#'   Returns \code{TRUE} silently when no type-2 datasets are present (the
+#'   heuristic is not relevant in that case).
+#'
+#' @examples
+#' \dontrun{
+#' # Concentrated distribution — high implied shape, likely slow
+#' ds_concentrated <- list(
+#'   d1 = list(median = 10, Q1 = 9.2, Q3 = 10.8, n = 50),
+#'   d2 = list(median = 12, Q1 = 11.1, Q3 = 12.9, n = 60)
+#' )
+#' gamma_type2_reliable(ds_concentrated)   # expected: FALSE
+#'
+#' # Dispersed distribution — low implied shape, reliable
+#' ds_dispersed <- list(
+#'   d1 = list(median = 10, Q1 = 7, Q3 = 14, n = 80),
+#'   d2 = list(median = 8,  Q1 = 5, Q3 = 12, n = 100)
+#' )
+#' gamma_type2_reliable(ds_dispersed)      # expected: TRUE
+#' }
+#'
+#' @export
+gamma_type2_reliable <- function(datasets,
+                                  max_implied_shape = 20,
+                                  min_n             = 50,
+                                  verbose           = TRUE) {
+
+  # ── Identify type-2 datasets (median + Q1 + Q3) ────────────────────────────
+  is_type2 <- vapply(datasets, function(d) {
+    !is.null(d$median) && !is.null(d$Q1) && !is.null(d$Q3)
+  }, logical(1))
+
+  if (!any(is_type2)) {
+    # No type-2 data present — heuristic not relevant, allow fitting
+    return(TRUE)
+  }
+
+  type2_ds <- datasets[is_type2]
+
+  # ── Check 1: implied shape ──────────────────────────────────────────────────
+  implied_shapes <- vapply(type2_ds, function(d) {
+    iqr <- d$Q3 - d$Q1
+    if (iqr <= 0 || d$median <= 0) return(NA_real_)
+    (1.35 * d$median / iqr)^2
+  }, numeric(1))
+
+  implied_shapes_valid <- implied_shapes[!is.na(implied_shapes)]
+
+  if (length(implied_shapes_valid) > 0) {
+    med_shape <- stats::median(implied_shapes_valid)
+    if (med_shape > max_implied_shape) {
+      if (verbose)
+        message("gamma_type2_reliable: SKIP \u2014 median implied gamma shape = ",
+                round(med_shape, 1),
+                " (IQR/median \u2248 ", round(1.35 / sqrt(med_shape), 2), ")",
+                " exceeds threshold of ", max_implied_shape, ".",
+                " Central quantiles carry little information about shape when",
+                " the distribution is this concentrated; sampling will be slow.")
+      return(FALSE)
+    }
+  }
+
+  # ── Check 2: sample size (advisory only) ───────────────────────────────────
+  ns <- vapply(type2_ds, function(d) {
+    if (!is.null(d$n)) as.numeric(d$n) else NA_real_
+  }, numeric(1))
+  ns_valid <- ns[!is.na(ns)]
+
+  if (length(ns_valid) > 0 && sum(ns_valid < min_n) > length(ns_valid) / 2) {
+    if (verbose)
+      message("gamma_type2_reliable: NOTE \u2014 more than half of type-2 datasets",
+              " have n < ", min_n, ". Small samples make Q1/Q3 order statistics",
+              " imprecise; consider using type-1 or frequency-table data instead.")
+  }
+
+  if (verbose) message("gamma_type2_reliable: OK \u2014 type-2 data appears adequate for gamma.")
+  TRUE
+}
+
+
 # Pre-inference checks -----------------------------------------------------
 
 #' Run pre-inference checks on a list of datasets
