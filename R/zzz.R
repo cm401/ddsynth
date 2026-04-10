@@ -18,5 +18,9 @@ utils::globalVariables(c(
   # parameter label after pivot_longer
   "parameter",
   # convergence rate (create_convergence_plot)
-  "convergence_rate"
+  "convergence_rate",
+  # generate_cdf_plot_simulation_study_input
+  "x", "y", "dist_label", "label",
+  # generate_matched_moments_plot
+  "density"
 ))
