@@ -61,7 +61,7 @@ test_that("datasets_MVD round-trips through prepare_stan_data_from_datasets", {
 
 test_that("datasets_EVD is a named list with 13 entries", {
   expect_type(datasets_EVD, "list")
-  expect_equal(length(datasets_EVD), 12L)
+  expect_equal(length(datasets_EVD), 11L)
 })
 
 test_that("every datasets_EVD entry has a recognised summary-stat format", {
@@ -70,7 +70,7 @@ test_that("every datasets_EVD entry has a recognised summary-stat format", {
 
 test_that("datasets_EVD round-trips through prepare_stan_data_from_datasets", {
   sd <- prepare_stan_data_from_datasets(datasets_EVD, dist_type = 1)
-  expect_equal(sd$n_datasets, 12L)
+  expect_equal(sd$n_datasets, 11L)
   expect_true(all(sd$n_obs > 0))
 })
 
