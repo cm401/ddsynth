@@ -1982,7 +1982,16 @@ compute_wis <- function(fit,
   all_probs   <- sort(unique(c(lower_probs, 0.5, upper_probs)))
   # -> c(0.025, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.975)
 
-  kappa_val <- if (!is.null(true_params$kappa)) true_params$kappa else 1.0
+  kappa_val <- if (!is.null(true_params$kappa)) {
+    true_params$kappa
+  } else if (dist_type %in% c("burr12", "gengamma")) {
+    stop(sprintf(
+      "compute_wis: true_params$kappa is required for dist_type '%s'.",
+      dist_type
+    ), call. = FALSE)
+  } else {
+    1.0
+  }
 
   # ------------------------------------------------------------------
   # 2.  Posterior predictive median quantiles
