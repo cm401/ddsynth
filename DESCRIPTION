@@ -20,12 +20,15 @@ Imports:
     foreach,
     ggplot2,
     ggsci,
+    grid,
     MASS,
     parallel,
     purrr,
     rstan,
     stats,
-    tibble
+    stringr,
+    tibble,
+    tidyr
 Suggests:
     knitr,
     loo,
@@ -35,7 +38,6 @@ Suggests:
     rnaturalearthdata,
     sf,
     testthat (>= 3.0.0),
-    tidyr,
     tidyverse
 Config/testthat/edition: 3
 VignetteBuilder: knitr

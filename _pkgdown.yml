@@ -34,12 +34,18 @@ reference:
       - starts_with("create_")
       - starts_with("generate_")
       - starts_with("prepare_")
+      - extract_dataset_summary
+      - filter_datasets
   - title: "Model Fitting"
     desc: "Functions for fitting hierarchical Bayesian models"
     contents:
       - starts_with("fit_")
       - starts_with("run_")
       - starts_with("bsl_")
+      - make_stan_init_fn
+      - pre_inference_checks
+      - should_attempt_gg
+      - update_phi_prior
   - title: "Results & Plotting"
     desc: "Functions for summarising and visualising results"
     contents:
@@ -48,6 +54,8 @@ reference:
       - starts_with("create_bias")
       - starts_with("create_mae")
       - starts_with("create_convergence")
+      - compute_pathogen_model_bayes_factors
+      - plot_main_figure
   - title: "Simulation Metrics"
     desc: "Functions for evaluating simulation study performance"
     contents:
@@ -55,5 +63,8 @@ reference:
       - compute_iqd
       - compute_median_bias
       - compute_predictive_cdf
+      - compute_posterior_predictive_quantile_ci
+      - compute_true_marginal_quantile
+      - compute_wis
       - extract_quantiles
       - summarise_parameters

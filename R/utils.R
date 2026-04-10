@@ -601,38 +601,38 @@ update_phi_prior <- function(stan_data, datasets) {
       lognormal = sqrt(log(1 + (sd_est / mean_est)^2)),
       gamma     = (mean_est / sd_est)^2,
       weibull   = {
-        cv  <- sd_est / mean_est
-        obj <- function(k) sqrt(gamma(1 + 2/k) / gamma(1 + 1/k)^2 - 1) - cv
-        tryCatch(stats::uniroot(obj, c(0.1, 200))$root,
+        cv      <- sd_est / mean_est
+        obj_wei <- function(k) sqrt(gamma(1 + 2/k) / gamma(1 + 1/k)^2 - 1) - cv
+        tryCatch(stats::uniroot(obj_wei, c(0.1, 200))$root,
                  error = function(e) NA_real_)
       },
       gengamma  = {
         # CV² = Γ(γ + 2σ/κ)·Γ(γ) / Γ(γ + σ/κ)² − 1  where γ = 1/κ²
         # CV is an increasing function of σ (phi), starting at 0 as σ→0⁺.
-        cv <- sd_est / mean_est
-        gs <- 1.0 / kappa_val^2          # gamma_shape = 1/Q^2
-        obj <- function(sigma) {
+        cv      <- sd_est / mean_est
+        gs      <- 1.0 / kappa_val^2          # gamma_shape = 1/Q^2
+        obj_gg  <- function(sigma) {
           a1 <- gs + sigma / kappa_val
           a2 <- gs + 2.0 * sigma / kappa_val
           cv_sq <- exp(lgamma(a2) + lgamma(gs) - 2.0 * lgamma(a1)) - 1.0
           sqrt(max(cv_sq, 0.0)) - cv
         }
-        tryCatch(stats::uniroot(obj, c(1e-6, 20.0))$root,
+        tryCatch(stats::uniroot(obj_gg, c(1e-6, 20.0))$root,
                  error = function(e) NA_real_)
       },
       burr12    = {
         # CV² = B(k−2/c, 1+2/c) / (k · B(k−1/c, 1+1/c)²) − 1
         # Moments require k·c > 2, i.e. c > 2/k.  CV is decreasing in c,
         # so uniroot searches from (2/k + ε) upward.
-        cv      <- sd_est / mean_est
-        lower_c <- 2.0 / kappa_val + 1e-6
-        obj <- function(c_val) {
+        cv        <- sd_est / mean_est
+        lower_c   <- 2.0 / kappa_val + 1e-6
+        obj_burr  <- function(c_val) {
           lb1 <- lbeta(kappa_val - 1.0 / c_val, 1.0 + 1.0 / c_val)
           lb2 <- lbeta(kappa_val - 2.0 / c_val, 1.0 + 2.0 / c_val)
           cv_model <- sqrt(exp(lb2 - log(kappa_val) - 2.0 * lb1) - 1.0)
           cv_model - cv
         }
-        tryCatch(stats::uniroot(obj, c(lower_c, 50.0))$root,
+        tryCatch(stats::uniroot(obj_burr, c(lower_c, 50.0))$root,
                  error = function(e) NA_real_)
       }
     )
@@ -746,8 +746,10 @@ filter_datasets <- function(datasets, subgroup = NULL, location = NULL) {
 #'   `FALSE` otherwise.
 #'
 #' @examples
+#' \dontrun{
 #' should_attempt_gg(datasets_SARS)    # expected: FALSE
 #' should_attempt_gg(datasets_Mpox)
+#' }
 #'
 #' @export
 should_attempt_gg <- function(datasets,
@@ -830,7 +832,7 @@ should_attempt_gg <- function(datasets,
 #'     whose implied `phi` is more than `phi_outlier_threshold` times the
 #'     median of all implied values.}
 #'   \item{2. Prior predictive compatibility}{Simulates summary statistics from
-#'     the prior and checks whether each observed value falls within the 95\%
+#'     the prior and checks whether each observed value falls within the 95%
 #'     prior predictive interval. Datasets outside this range suggest a
 #'     prior--data mismatch.}
 #'   \item{3. MAP optimisation probe}{Runs [rstan::optimizing()] as a fast
@@ -873,7 +875,7 @@ should_attempt_gg <- function(datasets,
 #'   \describe{
 #'     \item{`mom_consistency`}{Data frame of implied `phi` per dataset with
 #'       an `is_outlier` flag.}
-#'     \item{`prior_predictive`}{Data frame of 95\% prior predictive intervals
+#'     \item{`prior_predictive`}{Data frame of 95% prior predictive intervals
 #'       for the implied SD of each dataset, with an `outside_prior_pi` flag.}
 #'     \item{`map_probe`}{List with `phi_map` (MAP estimate of `phi`) and
 #'       `map_converged` logical.}
@@ -1832,8 +1834,8 @@ compute_iqd <- function(fit, true_params, dist_type, x_grid = NULL) {
 #' @param probs Numeric vector of probabilities for which quantiles are computed.
 #'   Default \code{c(0.5, 0.95)}.
 #' @param n_mc Number of Monte Carlo draws. Default 5000.
-#' @return A named numeric vector of quantiles (names are e.g. \code{"50\%"},
-#'   \code{"95\%"}).
+#' @return A named numeric vector of quantiles (names are e.g. \code{"50%"},
+#'   \code{"95%"}).
 #' @export
 compute_true_marginal_quantile <- function(dist_type,
                                            mu0,
@@ -1953,12 +1955,20 @@ compute_posterior_predictive_quantile_ci <- function(fit,
 #' @param true_params Named list with elements \code{mu0}, \code{tau},
 #'   \code{phi}, and optionally \code{kappa}.
 #' @param alpha_levels Numeric vector of PI coverage levels (e.g. 0.95 for a
-#'   95\% PI). Default \code{c(0.50, 0.80, 0.90, 0.95)}.
+#'   95% PI). Default \code{c(0.50, 0.80, 0.90, 0.95)}.
 #' @param n_post_draws Number of posterior draws passed to
 #'   \code{compute_posterior_predictive_quantile_ci}. Default 500.
 #' @param n_mc_per_draw MC samples per posterior draw. Default 1000.
 #' @param n_test Number of test observations drawn from the true marginal
 #'   distribution. Default 200.
+#' @param pred_q Optional pre-computed vector of posterior predictive median
+#'   quantiles at the probability grid derived from \code{alpha_levels}, as
+#'   returned by the \code{$median} element of
+#'   [compute_posterior_predictive_quantile_ci()].  When supplied the internal
+#'   call to that function is skipped, avoiding redundant computation.
+#' @param true_median Optional pre-computed true marginal median (scalar), e.g.
+#'   the \code{'50\%'} element from [compute_true_marginal_quantile()].  When
+#'   supplied the internal call to that function is skipped.
 #' @return A list with \code{wis} (mean WIS, same scale as the delay outcome)
 #'   and \code{rel_wis} (WIS divided by the true marginal median).
 #' @export
