@@ -401,6 +401,50 @@ if (!is.null(RUN_ONLY)) {
 
 # ── 4. Runner functions ────────────────────────────────────────────────────────
 
+# Convert the flat Stan-format obs_data list returned by
+# generate_hierarchical_data_mixed() into a named list of per-dataset entries
+# that match the structure expected by should_attempt_gg() and
+# gamma_type2_reliable() (which were designed for the main analysis pipeline
+# where each dataset is a separate named list with fields like $median, $Q1,
+# $Q3, $mean, $sd, $freq_value, etc.).
+#
+# generate_hierarchical_data_mixed() returns a SINGLE flat list with vector
+# fields (obs_stat1, obs_stat2, obs_stat3, summary_type, ...).  Passing that
+# flat list directly to the heuristics causes vapply() to iterate over the
+# top-level field names, none of which have $median/$Q1/etc., so every dataset
+# appears as "not type-2" / "not rich" and the heuristics always return TRUE.
+obs_data_to_dataset_list <- function(od) {
+  n <- od$n_datasets
+  lapply(seq_len(n), function(i) {
+    st  <- od$summary_type[i]
+    n_i <- od$n_obs[i]
+    if (st == 1L) {          # median + range
+      list(median = od$obs_stat1[i],
+           min    = od$obs_stat2[i],
+           max    = od$obs_stat3[i],
+           n      = n_i)
+    } else if (st == 2L) {  # median + IQR
+      list(median = od$obs_stat1[i],
+           Q1     = od$obs_stat2[i],
+           Q3     = od$obs_stat3[i],
+           n      = n_i)
+    } else if (st == 3L) {  # mean + SD
+      list(mean = od$obs_stat1[i],
+           sd   = od$obs_stat2[i],
+           n    = n_i)
+    } else if (st == 4L) {  # frequency table
+      start <- od$freq_start[i]
+      len   <- od$freq_len[i]
+      idx   <- seq_len(len) + start - 1L
+      list(freq_value = od$freq_value[idx],
+           freq_count = od$freq_count[idx],
+           n          = n_i)
+    } else {
+      list(n = n_i)
+    }
+  })
+}
+
 # WIS probability grid (shared between WIS and posterior quantile CI).
 WIS_ALPHA_LEVELS <- c(0.50, 0.80, 0.90, 0.95)
 WIS_ALL_PROBS    <- sort(unique(c(
@@ -470,18 +514,23 @@ run_one_sim <- function(sc, sim_idx, stan_model, seed) {
 
     obs_datasets <- sim_data$obs_data
 
+    # Convert flat Stan-format obs_data to per-dataset list so that
+    # should_attempt_gg() and gamma_type2_reliable() can inspect individual
+    # dataset fields ($median, $Q1, $Q3, $freq_value, etc.).
+    ds_list <- obs_data_to_dataset_list(obs_datasets)
+
     # ── Heuristic checks ────────────────────────────────────────────────────
     # Skips are per-replicate because they depend on the observed data.
     # skipped_reason records which heuristic fired; scenario_feasibility_note
     # records whether this was expected (see Section 3f above).
 
     if (sc$dist_type == "gengamma" &&
-        !should_attempt_gg(obs_datasets, verbose = FALSE)) {
+        !should_attempt_gg(ds_list, verbose = FALSE)) {
       return(mutate(na_row, skipped_reason = "gg_heuristic"))
     }
 
     if (sc$dist_type == "gamma" &&
-        !gamma_type2_reliable(obs_datasets, verbose = FALSE)) {
+        !gamma_type2_reliable(ds_list, verbose = FALSE)) {
       return(mutate(na_row, skipped_reason = "gamma_type2_heuristic"))
     }
 
