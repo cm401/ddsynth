@@ -31,6 +31,9 @@ Suggests:
     loo,
     patchwork,
     rmarkdown,
+    rnaturalearth (>= 0.3.0),
+    rnaturalearthdata,
+    sf,
     testthat (>= 3.0.0),
     tidyr,
     tidyverse
