@@ -529,65 +529,65 @@ datasets_RVF <- list(
 # PubMed search: (CCHF OR "Crimean-Congo hemorrhagic fever" ) AND "incubation period" 
 
 datasets_CCHF <- list( 
-  d1 <- list( mean   = 4.00, sd     = 2.40, n      = 49, source = "Arslan (2024), doi: 10.14744/nci.2023.09815" ), # Tick-bite patients only (55.7% of 88 total). Range 1-11d.
-  d2 <- list(           #N=12 Iranian HCW, blood/nosocomial exposure only.
+  d1 = list( mean   = 4.00, sd     = 2.40, n      = 49, source = "Arslan (2024), doi: 10.14744/nci.2023.09815" ), # Tick-bite patients only (55.7% of 88 total). Range 1-11d.
+  d2 = list(           #N=12 Iranian HCW, blood/nosocomial exposure only.
     freq_value  = c(22, 2, 2, 7, 7, 5, 13, 6, 4, 1, 5, 8),
     freq_count  = c( 1, 1, 1, 1, 1, 1,  1, 1, 1, 1, 1, 1),
     country     = 'Iran',
     source      = "Fazlalipour (2024), doi:10.1186/s12879-024-10199"
   ),
-  d3 <- list(           #Table 2 footnotes. Nosocomial cases: Case A intact skin/blood IP<20h (encoded as 1d, anomalous per authors), Case B conjunctival splash IP=5d, Case C needlestick IP=8d.
+  d3 = list(           #Table 2 footnotes. Nosocomial cases: Case A intact skin/blood IP<20h (encoded as 1d, anomalous per authors), Case B conjunctival splash IP=5d, Case C needlestick IP=8d.
     freq_value = c(1, 5, 8),
     freq_count = c(1, 1, 1),
     country    = 'Iran',
     source = "Naderi (2013), doi:10.4269/ajtmh.2012.12-0337"
   ),
-  d4 <- list( median = 3, Q1 = 2, Q3 = 4, n = 64, country = 'Turkey', source = "Beştepe Dursun (2021), doi: 10.1002/jca.21875"),
-  d5 <- list( mean   = 5.5, sd     = 3.60, n      = 64, country = 'Turkey', source = "Koksal (2010), doi: 10.1016/j.jcv.2009.11.007" ), 
-  d6 <- list( mean   = 4.9, sd     = 3.90, n      = 72, country = 'Turkey', source = "Koksal (2010), doi: 10.1016/j.jcv.2009.11.007" )
+  d4 = list( median = 3, Q1 = 2, Q3 = 4, n = 64, country = 'Turkey', source = "Beştepe Dursun (2021), doi: 10.1002/jca.21875"),
+  d5 = list( mean   = 5.5, sd     = 3.60, n      = 64, country = 'Turkey', source = "Koksal (2010), doi: 10.1016/j.jcv.2009.11.007" ), 
+  d6 = list( mean   = 4.9, sd     = 3.90, n      = 72, country = 'Turkey', source = "Koksal (2010), doi: 10.1016/j.jcv.2009.11.007" )
 )
 
 datasets_CCHF_extended <- list(  # this includes approximation and one dataset purely of outliers.
-  d1 <- list( mean   = 4.00, sd     = 2.40, n      = 49, 
+  d1 = list( mean   = 4.00, sd     = 2.40, n      = 49, 
               source = "Arslan (2024), doi:10.14744/nci.2023.09815",
               country = 'Turkey',
               subgroup = "tick-bite" ), # Tick-bite patients only (55.7% of 88 total). Range 1-11d.
-  d2 <- list(           #N=12 Iranian HCW, blood/nosocomial exposure only.
+  d2 = list(           #N=12 Iranian HCW, blood/nosocomial exposure only.
     freq_value  = c(22, 2, 2, 7, 7, 5, 13, 6, 4, 1, 5, 8),
     freq_count  = c( 1, 1, 1, 1, 1, 1,  1, 1, 1, 1, 1, 1),
     source      = "Fazlalipour (2024), doi:10.1186/s12879-024-10199",
     country     = 'Iran',
     subgroup    = "nosocomial"
   ),
-  d3 <- list(           #N=12 outlier tick-bite cases (IP>12d) selected from 312 tick-bite patients. OUTLIER SERIES 
+  d3 = list(           #N=12 outlier tick-bite cases (IP>12d) selected from 312 tick-bite patients. OUTLIER SERIES 
     freq_value  = c(13, 14, 15, 15, 16, 20, 22, 23, 24, 27, 41, 53),
     freq_count  = c( 1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1),
     country = 'Turkey',
     source      = "Kaya (2011), doi:10.1016/j.ijid.2011.03.007",
     subgroup    = "tick-bite"
   ),
-  d4 <- list(           #Table 2 footnotes. Nosocomial cases: Case A intact skin/blood IP<20h (encoded as 1d, anomalous per authors), Case B conjunctival splash IP=5d, Case C needlestick IP=8d.
+  d4 = list(           #Table 2 footnotes. Nosocomial cases: Case A intact skin/blood IP<20h (encoded as 1d, anomalous per authors), Case B conjunctival splash IP=5d, Case C needlestick IP=8d.
     freq_value = c(1, 5, 8),
     freq_count = c(1, 1, 1),
     country    = 'Iran',
     source = "Naderi (2013), doi:10.4269/ajtmh.2012.12-0337",
     subgroup = "nosocomial"
   ),
-  d5 <- list( median = 3, Q1 = 2, Q3 = 4, n = 64, 
+  d5 = list( median = 3, Q1 = 2, Q3 = 4, n = 64, 
               source = "Beştepe Dursun (2021), doi: 10.1002/jca.21875",
               country = 'Turkey',
               subgroup = "other"),  # mix of patients in hospital
-  d6 <- list( mean   = 5.5, sd     = 3.60, n      = 64, 
+  d6 = list( mean   = 5.5, sd     = 3.60, n      = 64, 
               country = 'Turkey',
               source = "Koksal (2010), doi: 10.1016/j.jcv.2009.11.007",
               subgroup = "other"),  # mix of patients in hospital, ribavirin + supportive care
-  d7 <- list( mean   = 4.9, sd     = 3.90, n      = 72, 
+  d7 = list( mean   = 4.9, sd     = 3.90, n      = 72, 
               country = 'Turkey',
               source = "Koksal (2010), doi: 10.1016/j.jcv.2009.11.007",
               subgroup = "other"),  # mix of patients in hospital, supportive care only
   # --- Swanepoel et al. 1989 (Rev Infect Dis 11 Suppl 4:S794-S800, PMID 2749111)
   # 50 cases, South Africa 1981-1987 (superset of 1987 paper)
-  cchf_swanepoel_1989_tick <- list(
+  cchf_swanepoel_1989_tick = list(
     median = 2.5,   # Wan est. = 2.3, rounded up; mean 3.4, right-skewed [Median estimated from mean (3.4d) via Wan et al. (2014) BMC Med Res Methodol 14:135.]
     min    = 2.0,
     max    = 7.0,
@@ -596,7 +596,7 @@ datasets_CCHF_extended <- list(  # this includes approximation and one dataset p
     source = "Swanepoel (1989), doi:10.1093/clinids/11.Supplement_4.S794",
     subgroup = "tick-bite"
   ),
-  cchf_swanepoel_1989_livestock <- list(
+  cchf_swanepoel_1989_livestock = list(
     median = 4.0,   # Wan est. = 3.9
     min    = 2.0,
     max    = 9.0,
@@ -605,7 +605,7 @@ datasets_CCHF_extended <- list(  # this includes approximation and one dataset p
     source = "Swanepoel (1989), doi:10.1093/clinids/11.Supplement_4.S794",
     subgroup = "other"  # livestock
   ),
-  cchf_swanepoel_1989_nosocomial <- list(
+  cchf_swanepoel_1989_nosocomial = list(
     median = 6.0,   # Wan est. = 6.2, rounded to 6.0
     min    = 3.0,
     max    = 7.0,
@@ -614,7 +614,7 @@ datasets_CCHF_extended <- list(  # this includes approximation and one dataset p
     source = "Swanepoel (1989), doi:10.1093/clinids/11.Supplement_4.S794",
     subgroup = "nosocomial"
   ),
-  cchf_pshenichnaya_2016 <- list( # Table 1 and case narratives. N=3 secondary cases via possible sexual contact, Russia. IPs interval-censored from exposure window. Transmission route unconfirmed — extended dataset only.
+  cchf_pshenichnaya_2016 = list( # Table 1 and case narratives. N=3 secondary cases via possible sexual contact, Russia. IPs interval-censored from exposure window. Transmission route unconfirmed — extended dataset only.
     freq_lower = c(3, 2, 8),
     freq_upper = c(5, 3, 9),
     freq_count = c(1, 1, 1),
