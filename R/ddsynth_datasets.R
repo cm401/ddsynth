@@ -78,18 +78,18 @@ datasets_EVD <- list(         # Ebola Virus Disease
   d7  = list(mean   =  9.9, sd  =  5.5,             n =  152, country = 'Guinea',       subgroup = 'West Africa',     source = "Faye (2015), doi: 10.1016/S1473-3099(14)71075-8"),
   d8  = list(mean   =  9.7, sd  =  3.7,             n =    8, country = 'Sierra Leone', subgroup = 'West Africa',     source = "Ajelli (2015), doi: 10.1186/s12916-015-0524-z"),
   d9  = list(mean   =  9.3, sd  =  1.9,             n =   20, country = 'Nigeria',      subgroup = 'non-West Africa', source = "Chan (2020), doi: 10.1098/rsif.2020.0498"),
-  d10 = list(        # West Africa 2014
-    # n defaults to sum(freq_count) = 143
-    freq_value = c( 1,  2,  3,  4,  5,  6,  7,  8,  9, 10,
-                   11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-                   21, 22, 23, 25, 27, 30, 32, 35, 38, 42),
-    freq_count = c( 1,  2,  4,  6,  8,  9, 10, 11, 12, 13,
-                   11, 10,  8,  7,  5,  4,  3,  3,  2,  2,
-                    2,  1,  1,  1,  1,  1,  1,  1,  1,  1),
-    country = 'Mixed',
-    subgroup = 'West Africa', 
-    source     = "WHO Ebola Response Team (2014), doi: 10.1056/NEJMoa1411100"
-  ),
+  #d10 = list(        # West Africa 2014 -- remove all of West Africa outbreak as we have the individual countries below
+  #  # n defaults to sum(freq_count) = 143
+  #  freq_value = c( 1,  2,  3,  4,  5,  6,  7,  8,  9, 10,
+  #                 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+  #                 21, 22, 23, 25, 27, 30, 32, 35, 38, 42),
+  #  freq_count = c( 1,  2,  4,  6,  8,  9, 10, 11, 12, 13,
+  #                 11, 10,  8,  7,  5,  4,  3,  3,  2,  2,
+  #                  2,  1,  1,  1,  1,  1,  1,  1,  1,  1),
+  #  country = 'Mixed',
+  #  subgroup = 'West Africa', 
+  #  source     = "WHO Ebola Response Team (2014), doi: 10.1056/NEJMoa1411100"
+  #),
   d11 = list(        # Guinea
     # n defaults to sum(freq_count) = 58
     freq_value = c( 2,  3,  4,  5,  6,  7,  8,  9, 10, 11,
@@ -115,7 +115,7 @@ datasets_EVD <- list(         # Ebola Virus Disease
     freq_value = c( 3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18),
     freq_count = c( 1,  1,  2,  2,  2,  3,  3,  3,  3,  2,  2,  2,  1,  1,  1,  1),
     country = 'Sierra Leone',
-    subcountry = 'West Africa', 
+    subgroup = 'West Africa', 
     source     = "WHO Ebola Response Team (2014), doi: 10.1056/NEJMoa1411100"
   )
 )
