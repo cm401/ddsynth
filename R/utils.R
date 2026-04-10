@@ -2035,6 +2035,8 @@ compute_wis <- function(fit,
 
   # Tolerance-based probability lookup to avoid exact floating-point equality.
   prob_idx <- function(prob_vec, target, tol = 1e-9) {
+    if (length(prob_vec) == 0L)
+      stop("compute_wis: probability grid is empty.", call. = FALSE)
     idx <- which.min(abs(prob_vec - target))
     if (abs(prob_vec[idx] - target) > tol)
       stop(sprintf("compute_wis: probability %.8g not found in grid.", target),
