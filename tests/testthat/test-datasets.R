@@ -59,7 +59,7 @@ test_that("datasets_MVD round-trips through prepare_stan_data_from_datasets", {
 # datasets_EVD
 # ---------------------------------------------------------------------------
 
-test_that("datasets_EVD is a named list with 13 entries", {
+test_that("datasets_EVD is a named list with 11 entries", {
   expect_type(datasets_EVD, "list")
   expect_equal(length(datasets_EVD), 11L)
 })
