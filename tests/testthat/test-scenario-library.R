@@ -152,7 +152,7 @@ test_that("include_gengamma = TRUE adds 6 standard GG rows", {
 test_that("include_gg_limitation = TRUE requires include_gengamma = TRUE", {
   sc <- generate_scenario_library(include_gengamma     = TRUE,
                                   include_gg_limitation = TRUE)
-  expect_equal(sum(sc$scenario_group == "gg_limitation"), 2L)
+  expect_equal(sum(sc$scenario_group == "gg_limitation"), 3L)
 })
 
 test_that("include_gg_limitation = TRUE without gengamma adds no limitation rows", {
