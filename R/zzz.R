@@ -22,5 +22,11 @@ utils::globalVariables(c(
   # generate_cdf_plot_simulation_study_input
   "x", "y", "dist_label", "label",
   # generate_matched_moments_plot
-  "density"
+  "density",
+  # create_results_summary (dplyr::select NSE)
+  "vary_n",
+  # pre_inference_checks (dplyr NSE column references)
+  "dataset", "implied_phi", "is_outlier",
+  "sd_est", "outside_prior_pi",
+  "log_prob", "phi_lo", "phi_hi"
 ))
