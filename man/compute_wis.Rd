@@ -12,7 +12,9 @@ compute_wis(
   alpha_levels = c(0.5, 0.8, 0.9, 0.95),
   n_post_draws = 500L,
   n_mc_per_draw = 1000L,
-  n_test = 200L
+  n_test = 200L,
+  pred_q = NULL,
+  true_median = NULL
 )
 }
 \arguments{
@@ -35,6 +37,16 @@ compute_wis(
 
 \item{n_test}{Number of test observations drawn from the true marginal
 distribution. Default 200.}
+
+\item{pred_q}{Optional pre-computed vector of posterior predictive median
+quantiles at the probability grid derived from \code{alpha_levels}, as
+returned by the \code{$median} element of
+\code{\link[=compute_posterior_predictive_quantile_ci]{compute_posterior_predictive_quantile_ci()}}.  When supplied the internal
+call to that function is skipped, avoiding redundant computation.}
+
+\item{true_median}{Optional pre-computed true marginal median (scalar), e.g.
+the \code{"50\%"} element from \code{\link[=compute_true_marginal_quantile]{compute_true_marginal_quantile()}}.  When
+supplied the internal call to that function is skipped.}
 }
 \value{
 A list with \code{wis} (mean WIS, same scale as the delay outcome)

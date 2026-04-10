@@ -46,8 +46,10 @@ environment, ready to paste into an Overleaf document.
 }
 \description{
 Produces a \pkg{booktabs}-style LaTeX table with one row per pathogen and
-(optionally) indented italic sub-rows for each subgroup analysis.  For
-every row the table reports:
+(optionally) indented italic sub-rows for each subgroup analysis.
+}
+\details{
+For every row the table reports:
 \itemize{
 \item the best-fitting distribution (selected with the same
 convergence-filtered LOO-weight logic as \code{\link[=plot_main_figure]{plot_main_figure()}});
