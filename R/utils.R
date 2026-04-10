@@ -1969,7 +1969,9 @@ compute_wis <- function(fit,
                         alpha_levels  = c(0.50, 0.80, 0.90, 0.95),
                         n_post_draws  = 500L,
                         n_mc_per_draw = 1000L,
-                        n_test        = 200L) {
+                        n_test        = 200L,
+                        pred_q        = NULL,
+                        true_median   = NULL) {
 
   # ------------------------------------------------------------------
   # 1.  Quantile probability grid needed for WIS
@@ -1980,23 +1982,28 @@ compute_wis <- function(fit,
   all_probs   <- sort(unique(c(lower_probs, 0.5, upper_probs)))
   # -> c(0.025, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.975)
 
+  kappa_val <- if (!is.null(true_params$kappa)) true_params$kappa else 1.0
+
   # ------------------------------------------------------------------
-  # 2.  Posterior predictive median quantiles (reuse existing helper)
+  # 2.  Posterior predictive median quantiles
+  #     Skipped when pred_q is supplied by the caller (e.g. run_one()),
+  #     avoiding a redundant compute_posterior_predictive_quantile_ci call.
   # ------------------------------------------------------------------
-  post_obj <- compute_posterior_predictive_quantile_ci(
-    fit           = fit,
-    dist_type     = dist_type,
-    n_datasets    = n_datasets,
-    probs         = all_probs,
-    n_post_draws  = n_post_draws,
-    n_mc_per_draw = n_mc_per_draw
-  )
-  pred_q <- post_obj$median      # one value per element of all_probs
+  if (is.null(pred_q)) {
+    post_obj <- compute_posterior_predictive_quantile_ci(
+      fit           = fit,
+      dist_type     = dist_type,
+      n_datasets    = n_datasets,
+      probs         = all_probs,
+      n_post_draws  = n_post_draws,
+      n_mc_per_draw = n_mc_per_draw
+    )
+    pred_q <- post_obj$median      # one value per element of all_probs
+  }
 
   # ------------------------------------------------------------------
   # 3.  Draw test observations from the true marginal distribution
   # ------------------------------------------------------------------
-  kappa_val <- if (!is.null(true_params$kappa)) true_params$kappa else 1.0
   loc_draws <- rnorm(n_test, mean = true_params$mu0, sd = true_params$tau)
 
   if (dist_type == "lognormal") {
@@ -2044,15 +2051,18 @@ compute_wis <- function(fit,
 
   # ------------------------------------------------------------------
   # 5.  True marginal median (for relative WIS)
+  #     Skipped when true_median is supplied by the caller.
   # ------------------------------------------------------------------
-  true_median <- compute_true_marginal_quantile(
-    dist_type = dist_type,
-    mu0       = true_params$mu0,
-    tau       = true_params$tau,
-    phi       = true_params$phi,
-    kappa     = kappa_val,
-    probs     = 0.5
-  )["50%"]
+  if (is.null(true_median)) {
+    true_median <- compute_true_marginal_quantile(
+      dist_type = dist_type,
+      mu0       = true_params$mu0,
+      tau       = true_params$tau,
+      phi       = true_params$phi,
+      kappa     = kappa_val,
+      probs     = 0.5
+    )["50%"]
+  }
 
   list(
     wis     = mean(wis_vals, na.rm = TRUE),
@@ -2185,36 +2195,49 @@ run_simulation_study_generalized <- function(n_sim,
 
       iqd <- compute_iqd(fit, sim_data$true_params, scenario$dist_type)
 
-      # Weighted Interval Score
-      wis_result <- compute_wis(
-        fit         = fit,
-        dist_type   = scenario$dist_type,
-        n_datasets  = scenario$n_datasets,
-        true_params = sim_data$true_params
-      )
-
       # kappa coverage/bias (only for 3-parameter distributions)
       has_kappa      <- scenario$dist_type %in% c("burr12", "gengamma")
       coverage_kappa <- if (has_kappa) check_coverage(fit, "kappa", sim_data$true_params$kappa) else NA
       bias_kappa     <- if (has_kappa) compute_median_bias(fit, "kappa", sim_data$true_params$kappa) else NA
 
-      # Quantile coverage: marginal median (Q50) and 95th percentile (Q95)
-      true_q  <- compute_true_marginal_quantile(
+      # True marginal quantiles (single call; "50%" reused as true_median for rel_wis)
+      true_q <- compute_true_marginal_quantile(
         dist_type = scenario$dist_type,
         mu0       = sim_data$true_params$mu0,
         tau       = sim_data$true_params$tau,
         phi       = sim_data$true_params$phi,
         kappa     = sim_data$true_params$kappa
       )
+
+      # Posterior predictive quantiles — single call covering both coverage/bias
+      # (Q50, Q95) and the full WIS grid (9 levels).  The WIS probs are the
+      # superset so we use them here and index into the result below.
+      wis_all_probs <- c(0.025, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.975)
+      idx_q50 <- which(wis_all_probs == 0.50)   # 5
+      idx_q95 <- which(wis_all_probs == 0.95)   # 8
       post_ci <- compute_posterior_predictive_quantile_ci(
         fit        = fit,
         dist_type  = scenario$dist_type,
-        n_datasets = scenario$n_datasets
+        n_datasets = scenario$n_datasets,
+        probs      = wis_all_probs
       )
-      coverage_median <- true_q["50%"] >= post_ci$lower[1] & true_q["50%"] <= post_ci$upper[1]
-      coverage_p95    <- true_q["95%"] >= post_ci$lower[2] & true_q["95%"] <= post_ci$upper[2]
-      bias_median     <- post_ci$median[1] - true_q["50%"]
-      bias_p95        <- post_ci$median[2] - true_q["95%"]
+
+      # Quantile coverage and bias (index into the joint post_ci result)
+      coverage_median <- true_q["50%"] >= post_ci$lower[idx_q50] & true_q["50%"] <= post_ci$upper[idx_q50]
+      coverage_p95    <- true_q["95%"] >= post_ci$lower[idx_q95] & true_q["95%"] <= post_ci$upper[idx_q95]
+      bias_median     <- post_ci$median[idx_q50] - true_q["50%"]
+      bias_p95        <- post_ci$median[idx_q95] - true_q["95%"]
+
+      # Weighted Interval Score — pass pre-computed pred_q and true_median to
+      # avoid repeating the two expensive MC calls above
+      wis_result <- compute_wis(
+        fit         = fit,
+        dist_type   = scenario$dist_type,
+        n_datasets  = scenario$n_datasets,
+        true_params = sim_data$true_params,
+        pred_q      = post_ci$median,
+        true_median = unname(true_q["50%"])
+      )
 
       data.frame(
         scenario_idx           = scenario_idx,
