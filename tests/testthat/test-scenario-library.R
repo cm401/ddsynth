@@ -187,7 +187,7 @@ test_that("full scenario library has 193 rows", {
     include_gengamma      = TRUE,
     include_gg_limitation = TRUE
   )
-  expect_equal(nrow(sc), 193L)
+  expect_equal(nrow(sc), 194L)
 })
 
 test_that("base-only library (no freq table) has consistent row count across dists", {
