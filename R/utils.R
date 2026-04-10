@@ -1940,6 +1940,157 @@ compute_posterior_predictive_quantile_ci <- function(fit,
   )
 }
 
+#' Compute the mean Weighted Interval Score for the posterior predictive distribution
+#'
+#' Evaluates the posterior predictive distribution against test observations drawn
+#' from the true marginal distribution, using the Weighted Interval Score
+#' (Bracher et al. 2021) — a proper scoring rule that rewards both calibration
+#' and sharpness.
+#'
+#' @param fit A \code{stanfit} object.
+#' @param dist_type Distribution type string.
+#' @param n_datasets Number of studies in the fitted data.
+#' @param true_params Named list with elements \code{mu0}, \code{tau},
+#'   \code{phi}, and optionally \code{kappa}.
+#' @param alpha_levels Numeric vector of PI coverage levels (e.g. 0.95 for a
+#'   95\% PI). Default \code{c(0.50, 0.80, 0.90, 0.95)}.
+#' @param n_post_draws Number of posterior draws passed to
+#'   \code{compute_posterior_predictive_quantile_ci}. Default 500.
+#' @param n_mc_per_draw MC samples per posterior draw. Default 1000.
+#' @param n_test Number of test observations drawn from the true marginal
+#'   distribution. Default 200.
+#' @return A list with \code{wis} (mean WIS, same scale as the delay outcome)
+#'   and \code{rel_wis} (WIS divided by the true marginal median).
+#' @export
+compute_wis <- function(fit,
+                        dist_type,
+                        n_datasets,
+                        true_params,
+                        alpha_levels  = c(0.50, 0.80, 0.90, 0.95),
+                        n_post_draws  = 500L,
+                        n_mc_per_draw = 1000L,
+                        n_test        = 200L,
+                        pred_q        = NULL,
+                        true_median   = NULL) {
+
+  # ------------------------------------------------------------------
+  # 1.  Quantile probability grid needed for WIS
+  # ------------------------------------------------------------------
+  alpha_k     <- 1 - alpha_levels                    # non-coverage: 0.50 0.20 0.10 0.05
+  lower_probs <- sort(alpha_k / 2)                   # 0.025 0.05 0.10 0.25
+  upper_probs <- sort(1 - alpha_k / 2)               # 0.75  0.90 0.95 0.975
+  all_probs   <- sort(unique(c(lower_probs, 0.5, upper_probs)))
+  # -> c(0.025, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.975)
+
+  kappa_val <- if (!is.null(true_params$kappa)) {
+    true_params$kappa
+  } else if (dist_type %in% c("burr12", "gengamma")) {
+    stop(sprintf(
+      "compute_wis: true_params$kappa is required for dist_type '%s'.",
+      dist_type
+    ), call. = FALSE)
+  } else {
+    1.0
+  }
+
+  # ------------------------------------------------------------------
+  # 2.  Posterior predictive median quantiles
+  #     Skipped when pred_q is supplied by the caller (e.g. run_one()),
+  #     avoiding a redundant compute_posterior_predictive_quantile_ci call.
+  # ------------------------------------------------------------------
+  if (is.null(pred_q)) {
+    post_obj <- compute_posterior_predictive_quantile_ci(
+      fit           = fit,
+      dist_type     = dist_type,
+      n_datasets    = n_datasets,
+      probs         = all_probs,
+      n_post_draws  = n_post_draws,
+      n_mc_per_draw = n_mc_per_draw
+    )
+    pred_q <- post_obj$median      # one value per element of all_probs
+  }
+
+  # ------------------------------------------------------------------
+  # 3.  Draw test observations from the true marginal distribution
+  # ------------------------------------------------------------------
+  loc_draws <- rnorm(n_test, mean = true_params$mu0, sd = true_params$tau)
+
+  if (dist_type == "lognormal") {
+    y_test <- rlnorm(n_test, meanlog = loc_draws, sdlog = true_params$phi)
+  } else if (dist_type == "gamma") {
+    y_test <- rgamma(n_test, shape = true_params$phi,
+                     rate  = true_params$phi / exp(loc_draws))
+  } else if (dist_type == "weibull") {
+    y_test <- rweibull(n_test, shape = true_params$phi, scale = exp(loc_draws))
+  } else if (dist_type == "burr12") {
+    lambda <- exp(loc_draws)
+    u      <- runif(n_test)
+    y_test <- lambda * (u^(-1.0 / kappa_val) - 1.0)^(1.0 / true_params$phi)
+  } else if (dist_type == "gengamma") {
+    gs     <- 1.0 / kappa_val^2
+    y_mc   <- rgamma(n_test, shape = gs, rate = 1)
+    y_test <- exp(loc_draws + true_params$phi / kappa_val * log(kappa_val^2 * y_mc))
+  } else {
+    stop(sprintf("compute_wis: unknown dist_type '%s'.", dist_type), call. = FALSE)
+  }
+
+  # ------------------------------------------------------------------
+  # 4.  Compute WIS (vectorised over y_test)
+  #
+  #  WIS = 1/(K + 0.5) * [ 0.5 * |y - m|
+  #          + sum_k (alpha_k/2) * IS*(l_k, u_k, y) ]
+  #  IS*(l, u, y) = (u - l) + (2/alpha)*(l - y)+ + (2/alpha)*(y - u)+
+  # ------------------------------------------------------------------
+
+  # Tolerance-based probability lookup to avoid exact floating-point equality.
+  prob_idx <- function(prob_vec, target, tol = 1e-9) {
+    if (length(prob_vec) == 0L)
+      stop("compute_wis: probability grid is empty.", call. = FALSE)
+    idx <- which.min(abs(prob_vec - target))
+    if (abs(prob_vec[idx] - target) > tol)
+      stop(sprintf("compute_wis: probability %.8g not found in grid.", target),
+           call. = FALSE)
+    idx
+  }
+
+  K   <- length(alpha_levels)
+  m   <- pred_q[prob_idx(all_probs, 0.5)]
+
+  wis_accum <- 0.5 * abs(y_test - m)
+
+  for (k in seq_along(alpha_levels)) {
+    a_k <- 1 - alpha_levels[k]                      # non-coverage probability
+    l_k <- pred_q[prob_idx(all_probs, a_k / 2)]
+    u_k <- pred_q[prob_idx(all_probs, 1 - a_k / 2)]
+    is_k <- (u_k - l_k) +
+            (2 / a_k) * pmax(l_k - y_test, 0) +
+            (2 / a_k) * pmax(y_test - u_k, 0)
+    wis_accum <- wis_accum + (a_k / 2) * is_k
+  }
+
+  wis_vals <- wis_accum / (K + 0.5)
+
+  # ------------------------------------------------------------------
+  # 5.  True marginal median (for relative WIS)
+  #     Skipped when true_median is supplied by the caller.
+  # ------------------------------------------------------------------
+  if (is.null(true_median)) {
+    true_median <- compute_true_marginal_quantile(
+      dist_type = dist_type,
+      mu0       = true_params$mu0,
+      tau       = true_params$tau,
+      phi       = true_params$phi,
+      kappa     = kappa_val,
+      probs     = 0.5
+    )["50%"]
+  }
+
+  list(
+    wis     = mean(wis_vals, na.rm = TRUE),
+    rel_wis = mean(wis_vals, na.rm = TRUE) / true_median
+  )
+}
+
 #' Run simulation study with generalized scenarios
 #'
 #' @importFrom foreach %dopar%
@@ -2070,23 +2221,44 @@ run_simulation_study_generalized <- function(n_sim,
       coverage_kappa <- if (has_kappa) check_coverage(fit, "kappa", sim_data$true_params$kappa) else NA
       bias_kappa     <- if (has_kappa) compute_median_bias(fit, "kappa", sim_data$true_params$kappa) else NA
 
-      # Quantile coverage: marginal median (Q50) and 95th percentile (Q95)
-      true_q  <- compute_true_marginal_quantile(
+      # True marginal quantiles (single call; "50%" reused as true_median for rel_wis)
+      true_q <- compute_true_marginal_quantile(
         dist_type = scenario$dist_type,
         mu0       = sim_data$true_params$mu0,
         tau       = sim_data$true_params$tau,
         phi       = sim_data$true_params$phi,
         kappa     = sim_data$true_params$kappa
       )
+
+      # Posterior predictive quantiles — single call covering both coverage/bias
+      # (Q50, Q95) and the full WIS grid (9 levels).  The WIS probs are the
+      # superset so we use them here and index into the result below.
+      wis_all_probs <- c(0.025, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.975)
+      idx_q50 <- which(wis_all_probs == 0.50)   # 5
+      idx_q95 <- which(wis_all_probs == 0.95)   # 8
       post_ci <- compute_posterior_predictive_quantile_ci(
         fit        = fit,
         dist_type  = scenario$dist_type,
-        n_datasets = scenario$n_datasets
+        n_datasets = scenario$n_datasets,
+        probs      = wis_all_probs
       )
-      coverage_median <- true_q["50%"] >= post_ci$lower[1] & true_q["50%"] <= post_ci$upper[1]
-      coverage_p95    <- true_q["95%"] >= post_ci$lower[2] & true_q["95%"] <= post_ci$upper[2]
-      bias_median     <- post_ci$median[1] - true_q["50%"]
-      bias_p95        <- post_ci$median[2] - true_q["95%"]
+
+      # Quantile coverage and bias (index into the joint post_ci result)
+      coverage_median <- true_q["50%"] >= post_ci$lower[idx_q50] & true_q["50%"] <= post_ci$upper[idx_q50]
+      coverage_p95    <- true_q["95%"] >= post_ci$lower[idx_q95] & true_q["95%"] <= post_ci$upper[idx_q95]
+      bias_median     <- post_ci$median[idx_q50] - true_q["50%"]
+      bias_p95        <- post_ci$median[idx_q95] - true_q["95%"]
+
+      # Weighted Interval Score — pass pre-computed pred_q and true_median to
+      # avoid repeating the two expensive MC calls above
+      wis_result <- compute_wis(
+        fit         = fit,
+        dist_type   = scenario$dist_type,
+        n_datasets  = scenario$n_datasets,
+        true_params = sim_data$true_params,
+        pred_q      = post_ci$median,
+        true_median = unname(true_q["50%"])
+      )
 
       data.frame(
         scenario_idx           = scenario_idx,
@@ -2116,6 +2288,8 @@ run_simulation_study_generalized <- function(n_sim,
         rel_bias_tau           = bias_tau / sim_data$true_params$tau,
         rel_bias_phi           = bias_phi / sim_data$true_params$phi,
         iqd                    = iqd,
+        wis                    = wis_result$wis,
+        rel_wis                = wis_result$rel_wis,
         max_rhat               = max_rhat,
         min_neff               = min_neff,
         converged              = max_rhat <= 1.1 & min_neff >= 100,
@@ -2161,6 +2335,8 @@ run_simulation_study_generalized <- function(n_sim,
         rel_bias_tau           = NA,
         rel_bias_phi           = NA,
         iqd                    = NA,
+        wis                    = NA,
+        rel_wis                = NA,
         max_rhat               = NA,
         min_neff               = NA,
         converged              = FALSE,
@@ -2185,7 +2361,8 @@ run_simulation_study_generalized <- function(n_sim,
     .packages  = c("rstan", "ddsynth"),
     .export    = c("stan_model", "run_one",
                    "compute_true_marginal_quantile",
-                   "compute_posterior_predictive_quantile_ci")
+                   "compute_posterior_predictive_quantile_ci",
+                   "compute_wis")
   ) %dopar% {
     run_one(
       scenario_idx = tasks$scenario_idx[i],
