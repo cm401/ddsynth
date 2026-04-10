@@ -28,7 +28,7 @@ compute_wis(
 \code{phi}, and optionally \code{kappa}.}
 
 \item{alpha_levels}{Numeric vector of PI coverage levels (e.g. 0.95 for a
-95\\% PI). Default \code{c(0.50, 0.80, 0.90, 0.95)}.}
+95\% PI). Default \code{c(0.50, 0.80, 0.90, 0.95)}.}
 
 \item{n_post_draws}{Number of posterior draws passed to
 \code{compute_posterior_predictive_quantile_ci}. Default 500.}
@@ -45,7 +45,7 @@ returned by the \code{$median} element of
 call to that function is skipped, avoiding redundant computation.}
 
 \item{true_median}{Optional pre-computed true marginal median (scalar), e.g.
-the \code{"50\%"} element from \code{\link[=compute_true_marginal_quantile]{compute_true_marginal_quantile()}}.  When
+the \code{'50\%'} element from \code{\link[=compute_true_marginal_quantile]{compute_true_marginal_quantile()}}.  When
 supplied the internal call to that function is skipped.}
 }
 \value{

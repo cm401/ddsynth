@@ -52,18 +52,19 @@
 
 #' Generate a LaTeX summary table of incubation period estimates
 #'
-#' @description
 #' Produces a \pkg{booktabs}-style LaTeX table with one row per pathogen and
-#' (optionally) indented italic sub-rows for each subgroup analysis.  For
-#' every row the table reports:
+#' (optionally) indented italic sub-rows for each subgroup analysis.
+#'
+#' @details
+#' For every row the table reports:
 #' \itemize{
 #'   \item the best-fitting distribution (selected with the same
 #'         convergence-filtered LOO-weight logic as [plot_main_figure()]);
-#'   \item the posterior predictive **median** with 95\% credible interval;
-#'   \item the posterior predictive **95th percentile** (\eqn{p_{95}}) with 95\% CI;
-#'   \item the population-level location parameter \eqn{\mu_0} with 95\% CI;
-#'   \item the shape parameter \eqn{\phi} with 95\% CI;
-#'   \item the second shape parameter \eqn{\kappa} with 95\% CI (Burr XII and
+#'   \item the posterior predictive **median** with 95% credible interval;
+#'   \item the posterior predictive **95th percentile** (\eqn{p_{95}}) with 95% CI;
+#'   \item the population-level location parameter \eqn{\mu_0} with 95% CI;
+#'   \item the shape parameter \eqn{\phi} with 95% CI;
+#'   \item the second shape parameter \eqn{\kappa} with 95% CI (Burr XII and
 #'         Generalised Gamma only; shown as \eqn{-} for other families).
 #' }
 #' All intervals are formatted as \samp{median (lower, upper)}.
@@ -80,7 +81,7 @@
 #' @param rhat_threshold Numeric.  Maximum acceptable Rhat for convergence;
 #'   fits with max Rhat above this are skipped (default 1.05).
 #' @param ci_prob Numeric.  Width of the credible interval, e.g. 0.95 gives
-#'   a 2.5\%–97.5\% interval (default 0.95).
+#'   a 2.5%–97.5% interval (default 0.95).
 #' @param pathogen_labels Optional named character vector overriding the
 #'   display names used in the table rows.
 #' @param caption LaTeX \code{\\caption\{\}} string.

@@ -31,7 +31,7 @@ generate_results_table(
 fits with max Rhat above this are skipped (default 1.05).}
 
 \item{ci_prob}{Numeric.  Width of the credible interval, e.g. 0.95 gives
-a 2.5\\%–97.5\\% interval (default 0.95).}
+a 2.5\%–97.5\% interval (default 0.95).}
 
 \item{pathogen_labels}{Optional named character vector overriding the
 display names used in the table rows.}
@@ -53,11 +53,11 @@ For every row the table reports:
 \itemize{
 \item the best-fitting distribution (selected with the same
 convergence-filtered LOO-weight logic as \code{\link[=plot_main_figure]{plot_main_figure()}});
-\item the posterior predictive \strong{median} with 95\\% credible interval;
-\item the posterior predictive \strong{95th percentile} (\eqn{p_{95}}) with 95\\% CI;
-\item the population-level location parameter \eqn{\mu_0} with 95\\% CI;
-\item the shape parameter \eqn{\phi} with 95\\% CI;
-\item the second shape parameter \eqn{\kappa} with 95\\% CI (Burr XII and
+\item the posterior predictive \strong{median} with 95\% credible interval;
+\item the posterior predictive \strong{95th percentile} (\eqn{p_{95}}) with 95\% CI;
+\item the population-level location parameter \eqn{\mu_0} with 95\% CI;
+\item the shape parameter \eqn{\phi} with 95\% CI;
+\item the second shape parameter \eqn{\kappa} with 95\% CI (Burr XII and
 Generalised Gamma only; shown as \eqn{-} for other families).
 }
 All intervals are formatted as \samp{median (lower, upper)}.

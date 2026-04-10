@@ -59,7 +59,7 @@ A named list with elements:
 \describe{
 \item{\code{mom_consistency}}{Data frame of implied \code{phi} per dataset with
 an \code{is_outlier} flag.}
-\item{\code{prior_predictive}}{Data frame of 95\\% prior predictive intervals
+\item{\code{prior_predictive}}{Data frame of 95\% prior predictive intervals
 for the implied SD of each dataset, with an \code{outside_prior_pi} flag.}
 \item{\code{map_probe}}{List with \code{phi_map} (MAP estimate of \code{phi}) and
 \code{map_converged} logical.}
@@ -84,7 +84,7 @@ individually using moment-based approximations and flags any dataset
 whose implied \code{phi} is more than \code{phi_outlier_threshold} times the
 median of all implied values.}
 \item{2. Prior predictive compatibility}{Simulates summary statistics from
-the prior and checks whether each observed value falls within the 95\\%
+the prior and checks whether each observed value falls within the 95\%
 prior predictive interval. Datasets outside this range suggest a
 prior--data mismatch.}
 \item{3. MAP optimisation probe}{Runs \code{\link[rstan:stanmodel-method-optimizing]{rstan::optimizing()}} as a fast
