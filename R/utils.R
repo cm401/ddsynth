@@ -2032,15 +2032,25 @@ compute_wis <- function(fit,
   #          + sum_k (alpha_k/2) * IS*(l_k, u_k, y) ]
   #  IS*(l, u, y) = (u - l) + (2/alpha)*(l - y)+ + (2/alpha)*(y - u)+
   # ------------------------------------------------------------------
+
+  # Tolerance-based probability lookup to avoid exact floating-point equality.
+  prob_idx <- function(prob_vec, target, tol = 1e-9) {
+    idx <- which.min(abs(prob_vec - target))
+    if (abs(prob_vec[idx] - target) > tol)
+      stop(sprintf("compute_wis: probability %.8g not found in grid.", target),
+           call. = FALSE)
+    idx
+  }
+
   K   <- length(alpha_levels)
-  m   <- pred_q[all_probs == 0.5]
+  m   <- pred_q[prob_idx(all_probs, 0.5)]
 
   wis_accum <- 0.5 * abs(y_test - m)
 
   for (k in seq_along(alpha_levels)) {
     a_k <- 1 - alpha_levels[k]                      # non-coverage probability
-    l_k <- pred_q[all_probs == a_k / 2]
-    u_k <- pred_q[all_probs == 1 - a_k / 2]
+    l_k <- pred_q[prob_idx(all_probs, a_k / 2)]
+    u_k <- pred_q[prob_idx(all_probs, 1 - a_k / 2)]
     is_k <- (u_k - l_k) +
             (2 / a_k) * pmax(l_k - y_test, 0) +
             (2 / a_k) * pmax(y_test - u_k, 0)
