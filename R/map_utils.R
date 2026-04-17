@@ -16,60 +16,64 @@
   "EVD"      = "Viral haemorrhagic fevers",
   "MVD"      = "Viral haemorrhagic fevers",
   "Lassa"    = "Viral haemorrhagic fevers",
-  "CCHF"     = "Viral haemorrhagic fevers",
+  "CCHF"     = "Viral haemorrhagic fevers",   # tick-borne but clinically a VHF
   # Pandemic respiratory — blue family
-  "COVID-19" = "Pandemic respiratory",
   "SARS"     = "Pandemic respiratory",
   "MERS"     = "Pandemic respiratory",
+  "COVID-19" = "Pandemic respiratory",
   "Flu"      = "Pandemic respiratory",
   # Arboviral / vector-borne — orange/amber family
-  "Dengue"   = "Arboviral / vector-borne",
-  "Zika"     = "Arboviral / vector-borne",
   "RVF"      = "Arboviral / vector-borne",
+  "Zika"     = "Arboviral / vector-borne",
+  "Dengue"   = "Arboviral / vector-borne",
   "YFV"      = "Arboviral / vector-borne",
   # Bat-reservoir zoonoses — purple
   "Nipah"    = "Bat-reservoir zoonoses",
   # Human-to-human viral — green family
   "Mpox"     = "Human-to-human viral",
+  "Smallpox" = "Human-to-human viral",
   "Measles"  = "Human-to-human viral",
   # Environmental / zoonotic bacterial — teal
-  "Cholera"  = "Environmental / zoonotic bacterial"
+  "Cholera"  = "Environmental / zoonotic bacterial",
+  "Typhoid"  = "Environmental / zoonotic bacterial"
 )
 
 # Named colour vector — one hex per pathogen, shaded within group
 .pathogen_colours <- c(
-  # Viral haemorrhagic fevers: dark → light red/coral
+  # Viral haemorrhagic fevers: dark → light red/coral (EVD, MVD, Lassa, CCHF)
   "EVD"      = "#922B21",
   "MVD"      = "#C0392B",
-  "CCHF"     = "#E74C3C",
-  "Lassa"    = "#F1948A",
-  # Pandemic respiratory: dark → light blue
-  "COVID-19" = "#1A3C5E",
-  "SARS"     = "#2471A3",
-  "MERS"     = "#5DADE2",
+  "Lassa"    = "#E74C3C",
+  "CCHF"     = "#F1948A",
+  # Pandemic respiratory: dark → light blue (SARS, MERS, COVID-19, Flu)
+  "SARS"     = "#1A3C5E",
+  "MERS"     = "#2471A3",
+  "COVID-19" = "#5DADE2",
   "Flu"      = "#AED6F1",
-  # Arboviral / vector-borne: dark → light orange/amber
-  "Dengue"   = "#7E5109",
-  "RVF"      = "#CA6F1E",
-  "Zika"     = "#E59866",
+  # Arboviral / vector-borne: dark → light orange/amber (RVF, Zika, Dengue, YFV)
+  "RVF"      = "#7E5109",
+  "Zika"     = "#CA6F1E",
+  "Dengue"   = "#E59866",
   "YFV"      = "#FAD7A0",
   # Bat-reservoir zoonoses: purple
   "Nipah"    = "#6C3483",
-  # Human-to-human viral: dark → light green
+  # Human-to-human viral: dark → light green (Mpox, Smallpox, Measles)
   "Mpox"     = "#1D6A39",
-  "Measles"  = "#52BE80",
-  # Environmental / zoonotic bacterial: teal
-  "Cholera"  = "#0E6655"
+  "Smallpox" = "#52BE80",
+  "Measles"  = "#A9DFBF",
+  # Environmental / zoonotic bacterial: dark → light teal (Cholera, Typhoid)
+  "Cholera"  = "#0E6655",
+  "Typhoid"  = "#148F77"
 )
 
 # Ordered list of pathogens for the legend (no fake header entries).
 .legend_breaks_full <- c(
-  "EVD",      "MVD",    "CCHF",   "Lassa",
-  "COVID-19", "SARS",   "MERS",   "Flu",
-  "Dengue",   "RVF",    "Zika",   "YFV",
+  "EVD",   "MVD",     "Lassa",   "CCHF",
+  "SARS",  "MERS",    "COVID-19","Flu",
+  "RVF",   "Zika",    "Dengue",  "YFV",
   "Nipah",
-  "Mpox",     "Measles",
-  "Cholera"
+  "Mpox",  "Smallpox","Measles",
+  "Cholera","Typhoid"
 )
 
 # Build legend breaks and labels filtered to pathogens present in the map data.
@@ -77,14 +81,18 @@
 #   "Group name\n  Pathogen"
 # so group names appear inline without needing fake header entries (which
 # ggplot2 silently drops from the guide key data, causing override.aes errors).
-.build_legend <- function(active_pathogens) {
-  breaks       <- .legend_breaks_full[.legend_breaks_full %in% active_pathogens]
-  groups_seen  <- character(0)
+.build_legend <- function(active_pathogens, use_markdown = FALSE) {
+  breaks      <- .legend_breaks_full[.legend_breaks_full %in% active_pathogens]
+  groups_seen <- character(0)
   labels <- vapply(breaks, function(b) {
     grp      <- unname(.pathogen_group_map[b])
     is_first <- !(grp %in% groups_seen)
     if (is_first) groups_seen <<- c(groups_seen, grp)
-    if (is_first) paste0(grp, "\n  ", b) else paste0("  ", b)
+    if (use_markdown) {
+      if (is_first) paste0("**", grp, "**<br>&nbsp;&nbsp;", b) else paste0("&nbsp;&nbsp;", b)
+    } else {
+      if (is_first) paste0(grp, "\n  ", b) else paste0("  ", b)
+    }
   }, character(1L))
   list(breaks = breaks, labels = labels)
 }
@@ -110,6 +118,7 @@
     x == "USA"           ~ "United States of America",
     x == "DRC"           ~ "Democratic Republic of the Congo",
     x == "Faroe Islands" ~ "Faeroe Islands",   # rnaturalearth spelling
+    x == "Ivory Coast"   ~ "C\u00f4te d'Ivoire",  # rnaturalearth uses Côte d'Ivoire
     TRUE                 ~ x
   )
 }
@@ -182,6 +191,7 @@ extract_dataset_summary <- function() {
     "Lassa"    = datasets_Lassa,
     "SARS"     = datasets_SARS,
     "MERS"     = datasets_MERS,
+    "Flu"      = datasets_flu,
     "Zika"     = datasets_Zika,
     "Measles"  = datasets_Measles,
     "Mpox"     = datasets_Mpox,
@@ -190,15 +200,12 @@ extract_dataset_summary <- function() {
     "CCHF"     = datasets_CCHF,
     "COVID-19" = datasets_COVID_19,
     "Dengue"   = datasets_Dengue,
-    "YFV"      = datasets_YFV
+    "YFV"      = datasets_YFV,
+    "Typhoid"  = datasets_typhoid,
+    "Smallpox" = datasets_Smallpox
   )
 
-  # Flu may not yet be defined
-  if (exists("datasets_Flu", envir = asNamespace("ddsynth"), inherits = FALSE)) {
-    pathogen_datasets[["Flu"]] <- get("datasets_Flu", envir = asNamespace("ddsynth"))
-  }
-
-  rows <- vector("list", 300L)
+  rows <- vector("list", 400L)
   row_idx <- 0L
 
   for (pathogen in names(pathogen_datasets)) {
@@ -317,16 +324,21 @@ create_data_map <- function(
   world_sf <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
 
   # --- Legend structure (built from pathogens actually in the map data) -------
-  legend <- .build_legend(unique(map_df$pathogen))
+  use_md <- requireNamespace("ggtext", quietly = TRUE)
+  legend <- .build_legend(unique(map_df$pathogen), use_markdown = use_md)
 
   # --- Mixed inset label text -------------------------------------------------
   mixed_label <- NULL
   if (nrow(mixed_df) > 0) {
-    mixed_lines <- vapply(seq_len(nrow(mixed_df)), function(i) {
-      row   <- mixed_df[i, ]
-      n_str <- if (!is.na(row$n)) paste0("n=", row$n) else "n=?"
-      sub_str <- if (!is.na(row$subgroup)) paste0(" [", row$subgroup, "]") else ""
-      paste0(row$pathogen, sub_str, ": ", n_str)
+    pathogens_in_mixed <- unique(mixed_df$pathogen)
+    mixed_lines <- vapply(pathogens_in_mixed, function(pat) {
+      rows        <- mixed_df[mixed_df$pathogen == pat, ]
+      n_known     <- rows$n[!is.na(rows$n)]
+      has_missing <- any(is.na(rows$n))
+      n_str <- if (length(n_known) > 0) {
+        paste0("n=", sum(n_known), if (has_missing) "+" else "")
+      } else "n=?"
+      paste0(pat, ": ", n_str)
     }, character(1L))
     mixed_label <- paste(c("Mixed/multi-country:", mixed_lines), collapse = "\n")
   }
@@ -379,15 +391,16 @@ create_data_map <- function(
       panel.grid       = ggplot2::element_line(colour = "white"),
       legend.position  = "right",
       legend.key.size  = ggplot2::unit(0.4, "lines"),
-      legend.text      = ggplot2::element_text(size = 8)
+      legend.text      = if (use_md) ggtext::element_markdown(size = 8)
+                         else        ggplot2::element_text(size = 8)
     )
 
-  # Place Mixed inset in the Indian Ocean (open ocean within cropped extent)
+  # Place Mixed inset in the open ocean (bottom-left of cropped extent)
   if (!is.null(mixed_label)) {
     p <- p + ggplot2::annotate(
       geom       = "label",
       x          = -110,
-      y          = -30,
+      y          = 0,
       label      = mixed_label,
       hjust      = 0,
       vjust      = 1,
