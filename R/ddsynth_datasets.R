@@ -76,7 +76,12 @@ datasets_EVD <- list(         # Ebola Virus Disease
   d5  = list(mean   =  9.5, sd  =  4.0,             n =   76, country = 'Sierra Leone', subgroup = 'West Africa',     source = "Muoghalu (2017), doi: 10.3389/fpubh.2017.00160"),
   d7  = list(mean   =  9.9, sd  =  5.5,             n =  152, country = 'Guinea',       subgroup = 'West Africa',     source = "Faye (2015), doi: 10.1016/S1473-3099(14)71075-8"),
   d8  = list(mean   =  9.7, sd  =  3.7,             n =    8, country = 'Sierra Leone', subgroup = 'West Africa',     source = "Ajelli (2015), doi: 10.1186/s12916-015-0524-z"),
-  d9  = list(mean   =  9.3, sd  =  1.9,             n =   20, country = 'Nigeria',      subgroup = 'non-West Africa', source = "Chan (2020), doi: 10.1098/rsif.2020.0498"),
+  #d9  = list(mean   =  9.3, sd  =  7.3,             n =   20, country = 'Nigeria',      subgroup = 'non-West Africa', source = "Chan (2020), doi: 10.1098/rsif.2020.0498"),
+  d9  = list(freq_value=c(8,9,12), 
+             freq_count=c(2,1,1),
+             country = 'Nigeria',      
+             subgroup = 'non-West Africa', 
+             source = "Chan (2020), doi: 10.1098/rsif.2020.0498"),
   #d10 = list(        # West Africa 2014 -- remove all of West Africa outbreak as we have the individual countries below
   #  # n defaults to sum(freq_count) = 143
   #  freq_value = c( 1,  2,  3,  4,  5,  6,  7,  8,  9, 10,
@@ -788,6 +793,7 @@ datasets_COVID_19 <- list(
 
 # Underlying data based on VBD Systematic Review by Rudolph et al (2014)
 # published in AJTMH: https://doi.org/10.4269/ajtmh.13-0403
+# d10-d14 are from Chan et al (https://doi.org/10.1371/journal.pone.0050972)
 
 datasets_Dengue <- list(
   d1 = list(       #Experimental human inoculation study, Philippines. Cases 1-6 and 9-10: intravenous blood inoculation; Case 11: mosquito bite (approximate). Case 6 prolonged incubation attributed by authors to probable relative immunity.
@@ -858,6 +864,90 @@ datasets_Dengue <- list(
     country    = "USA",
     subgroup   = "inoculation",
     source     = "Chandler (1923), doi: 10.4269/ajtmh.1923.s1-3.233"
+  ),
+  
+  d10 = list(
+    # Blanc & Caminopetros (1930). Subcutaneous inoculation experiments in healthy
+    # volunteers, Athens 1927-1929. Virulent human serum or mosquito homogenate
+    # inoculated s.c.; onset of dengue symptoms recorded in days post-inoculation.
+    # Authors note i.v. route gives shorter incubation; all i.v. cases excluded.
+    # Some inocula include animal-passaged serum (Macaque, Callitriche) or carrier
+    # admixtures (anti-amaryl serum, bile salts, etc.) but onset days fall within
+    # the same range as direct serum inoculations and are included here.
+    # Point observations: freq_value = days to symptom onset.
+    # n = 24 individual observations extracted from experimental narratives
+    # across Chapters I-IV; no summary table provided in original.
+    freq_value = c( 5,  6,   7, 8,  9, 10),
+    freq_count = c( 1,  1,  10, 3,  5,  1),
+    source  = "Blanc (1930)",
+    country = "Greece",
+    subgroup = "inoculation"
+  ),
+  
+  d11  = list(
+    # Simmons, St. John & Reynolds (1931). Individual IIP observations extracted
+    # by Funk et al. (2016) from Table 9/14 and experimental text descriptions.
+    # Aedes aegypti or A. albopictus bite transmission only; experiments using
+    # Culex, skin abrasion, or direct blood inoculation discarded.
+    # n=65 point observations + 2 interval-censored (volunteers 52 and 92,
+    # and one with IIP 2.25-12.25 days per Funk et al. Table S1).
+    # Fractional days reflect time-of-day precision in original records.
+    # DENV-1 designation is retrospective; Simmons used a single strain.
+    # Individual values from Chan et al. (2016), doi:10.1371/journal.pone.0050972
+    freq_lower = c(1, 2.25,
+                   4, 4, 4.25, 4.25, 4.25, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5,
+                   5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+                   5.25, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5,
+                   6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+                   6.25, 6.25, 6.25, 6.25, 6.5, 6.5,
+                   7, 7, 7, 7.5, 9, 9.25),
+    freq_upper = c(13, 12.25,
+                   4, 4, 4.25, 4.25, 4.25, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5,
+                   5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+                   5.25, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5,
+                   6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+                   6.25, 6.25, 6.25, 6.25, 6.5, 6.5,
+                   7, 7, 7, 7.5, 9, 9.25),
+    freq_count = rep(1,67),
+    source  = "Simmons (1931), Philippine Journal of Science 44:1-251",
+    country = "Philippines",
+    subgroup = "mosquito bite"
+  ),
+  
+  d12 = list(
+    # Snijders (1931). Three IIP observations as extracted by Chan et al. (2012),
+    # doi:10.1371/journal.pone.0050972. Serotype not assigned.
+    freq_lower = c(3, 5, 6),
+    freq_upper = c(6, 5, 6),
+    freq_count = c(1, 1, 1),
+    source  = "Snijders (1931)"
+  ),
+  
+  d13 = list(
+    # CDC (1982). Five IIP observations (DENV-4), all interval-censored,
+    # as extracted by Chan et al. (2012), doi:10.1371/journal.pone.0050972.
+    freq_lower = c(0.1, 5, 5, 5, 5),
+    freq_upper = c(6, 11, 11, 11, 11),
+    freq_count = c(1, 1, 1, 1, 1),
+    source  = "CDC (1982)"
+  ),
+  
+  # Malison (1983). Five IIP observations (DENV-1), all interval-censored,
+  # as extracted by Chan et al. (2012), doi:10.1371/journal.pone.0050972.
+  # NOTE: Two observations have upper bounds of 123 and 129 days, which are
+  # almost certainly exposure windows rather than biological incubation limits ==> Exclude
+  
+  
+  # Vainio (2010). Seven IIP observations (DENV-1 and DENV-3 mixed),
+  # all left-censored (minimum only, no upper bound reported), hence excluded.
+  
+  d14 = list(
+    # Anderson (2011). Seven IIP observations (DENV-1), all interval-censored,
+    # as extracted by Chan et al. (2012), doi:10.1371/journal.pone.0050972.
+    freq_lower = c(3, 3, 4, 4, 6, 6, 7),
+    freq_upper = c(10, 10, 11, 11, 13, 13, 14),
+    freq_count = c(1, 1, 1, 1, 1, 1, 1),
+    source  = "Anderson (2011)"
   )
 )
 
@@ -906,9 +996,375 @@ datasets_YFV <- list(
 
 # Flu ---------------------------------------------------------------------
 
-# USE SUBGROUP FOR WHICH FLU
+# based on Ward et al systematic review (https://doi.org/10.1186/s12879-025-11933-z)
+
+datasets_flu <- list(
+  d1  = list( median = 4,    min = 2,    max = 8,    n = 17,    
+              source = "Beigel (2005), doi: 10.1056/NEJMra052211",                        
+              country = "Thailand",       
+              subgroup = "H5N1" ),
+  d2  = list( median = 3,    min = 2,    max = 4,    n = 10,    
+              source = "Beigel (2005), doi: 10.1056/NEJMra052211",                        
+              country = "Vietnam",       
+              subgroup = "H5N1" ),
+  d3  = list( median = 5,    min = 2,    max = 9.5,    n = 18,    
+              source = "Huai (2008), doi: 10.3201/eid1411.080509",                        
+              country = "China",       
+              subgroup = "H5N1" ),
+  d4  = list( freq_value = c(4,5,7),
+              freq_count = c(4,2,2),    
+              source = "Oner (2006), doi: 10.1056/NEJMoa060601",                        
+              country = "Turkey",       
+              subgroup = "H5N1" ),
+  d5 = list(
+    # Knight et al. (1965), Ann Intern Med 62:1307-25.
+    # Individual incubation periods in 16 men with febrile illness after
+    # experimental inoculation with A/Bethesda/10/63 (H2N2) virus.
+    # Values extracted by Carrat et al. (2008), doi:10.1093/aje/kwm375, p.779.
+    # Point observations only; no interval censoring.
+    freq_value = c(1, 2, 3),
+    freq_count = c(3, 9, 4),
+    source  = "Knight (1965)",
+    country = "USA",
+    subgroup = "H2N2"
+  ),
+  d6 = list(
+    # Moser et al. (1979). Influenza A/Texas/1/77 (H3N2) outbreak aboard a
+    # delayed commercial airliner, Homer, Alaska, March 13-14, 1977.
+    # Exposure: Sunday PM (March 13) during 3-hour ground delay with inoperative
+    # ventilation. n=37 clinical cases (index case excluded); onset times read
+    # from Figure 1 at AM/PM resolution. Each half-day slot = 12-hour interval.
+    # Interval-censored in days (lower/upper bounds = slot edges).
+    # Reported median onset 38 hours post-exposure, consistent with bulk at
+    # 36-48h bin. Sartwell log-normal fit applied by authors (ref 6).
+    # Note: one additional case not contacted was excluded from analysis.
+    # This is also used in Ferguson et al (2005), doi: 10.1038/nature04017
+    freq_lower = c(1.00, 1.50, 1.50, 1.50, 1.50, 1.50, 1.50, 1.50, 1.50,
+                   1.50, 1.50, 1.50, 1.50, 1.50, 1.50, 1.50,
+                   2.00, 2.00, 2.00, 2.00, 2.00, 2.00, 2.00, 2.00, 2.00,
+                   2.00, 2.00, 2.00, 2.00, 2.00,
+                   2.50, 2.50, 2.50, 2.50,
+                   3.00, 3.00,
+                   3.50),
+    freq_upper = c(1.50, 2.00, 2.00, 2.00, 2.00, 2.00, 2.00, 2.00, 2.00,
+                   2.00, 2.00, 2.00, 2.00, 2.00, 2.00, 2.00,
+                   2.50, 2.50, 2.50, 2.50, 2.50, 2.50, 2.50, 2.50, 2.50,
+                   2.50, 2.50, 2.50, 2.50, 2.50,
+                   3.00, 3.00, 3.00, 3.00,
+                   3.50, 3.50,
+                   4.00),
+    freq_count = rep(1,37),
+    source  = "Moser (1979), doi: 10.1093/oxfordjournals.aje.a112781",
+    country = "USA",
+    subgroup = "H3N2"
+  ),
+  d7  = list( median = 2,    min = 1,    max = 7,    n = 426,    
+              source = "Cao (2009), doi: 10.1056/NEJMoa0906612",                        
+              country = "China",       
+              subgroup = "H1N1" ),
+  d8  = list( median = 2,    Q1 = 1,    Q3 = 3,    n = 23,    
+              source = "Shen (2012), doi: 10.1186/1743-422X-9-20",                        
+              country = "China",       
+              subgroup = "H1N1" ),
+  d7  = list( median = 1.6,    min = 0.4,    max = 4.2,    n = 79,    
+              source = "Wang (2012), doi: 10.1016/j.puhe.2011.11.008",                        
+              country = "China",       
+              subgroup = "H1N1" ),
+  d8 = list(
+    # Lessler et al. (2009), N Engl J Med 361:2628-36, doi:10.1056/NEJMoa0908481.
+    # Supplementary Table 1: n=134 doubly interval-censored incubation period
+    # observations from 2009 H1N1 outbreak at a New York City school.
+    # Approximation: onset midpoint S = (SL+SR)/2 used (SR-SL = 1 day for all
+    # observations, so maximum error = 0.5 days). Lower bound = max(0.1, S-ER),
+    # upper bound = S-EL. 129/134 lower bounds floored to 0.1 due to wide
+    # exposure windows (EL=7.25, ER >= S_mid for most school-contact cases).
+    # Authors' log-normal fit (full doubly censored likelihood): median 6.4 days
+    # (95% CI 5.9-6.8), dispersion 1.19 (95% CI 1.15-1.24).
+    freq_lower = c(
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0.1, 0.1, 0.1, 1.5, 2.5, 1.5, 0.1, 0.1, 0.1, 0.1,
+      1.5, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 1.5,
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0.1, 0.1, 0.1, 0.1),
+    freq_upper = c(
+      9.5,  3.25, 3.25, 3.25, 1.25, 2.25, 3.25, 3.25, 2.5,  2.25,
+      6.5,  3.25, 4.5,  3.25, 3.25, 5.5,  2.5,  5.5,  3.25, 4.25,
+      3.25, 3.25, 5.25, 2.5,  3.5,  2.5,  5.25, 1.5,  2.5,  5.5,
+      2.5,  3.25, 4.25, 2.25, 3.25, 3.25, 6.25, 3.25, 6.25, 4.25,
+      3.25, 3.25, 2.25, 2.25, 2.25, 1.25, 2.25, 4.25, 3.25, 3.25,
+      2.25, 3.25, 5.25, 3.25, 3.25, 3.25, 4.25, 3.25, 3.25, 2.25,
+      6.25, 4.25, 2.25, 3.25, 11.25,3.25, 3.25, 3.25, 5.25, 3.25,
+      3.25, 6.25, 3.25, 3.25, 4.25, 4.25, 6.25, 3.25, 5.25, 5.25,
+      4.25, 3.25, 5.25, 2.25, 3.25, 4.25, 4.25, 2.25, 6.25, 3.25,
+      7.25, 10.25,5.25, 3.25, 6.25, 5.25, 2.25, 5.25, 5.25, 2.25,
+      2.25, 3.25, 3.25, 5.25, 4.25, 9.25, 3.25, 3.25, 3.25, 3.25,
+      3.25, 2.25, 3.25, 4.25, 4.25, 4.25, 3.25, 3.25, 3.25, 2.25,
+      4.25, 3.25, 3.25, 5.25, 4.25, 3.25, 3.25, 4.25, 4.25, 3.25,
+      3.25, 2.25, 2.25, 4.25),
+    freq_count = rep(1,134),
+    source  = "Lessler (2009), doi: 10.1056/NEJMoa0908481",
+    country = "USA",
+    subgroup = "H1N1"
+  ),
+  d9  = list( mean = 1.9,    sd = 0.7,    n = 44,    
+              source = "Canini (2011), doi: 10.1128/jvi.01318-10",                        
+              country = "Mixed",       
+              subgroup = "H1N1" ),
+  # d10 & d11: Henle et al. 1946, J Immunol 52(2):145-165
+  # DOI: https://doi.org/10.4049/jimmunol.52.2.145
+  # Experimental inhalation challenge, febrile cases only
+  # Interval-censored in 12-hour windows (hours converted to fractional days)
+  # Lessler et al. 2009 (doi:10.1016/S1473-3099(09)70069-6) used n=61 Flu A, n=24 Flu B
+  # from this source; their n=61 includes the 5 F-99 re-exposed subjects
+  d10 = list(
+    freq_lower   = c( 0.5417, 1.0417, 1.5417, 2.0417),
+    freq_upper   = c( 1.0,    1.5,    2.0,    2.5   ),
+    freq_count   = c( 35,     10,     13,     3     ),
+    subgroup     = "Influenza A",
+    country      = "USA",
+    source       = "Henle (1946), doi: 10.4049/jimmunol.52.2.145"
+  ),
+  d11 = list(
+    freq_lower   = c( 0.5417, 1.0417, 1.5417),
+    freq_upper   = c( 1.0,    1.5,    2.0   ),
+    freq_count   = c( 19,     3,      2     ),
+    subgroup     = "Influenza B",
+    country      = "USA",
+    source       = "Henle (1946), doi: 10.4049/jimmunol.52.2.145"
+  )
+  
+)
 
 
-# Anthrax ---------------------------------------------------------------------
+# Typhoid fever -----------------------------------------------------------
+# datasets d1 - d13 based on Systematic Review by Awofisayo-Okuyelu et al (doi: 10.1186/s12879-018-3391-3)
+# further datasets from PubMed search
 
-# Note the importance of dose-response model (can cite https://doi.org/10.1073/pnas.0509551103) 
+datasets_typhoid <- list(
+  d1 = list(  # Study 1 - Malaysia 2009
+    freq_value = c( 3,  6, 15, 18, 21),
+    freq_count = c( 1,  1,  1,  5,  4),
+    country = "Malaysia",
+    subgroup = 'Other',
+    source = "Anita (2012), PMID: 22582542"
+  ),
+  
+  d2 = list(  # Study 2 - USA 1960
+    freq_value = c( 7, 12, 14, 15, 16, 17, 18, 19, 20, 21, 22, 27, 29, 30, 31, 32, 34),
+    freq_count = c( 1,  2,  1,  1,  4,  1,  4,  1,  4,  1,  1,  3,  2,  2,  2,  2,  1),
+    country = "USA",
+    subgroup = 'Catered meal',
+    source = "Caraway (1961), PMID: 13690681"
+  ),
+  
+  d3 = list(  # Study 3 - USA 1990
+    freq_value = c( 1,  7, 14, 21, 28),
+    freq_count = c( 1,  7,  9,  5,  2),
+    country = "USA",
+    subgroup = 'Other',
+    source = "Coté (1995), PMID: 8568020"
+  ),
+  
+  d4 = list(  # Study 4 - Japan 2014
+    freq_value = c(10, 14, 16, 17, 19, 27),
+    freq_count = c( 1,  1,  1,  1,  2,  1),
+    country = "Japan",
+    subgroup = 'Other',
+    source = "Kobayashi (2016), PMID: 26621565"
+  ),
+  
+  d5 = list(  # Study 5 - Ivory Coast 2001
+    freq_value = c( 9, 13, 14, 16, 18, 20, 21, 22, 23, 24, 25, 27, 29, 34),
+    freq_count = c( 2,  1,  1,  2,  2,  1,  1,  1,  2,  3,  3,  2,  2,  1),
+    country = "Ivory Coast",
+    subgroup = 'Other',
+    source = "Michel (2005), doi: 10.1007/s10654-005-7454-6"
+  ),
+  
+  d6 = list(  # Study 6 - Experimental (Naylor 1983)
+    freq_value = c( 3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 21, 22, 23, 26, 27, 28, 29, 41),
+    freq_count = c( 1,  1,  3, 11, 18, 16, 16, 12,  4,  1,  1,  2,  1,  1,  2,  1,  6,  1,  1,  1,  3,  3,  2,  1),
+    country = "Mixed",
+    subgroup = 'Experimental',
+    source = "Naylor GR (1983), PMID: 6132187"
+  ),
+  
+  # d7 = list(subgroup = 'catered meal'), # insufficient data, mean=20.6 days, range 4-50 days
+    
+  d8 = list(  # Study 8 - France 1997
+    freq_value = c( 9, 10, 11, 16, 17, 17, 19, 20, 21, 22, 22, 23, 23, 24, 33),
+    freq_count = c( 2,  1,  2,  5,  3,  2,  1,  1,  2,  4,  1,  1,  1,  1,  1),
+    country = "France",
+    subgroup = 'Catered meal',
+    source = "Pradier (2000), PMID: 10947223"
+  ),
+  
+  d9 = list(  # Study 9 - USA 1925
+    freq_value = c( 2,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 21, 28, 41),
+    freq_count = c( 1,  1,  3,  1,  1,  4,  2,  1,  4,  2,  1,  2,  1,  1,  4,  4,  1,  1),
+    country = "USA",
+    subgroup = 'Catered meal',
+    source = "Ramsey (1926), PMID: 18011971"
+  ),
+  
+  d10 = list(  # Study 10 - USA 1914
+    freq_value = c( 3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 21, 23, 24, 25, 26, 29),
+    freq_count = c( 1,  3, 12, 19, 13,  7,  2,  2,  5,  2,  2,  3,  2,  1,  1,  2,  2,  1,  1,  1,  1,  1),
+    country = "USA",
+    subgroup = 'Catered meal',
+    source = "Sawyer (1914)"
+  ),
+  
+  d11a = list(    # Time to microbiological and/or clinical diagnosis, dose 1
+    median = 9,    Q1 = 6.5,    Q3 = 13,      n = 20,
+    country = "Mixed",
+    subgroup = 'Experimental',
+    source = "Waddington (2014), doi: 10.1093/cid/ciu078"
+  ),
+
+  d11b = list(    # Time to microbiological and/or clinical diagnosis, dose 2
+    median = 8,    Q1 = 6,    Q3 = 9,      n = 20,
+    country = "Mixed",
+    subgroup = 'Experimental',
+    source = "Waddington (2014), doi: 10.1093/cid/ciu078"
+  ),
+  
+  d12 = list(  # Study 12 - UK 1949
+    freq_value = c( 6,  7,  8,  9, 10, 11, 12, 13, 17, 21),
+    freq_count = c( 6,  4,  8,  9,  4,  3,  1,  4,  1,  1),
+    country = "UK",
+    subgroup = 'Other',
+    source = "Moore (1950)"
+  ),
+  
+  d13 = list(  # Study 13 - USA 1916
+    freq_value = c( 5,  6,  7,  8,  9, 10, 11, 12),
+    freq_count = c( 4,  7,  7,  1,  1,  1,  1,  1),
+    country = "USA",
+    subgroup = 'Other',
+    source = "Cumming (1917)"
+  ),
+  
+  d14 = list(  # children tasting unpasteurized milk during tours of a dairy farm 
+    median=6, Q1=4, Q3=11, n=12,
+    country = "USA",
+    subgroup = 'Other',
+    source = "Brooks (2012), doi: 10.1089/fpd.2011.0992"
+  ),
+  
+  d15 = list(  # Experimental Quailes 10^5, no TAB vaccine - Woodward & Hornick
+    freq_value = c( 3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 21, 22, 23, 26, 27, 28, 29, 41),
+    freq_count = c( 1,  1,  3, 11, 18, 16, 16, 12,  4,  1,  1,  2,  1,  1,  2,  1,  6,  1,  1,  1,  3,  3,  2,  1),
+    country = 'Mixed',
+    subgroup = 'Experimental',
+    source = "Naylor (1983), doi: 10.1016/S0140-6736(83)91395-8"
+  ),
+   
+  d16 = list(  # Louisiana 1960, wedding reception
+    freq_value = c( 7, 12, 14, 15, 16, 17, 18, 19, 20, 21, 22, 27, 29, 30, 31, 32, 34),
+    freq_count = c( 1,  2,  1,  1,  4,  1,  4,  1,  4,  1,  1,  3,  2,  2,  2,  2,  1),
+    country = "USA",
+    subgroup = 'Other',
+    source = "Caraway (1961), PMID: 13690681"
+  ),
+  
+  d17 = list(  
+    freq_value = c( 6,  7,  8,  9, 10, 11, 12, 13, 20),
+    freq_count = c( 4,  5,  3,  5,  2,  1,  1,  1,  1),
+    country = "UK",
+    source = "Couper (1956), doi: 10.1016/S0140-6736(56)90818-2"
+  ),
+  
+  d18 = list(  # Eaton Rapids, USA 1925
+      freq_value = c( 2,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 21, 28, 41),
+      freq_count = c( 1,  1,  3,  1,  1,  4,  2,  1,  4,  2,  1,  2,  1,  1,  4,  4,  1,  1),
+      country = "USA",
+      subgroup = 'Other',
+      source = "Ramsey (1926), PMID: 18011971"
+    ),
+  
+  # Tried to parse data from Taylor et al unsuccessfully
+  # "Taylor A Jr, Santiago A, Gonzalez-Cortes A, Gangarosa EJ (1974), Am J Epidemiol 100(2):150-57, doi: 10.1093/oxfordjournals.aje.a121330"
+
+  d19 = list(  # Mankato, Minnesota waterborne
+    freq_value = c( 5,  7,  8, 10, 11, 12, 14, 15, 16, 17, 18, 20, 29),
+    freq_count = c( 2,  1,  2,  2,  1,  1,  1,  2,  1,  3,  3,  1,  1),
+    country = "USA",
+    subgroup = "Water",
+    source = "Hill (cited in Miner JR, 1922), doi: 10.1093/infdis/31.3.296"
+  ),
+  
+  d20 = list(  # Mississippi River excursion steamer waterborne
+    freq_value = c( 7, 12, 14, 15, 16, 18, 20, 26, 37, 38),
+    freq_count = c( 1,  1,  2,  2,  1,  1,  2,  1,  1,  1),
+    country = "USA",
+    subgroup = "Water",
+    source = "Lumsden (cited in Miner JR, 1922), doi: 10.1093/infdis/31.3.296"
+  ),
+
+  d21 = list(  # Old Salem Chautauqua waterborne
+    freq_lower = c( 7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37),
+    freq_upper = c(10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 39, 40),
+    freq_count = c( 1,  2,  3,  6, 16,  6, 10, 10, 16, 18,  9, 10, 11,  7, 10, 10,  9,  3,  3,  3,  2,  3,  2,  2,  1,  1,  4,  1,  1,  1),
+    country = "USA",
+    subgroup = "Water",
+    source = "Ferguson (cited in Miner JR, 1922), doi: 10.1093/infdis/31.3.296"
+  ),
+  
+  d22 = list(
+    # Egoz et al. (1988). Waterborne typhoid outbreak, northern Israel, 1985.
+    # 76 cases with onset July 24 to September 4; exposure date July 12 (11-hour
+    # operation of contaminated well Afek 2). Incubation = onset date minus July 12.
+    # One additional probable secondary case (onset September 5, day 55) excluded.
+    # Summary statistics only; no individual-level or frequency data reported.
+    # Note: authors discuss the long incubation in the context of low infective dose
+    # (attack rate only 6.5/10,000), consistent with waterborne low-dose exposure.
+    median = 22, min = 12, max = 40, n = 76,
+    source  = "Egoz (1988), PMID 3215755",
+    country = "Israel",
+    subgroup = "Water"
+  )
+)
+
+
+# Smallpox ----------------------------------------------------------------
+# based on data from Nishiura et al (doi: 10.1016/j.ijheh.2007.10.003)
+
+datasets_Smallpox <- list(
+  d1 = list(  # London, 1864-91
+    freq_value = c( 9, 10, 11, 12, 13, 14, 15, 16, 20),
+    freq_count = c( 1,  5, 10, 11,  4,  3,  3,  1,  1),
+    country = "UK",
+    source = "Clinical Society (1892), Trans. Clin. Soc. Lond., 25 (1892), pp. S178-S211"
+  ),
+
+  d2 = list(  # New South Wales, 1913-15
+    freq_value = c( 6,  8,  9, 10, 11, 12, 13, 14, 15, 16),
+    freq_count = c( 1,  1,  2,  2,  3,  5,  3,  1,  6,  2),
+    country = "Australia",
+    source = "Robertson (1914), Minister for Trade and Customs, Melbourne (1914)"
+  ),
+
+  d3 = list(  # Berlin 1917 and London 1962
+    freq_value = c( 9, 10, 11, 12, 13, 14, 15, 17),
+    freq_count = c( 1,  4,  2,  2,  8,  5,  2,  1),
+    country = "Mixed",
+    source = "Friedmann (1920), Medizinalverwaltung, 10 (1920), pp. 576-622"
+  ),
+
+  d4 = list(  # European cities, 1900-60
+    freq_value = c( 8,  9, 10, 11, 12, 13, 14, 15, 16, 17),
+    freq_count = c( 1,  2,  4,  3, 10,  7,  6,  5,  1,  2),
+    country = "Mixed",
+    source = "Downie (1972), World Health Organization, Geneva, WHO/SE/72.3"
+  )
+)
