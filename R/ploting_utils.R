@@ -617,10 +617,12 @@ generate_matched_moments_plot <- function(burr_kappas = 2,
   Cholera       = "Cholera",
   RVF           = "Rift Valley fever",
   CCHF          = "CCHF",
-  CCHF_extended = "CCHF (extended)",
   COVID_19      = "COVID-19",
   Dengue        = "Dengue",
-  YFV           = "Yellow fever"
+  YFV           = "Yellow fever",
+  Typhoid       = "Typhoid",
+  Smallpox      = "Smallpox",
+  Flu           = "Influenza"
 )
 
 # ── Internal panel helpers ────────────────────────────────────────────────────
@@ -717,12 +719,13 @@ generate_matched_moments_plot <- function(burr_kappas = 2,
   result_filtered,    # all_results[[p]][["filtered"]][[best_dist]]
   subgroup_results,   # named list: sg → all_results[[p]][[sg]][[best_dist]]
   best_dist,
-  best_weight  = NULL,
-  x_max        = NULL,   # NULL → auto-derive from 99th pct; numeric → use as-is
-  n_draws      = 500L,
+  best_weight   = NULL,
+  x_max         = NULL,   # NULL → auto-derive from 99th pct; numeric → use as-is
+  n_draws       = 500L,
   max_subgroups = 8L,
-  base_size    = 9,
-  show_title   = TRUE    # set FALSE to suppress the panel title
+  base_size     = 9,
+  show_title    = TRUE,   # set FALSE to suppress the panel title
+  point_highlights = NULL # numeric vector of x-days to mark with red stars
 ) {
   dist_col   <- .DIST_COLORS[[best_dist]]
   dist_label <- .DIST_LABELS[[best_dist]]
@@ -819,6 +822,29 @@ generate_matched_moments_plot <- function(burr_kappas = 2,
       linewidth = 0.35,
       alpha     = 0.70
     ) +
+
+    # Highlighted observations (e.g. external case reports not used in inference)
+    # Rendered as upward-pointing red arrows terminating at the CDF curve.
+    {
+      if (!is.null(point_highlights) && length(point_highlights) > 0L) {
+        hi_y  <- stats::approx(overall_df$x, overall_df$median,
+                               xout = point_highlights, rule = 2)$y
+        hi_df <- data.frame(x = point_highlights, y = hi_y)
+        ggplot2::geom_segment(
+          data        = hi_df,
+          ggplot2::aes(x = x, xend = x, y = y - 0.20, yend = y - 0.01),
+          colour      = "red",
+          linewidth   = 0.5,
+          arrow       = ggplot2::arrow(
+            length = ggplot2::unit(0.15, "cm"),
+            type   = "closed"
+          ),
+          inherit.aes = FALSE
+        )
+      } else {
+        NULL
+      }
+    } +
 
     # Scales — legend shows only subgroups; "Overall" is identified by the ribbon
     ggplot2::scale_colour_manual(
@@ -1061,16 +1087,22 @@ compute_pathogen_model_bayes_factors <- function(all_results, analysis = "filter
 #' @export
 plot_main_figure <- function(
   all_results,
-  pathogen_labels = NULL,
-  x_max           = NULL,
-  n_draws         = 500L,
-  model_weights   = NULL,
-  show_subgroups  = TRUE,
-  max_subgroups   = 8L,
-  ncol            = 4L,
-  base_size       = 9,
-  show_title      = TRUE   
+  pathogens            = NULL,
+  pathogen_labels      = NULL,
+  x_max                = NULL,
+  n_draws              = 500L,
+  model_weights        = NULL,
+  show_subgroups       = TRUE,
+  max_subgroups        = 8L,
+  ncol                 = 4L,
+  base_size            = 9,
+  show_title           = TRUE,
+  pathogen_highlights  = NULL  # named list: pathogen key → numeric vector of x-days
 ) {
+
+  # ── Pathogen subset filter ─────────────────────────────────────────────────
+  if (!is.null(pathogens))
+    all_results <- all_results[intersect(pathogens, names(all_results))]
 
   # ── Display labels ─────────────────────────────────────────────────────────
   labels <- .PATHOGEN_LABELS
@@ -1161,7 +1193,8 @@ plot_main_figure <- function(
         n_draws          = n_draws,
         max_subgroups    = max_subgroups,
         base_size        = base_size,
-        show_title       = TRUE
+        show_title       = TRUE,
+        point_highlights = if (!is.null(pathogen_highlights)) pathogen_highlights[[pathogen]] else NULL
       ),
       error = function(e) {
         message("  [WARN] Panel build failed for '", pathogen,
@@ -1180,6 +1213,70 @@ plot_main_figure <- function(
           face = "bold", size = base_size + 3L,
           hjust = 0.5, margin = ggplot2::margin(b = 8)
         )
+      )
+    )
+}
+
+#' Split main figure into three panels by data availability
+#'
+#' Calls [plot_main_figure()] three times — once per pathogen group — and
+#' assembles the results into a single vertically-stacked figure labelled A,
+#' B, and C.
+#'
+#' @param all_results Nested results list (same as [plot_main_figure()]).
+#' @param group_a Character vector of pathogen keys for panel A (high data).
+#' @param group_b Character vector of pathogen keys for panel B (moderate data).
+#' @param group_c Character vector of pathogen keys for panel C (low data).
+#' @param panel_labels Length-3 character vector of panel labels.
+#' @param model_weights Pre-computed model weights from
+#'   [compute_pathogen_model_bayes_factors()].  If `NULL`, computed once and
+#'   shared across all three panels.
+#' @param ncol Number of columns within each panel group.
+#' @param ... Additional arguments forwarded to [plot_main_figure()].
+#' @return A patchwork figure.
+#' @export
+plot_main_figure_split <- function(
+  all_results,
+  group_a       = c("SARS", "COVID_19", "Flu", "Measles"),
+  group_b       = c("Nipah", "EVD", "MERS", "CCHF",
+                    "Cholera", "Typhoid", "Dengue", "YFV", "Mpox", "Smallpox"),
+  group_c       = c("MVD", "Lassa", "Zika", "RVF"),
+  panel_labels  = c("A", "B", "C"),
+  model_weights = NULL,
+  ncol          = 4L,
+  ...
+) {
+  # Pre-compute model weights once to avoid 3x recomputation
+  if (is.null(model_weights))
+    model_weights <- compute_pathogen_model_bayes_factors(all_results)
+
+  fig_a <- plot_main_figure(
+    all_results, pathogens = group_a,
+    model_weights = model_weights, ncol = ncol, show_title = FALSE, ...
+  )
+  fig_b <- plot_main_figure(
+    all_results, pathogens = group_b,
+    model_weights = model_weights, ncol = ncol, show_title = FALSE, ...
+  )
+  fig_c <- plot_main_figure(
+    all_results, pathogens = group_c,
+    model_weights = model_weights, ncol = ncol, show_title = FALSE, ...
+  )
+
+  # Heights proportional to number of rows in each group
+  n_rows  <- function(g) ceiling(length(g) / ncol)
+  heights <- c(n_rows(group_a), n_rows(group_b), n_rows(group_c))
+
+  # wrap_elements() prevents patchwork from looking inside each group when
+  # applying tags — ensures A/B/C label the groups, not individual sub-panels
+  (patchwork::wrap_elements(fig_a) /
+   patchwork::wrap_elements(fig_b) /
+   patchwork::wrap_elements(fig_c)) +
+    patchwork::plot_layout(heights = heights) +
+    patchwork::plot_annotation(
+      tag_levels = list(panel_labels),
+      theme = ggplot2::theme(
+        plot.tag = ggplot2::element_text(face = "bold")
       )
     )
 }

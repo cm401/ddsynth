@@ -6,6 +6,7 @@
 \usage{
 plot_main_figure(
   all_results,
+  pathogens = NULL,
   pathogen_labels = NULL,
   x_max = NULL,
   n_draws = 500L,
@@ -14,7 +15,8 @@ plot_main_figure(
   max_subgroups = 8L,
   ncol = 4L,
   base_size = 9,
-  show_title = TRUE
+  show_title = TRUE,
+  pathogen_highlights = NULL
 )
 }
 \arguments{

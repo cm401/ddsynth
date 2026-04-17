@@ -30,6 +30,7 @@ Imports:
     tibble,
     tidyr
 Suggests:
+    ggtext,
     knitr,
     loo,
     patchwork,
