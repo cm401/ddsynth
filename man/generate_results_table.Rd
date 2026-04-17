@@ -6,13 +6,16 @@
 \usage{
 generate_results_table(
   all_results,
+  pathogens = NULL,
   model_weights = NULL,
   show_subgroups = TRUE,
   rhat_threshold = 1.05,
   ci_prob = 0.95,
   pathogen_labels = NULL,
-  caption = paste0("Incubation period estimates by pathogen. ",
+  caption =
+    paste0("Incubation period estimates by pathogen, grouped by epidemiological category. ",
     "Values are posterior medians with 95\\\\\% credible intervals (CI). ",
+    "$\\\\tau$ is the between-study heterogeneity SD. ",
     "Subgroup analyses are shown in italics beneath each pathogen."),
   label = "tab:incubation_periods"
 )
