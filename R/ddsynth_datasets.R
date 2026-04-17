@@ -1066,11 +1066,11 @@ datasets_flu <- list(
               source = "Shen (2012), doi: 10.1186/1743-422X-9-20",                        
               country = "China",       
               subgroup = "H1N1" ),
-  d7  = list( median = 1.6,    min = 0.4,    max = 4.2,    n = 79,    
+  d9  = list( median = 1.6,    min = 0.4,    max = 4.2,    n = 79,    
               source = "Wang (2012), doi: 10.1016/j.puhe.2011.11.008",                        
               country = "China",       
               subgroup = "H1N1" ),
-  d8 = list(
+  d10 = list(
     # Lessler et al. (2009), N Engl J Med 361:2628-36, doi:10.1056/NEJMoa0908481.
     # Supplementary Table 1: n=134 doubly interval-censored incubation period
     # observations from 2009 H1N1 outbreak at a New York City school.
@@ -1115,7 +1115,7 @@ datasets_flu <- list(
     country = "USA",
     subgroup = "H1N1"
   ),
-  d9  = list( mean = 1.9,    sd = 0.7,    n = 44,    
+  d11  = list( mean = 1.9,    sd = 0.7,    n = 44,    
               source = "Canini (2011), doi: 10.1128/jvi.01318-10",                        
               country = "Mixed",       
               subgroup = "H1N1" ),
@@ -1125,7 +1125,7 @@ datasets_flu <- list(
   # Interval-censored in 12-hour windows (hours converted to fractional days)
   # Lessler et al. 2009 (doi:10.1016/S1473-3099(09)70069-6) used n=61 Flu A, n=24 Flu B
   # from this source; their n=61 includes the 5 F-99 re-exposed subjects
-  d10 = list(
+  d12 = list(
     freq_lower   = c( 0.5417, 1.0417, 1.5417, 2.0417),
     freq_upper   = c( 1.0,    1.5,    2.0,    2.5   ),
     freq_count   = c( 35,     10,     13,     3     ),
@@ -1133,7 +1133,7 @@ datasets_flu <- list(
     country      = "USA",
     source       = "Henle (1946), doi: 10.4049/jimmunol.52.2.145"
   ),
-  d11 = list(
+  d13 = list(
     freq_lower   = c( 0.5417, 1.0417, 1.5417),
     freq_upper   = c( 1.0,    1.5,    2.0   ),
     freq_count   = c( 19,     3,      2     ),
