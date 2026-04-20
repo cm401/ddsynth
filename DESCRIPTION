@@ -23,6 +23,7 @@ Imports:
     grid,
     here,
     MASS,
+    kableExtra,
     parallel,
     purrr,
     rstan,
