@@ -380,7 +380,7 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
 
   # Process each dataset
   for (i in seq_along(datasets)) {
-    d <- datasets[[i]]
+     d<- datasets[[i]]
 
     # Determine summary type and extract statistics
     if (!is.null(d$median) && !is.null(d$min) && !is.null(d$max)) {

@@ -2,46 +2,86 @@
 #' @export
 create_results_summary <- function(results, scenarios = NULL)
 {
-  # Filter to converged, non-skipped runs
+  # ── 1. Normalise predictive-quantile column names ─────────────────────────
+  # Legacy runner (run_simulation_study_generalized) uses the names
+  # coverage_median / coverage_p95 / bias_median / bias_p95.
+  # Rename them to the current convention so the rest of the function is uniform.
+  if (!"coverage_pred_median" %in% names(results) &&
+        "coverage_median"      %in% names(results)) {
+    results <- dplyr::rename(results,
+      coverage_pred_median = coverage_median,
+      coverage_pred_q95    = coverage_p95,
+      bias_pred_median     = bias_median,
+      bias_pred_q95        = bias_p95
+    )
+  }
+
+  # ── 2. Ensure summary_type is present ─────────────────────────────────────
+  # The legacy runner does not embed summary_type in per-replicate rows; it
+  # lives only in the scenarios data frame that was passed separately.
+  if (!"summary_type" %in% names(results)) {
+    if (is.null(scenarios))
+      stop(paste0(
+        "'summary_type' is absent from results and no scenarios data frame ",
+        "was supplied. Pass the scenarios tibble from generate_scenario_library() ",
+        "as the second argument."
+      ))
+    results <- dplyr::left_join(
+      results,
+      dplyr::select(scenarios, scenario_name, summary_type),
+      by = "scenario_name"
+    )
+  }
+
+  # ── 3. Ensure skipped_reason is present (legacy results lack it) ──────────
+  if (!"skipped_reason" %in% names(results)) {
+    results <- dplyr::mutate(results, skipped_reason = NA_character_)
+  }
+
+  # ── 4. Filter to converged, non-skipped runs ──────────────────────────────
   results_filtered <- results %>%
     dplyr::filter(converged, is.na(skipped_reason))
 
+  # ── 5. Aggregate ──────────────────────────────────────────────────────────
   summary_results <- results_filtered %>%
     group_by(scenario_name, dist_type, n_datasets, summary_type, n_obs_mean) %>%
-    summarise( n_converged = n(),
-               # Coverage of 95% CIs for model parameters (should be close to 0.95)
-               coverage_mu0 = mean(coverage_mu0, na.rm = TRUE),
-               coverage_tau = mean(coverage_tau, na.rm = TRUE),
-               coverage_phi = mean(coverage_phi, na.rm = TRUE),
-               # Median bias of parameter estimates (should be close to 0)
-               median_bias_mu0 = median(bias_mu0, na.rm = TRUE),
-               median_bias_tau = median(bias_tau, na.rm = TRUE),
-               median_bias_phi = median(bias_phi, na.rm = TRUE),
-               # Mean absolute error of parameter estimates
-               mae_mu0 = mean(abs(bias_mu0), na.rm = TRUE),
-               mae_tau = mean(abs(bias_tau), na.rm = TRUE),
-               mae_phi = mean(abs(bias_phi), na.rm = TRUE),
-               # Coverage and bias for predictive quantiles
-               coverage_pred_median = mean(coverage_pred_median, na.rm = TRUE),
-               coverage_pred_q95    = mean(coverage_pred_q95,    na.rm = TRUE),
-               bias_pred_median     = median(bias_pred_median,   na.rm = TRUE),
-               bias_pred_q95        = median(bias_pred_q95,      na.rm = TRUE),
-               # IQD: integrated quadratic distance
-               mean_iqd   = mean(iqd,   na.rm = TRUE),
-               median_iqd = median(iqd, na.rm = TRUE),
-               sd_iqd     = sd(iqd,     na.rm = TRUE),
-               # WIS: weighted interval score
-               mean_wis   = mean(wis,   na.rm = TRUE),
-               median_wis = median(wis, na.rm = TRUE),
-               sd_wis     = sd(wis,     na.rm = TRUE),
-               .groups = "drop" )
+    summarise(
+      n_converged = n(),
+      # Coverage of 95% CIs for model parameters (should be close to 0.95)
+      coverage_mu0    = mean(coverage_mu0, na.rm = TRUE),
+      coverage_tau    = mean(coverage_tau, na.rm = TRUE),
+      coverage_phi    = mean(coverage_phi, na.rm = TRUE),
+      # Median bias of parameter estimates (should be close to 0)
+      median_bias_mu0 = median(bias_mu0, na.rm = TRUE),
+      median_bias_tau = median(bias_tau, na.rm = TRUE),
+      median_bias_phi = median(bias_phi, na.rm = TRUE),
+      # Mean absolute error of parameter estimates
+      mae_mu0 = mean(abs(bias_mu0), na.rm = TRUE),
+      mae_tau = mean(abs(bias_tau), na.rm = TRUE),
+      mae_phi = mean(abs(bias_phi), na.rm = TRUE),
+      # Coverage and bias for predictive quantiles (names normalised in step 1)
+      coverage_pred_median = mean(coverage_pred_median, na.rm = TRUE),
+      coverage_pred_q95    = mean(coverage_pred_q95,    na.rm = TRUE),
+      bias_pred_median     = median(bias_pred_median,   na.rm = TRUE),
+      bias_pred_q95        = median(bias_pred_q95,      na.rm = TRUE),
+      # IQD: integrated quadratic distance
+      mean_iqd   = mean(iqd,   na.rm = TRUE),
+      median_iqd = median(iqd, na.rm = TRUE),
+      sd_iqd     = sd(iqd,     na.rm = TRUE),
+      # WIS: weighted interval score
+      mean_wis   = mean(wis,   na.rm = TRUE),
+      median_wis = median(wis, na.rm = TRUE),
+      sd_wis     = sd(wis,     na.rm = TRUE),
+      .groups = "drop"
+    )
 
-  # n_obs alias for backward compatibility with plot helpers that reference n_obs
+  # ── 6. n_obs alias for plot helpers that reference n_obs ──────────────────
   summary_results <- summary_results %>%
     mutate(n_obs = n_obs_mean)
 
-  # If a legacy scenarios data frame is supplied, merge any extra columns it
-  # provides (e.g. scenario_group, vary_n) that may not yet be in results.
+  # ── 7. Optional extra columns from the scenarios data frame ───────────────
+  # Merges scenario_group, vary_n, etc. when present in scenarios but absent
+  # from the per-replicate results (always the case for legacy results).
   if (!is.null(scenarios)) {
     extra_cols <- setdiff(
       c("scenario_group", "n_obs_sd", "n_obs_min", "n_obs_max", "vary_n"),
@@ -383,6 +423,11 @@ create_convergence_plot <- function(res_out, scenarios = NULL)
                 by = "scenario_name")
   } else {
     res_tmp <- res_out
+  }
+
+  # Ensure skipped_reason exists before filtering (absent in legacy outputs)
+  if (!"skipped_reason" %in% names(res_tmp)) {
+    res_tmp <- dplyr::mutate(res_tmp, skipped_reason = NA_character_)
   }
 
   res_tmp <- res_tmp %>%
