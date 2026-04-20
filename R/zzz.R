@@ -14,12 +14,15 @@ utils::globalVariables(c(
   "bias", "bias_mu0", "bias_tau", "bias_phi",
   "mae", "mae_mu0", "mae_tau", "mae_phi",
   # iqd / wis columns
-  "iqd", "mean_iqd", "wis", "rel_wis",
+  "iqd", "mean_iqd", "median_iqd", "sd_iqd",
+  "wis", "rel_wis", "mean_wis", "median_wis", "sd_wis",
   # kappa coverage / bias columns
   "coverage_kappa", "bias_kappa", "rel_bias_kappa", "true_kappa",
-  # predictive quantile coverage / bias columns
-  "coverage_median", "coverage_p95",
-  "bias_median", "rel_bias_median", "bias_p95", "rel_bias_p95",
+  # predictive quantile coverage / bias columns (current names)
+  "coverage_pred_median", "coverage_pred_q95",
+  "bias_pred_median", "bias_pred_q95",
+  # skipped / feasibility flags
+  "skipped_reason", "scenario_feasibility_note",
   # parameter label after pivot_longer
   "parameter",
   # convergence rate (create_convergence_plot)
