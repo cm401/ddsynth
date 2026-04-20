@@ -54,8 +54,12 @@ reference:
       - starts_with("create_bias")
       - starts_with("create_mae")
       - starts_with("create_convergence")
+      - starts_with("create_iqd")
+      - starts_with("create_wis")
+      - starts_with("create_pred")
       - compute_pathogen_model_bayes_factors
       - plot_main_figure
+      - plot_main_figure_split
   - title: "Simulation Metrics"
     desc: "Functions for evaluating simulation study performance"
     contents:
@@ -67,4 +71,9 @@ reference:
       - compute_true_marginal_quantile
       - compute_wis
       - extract_quantiles
+      - gamma_type2_reliable
       - summarise_parameters
+  - title: "Package"
+    desc: ~
+    contents:
+      - ddsynth-package
