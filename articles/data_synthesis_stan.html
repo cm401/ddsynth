@@ -102,6 +102,18 @@ likelihood) and leave-one-out cross-validation (LOO-CV).</p>
 <span><span class="fu"><a href="https://mc-stan.org/rstan/reference/rstan_options.html" class="external-link">rstan_options</a></span><span class="op">(</span>auto_write <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
+<h2 id="compile-the-stan-model">Compile the Stan Model<a class="anchor" aria-label="anchor" href="#compile-the-stan-model"></a>
+</h2>
+<p>The Stan model file is shipped with the package under
+<code>inst/stan/</code>.</p>
+<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">stan_model_path</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span></span>
+<span>  <span class="st">"stan"</span>, <span class="st">"hierarchical_data_synthesis_summary_stats.stan"</span>,</span>
+<span>  package <span class="op">=</span> <span class="st">"ddsynth"</span></span>
+<span><span class="op">)</span></span>
+<span><span class="va">stan_model_code</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://mc-stan.org/rstan/reference/stan_model.html" class="external-link">stan_model</a></span><span class="op">(</span><span class="va">stan_model_path</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level2">
 <h2 id="prepare-data">Prepare Data<a class="anchor" aria-label="anchor" href="#prepare-data"></a>
 </h2>
 <p>Each element of <code>datasets</code> describes one study via its
@@ -139,7 +151,7 @@ tables)</td>
 </tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">datasets</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
 <span>  d1  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>median <span class="op">=</span> <span class="fl">10.0</span>, min <span class="op">=</span>  <span class="fl">9.0</span>, max <span class="op">=</span> <span class="fl">12.0</span>, n <span class="op">=</span>  <span class="fl">4</span><span class="op">)</span>,</span>
 <span>  d2  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>median <span class="op">=</span>  <span class="fl">4.0</span>, min <span class="op">=</span>  <span class="fl">2.0</span>, max <span class="op">=</span>  <span class="fl">7.0</span>, n <span class="op">=</span>  <span class="fl">6</span><span class="op">)</span>,</span>
@@ -157,19 +169,16 @@ tables)</td>
 <span>  <span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">stan_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/prepare_stan_data_from_datasets.html">prepare_stan_data_from_datasets</a></span><span class="op">(</span><span class="va">datasets</span><span class="op">)</span></span></code></pre></div>
-</div>
-<div class="section level2">
-<h2 id="compile-the-stan-model">Compile the Stan Model<a class="anchor" aria-label="anchor" href="#compile-the-stan-model"></a>
-</h2>
-<p>The Stan model file is shipped with the package under
-<code>inst/stan/</code>.</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">stan_model_path</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span></span>
-<span>  <span class="st">"stan"</span>, <span class="st">"hierarchical_data_synthesis_summary_stats.stan"</span>,</span>
-<span>  package <span class="op">=</span> <span class="st">"ddsynth"</span></span>
-<span><span class="op">)</span></span>
-<span><span class="va">stan_model_code</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://mc-stan.org/rstan/reference/stan_model.html" class="external-link">stan_model</a></span><span class="op">(</span><span class="va">stan_model_path</span><span class="op">)</span></span></code></pre></div>
+<span><span class="va">custom_priors</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mu0_sd <span class="op">=</span> <span class="fl">1.0</span>,</span>
+<span>                     log_tau_mean <span class="op">=</span> <span class="fl">0.2</span>,</span>
+<span>                     log_tau_sd <span class="op">=</span> <span class="fl">0.5</span>,</span>
+<span>                     log_phi_mean <span class="op">=</span> <span class="op">-</span><span class="fl">0.7</span>,</span>
+<span>                     log_phi_sd   <span class="op">=</span> <span class="fl">0.5</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">checks</span>   <span class="op">&lt;-</span> <span class="fu"><a href="../reference/pre_inference_checks.html">pre_inference_checks</a></span><span class="op">(</span><span class="va">datasets_Cholera</span>, <span class="va">stan_model_code</span>, dist_type <span class="op">=</span> <span class="fl">2</span>, filter <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="va">datasets_clean</span> <span class="op">&lt;-</span> <span class="va">checks</span><span class="op">$</span><span class="va">datasets</span> </span>
+<span><span class="va">datasets_clean</span> <span class="op">&lt;-</span> <span class="va">datasets_clean</span><span class="op">[</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">sapply</a></span><span class="op">(</span><span class="va">datasets_clean</span>, <span class="va">is.null</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="va">stan_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/prepare_stan_data_from_datasets.html">prepare_stan_data_from_datasets</a></span><span class="op">(</span><span class="va">datasets_clean</span>,custom_priors <span class="op">=</span> <span class="va">custom_priors</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="fit-models">Fit Models<a class="anchor" aria-label="anchor" href="#fit-models"></a>
@@ -177,8 +186,9 @@ tables)</td>
 <p>We fit the hierarchical model under each candidate distribution
 family.</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">distributions</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lognormal"</span>, <span class="st">"gamma"</span>, <span class="st">"weibull"</span><span class="op">)</span></span>
-<span><span class="va">dist_codes</span>    <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>lognormal <span class="op">=</span> <span class="fl">1</span>, gamma <span class="op">=</span> <span class="fl">2</span>, weibull <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="va">distributions</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lognormal"</span>, <span class="st">"gamma"</span>, <span class="st">"weibull"</span>, <span class="st">"burr"</span>, <span class="st">"gg"</span> <span class="op">)</span></span>
+<span><span class="co">#distributions &lt;- c("lognormal")</span></span>
+<span><span class="va">dist_codes</span>    <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>lognormal <span class="op">=</span> <span class="fl">1</span>, gamma <span class="op">=</span> <span class="fl">2</span>, weibull <span class="op">=</span> <span class="fl">3</span>, burr <span class="op">=</span> <span class="fl">4</span>, gg <span class="op">=</span> <span class="fl">5</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">fits</span>           <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="va">bridge_samples</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
@@ -187,16 +197,35 @@ family.</p>
 <span>  <span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"\n\n========== Fitting"</span>, <span class="va">dist</span>, <span class="st">"model ==========\n"</span><span class="op">)</span></span>
 <span></span>
 <span>  <span class="va">stan_data</span><span class="op">$</span><span class="va">dist_type</span>     <span class="op">&lt;-</span> <span class="va">dist_codes</span><span class="op">[</span><span class="va">dist</span><span class="op">]</span></span>
-<span>  <span class="va">stan_data</span><span class="op">$</span><span class="va">log_phi_mean</span>  <span class="op">&lt;-</span> <span class="kw">if</span> <span class="op">(</span><span class="va">dist</span> <span class="op">==</span> <span class="st">"gamma"</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="fl">10</span><span class="op">)</span> <span class="kw">else</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="fl">1.5</span><span class="op">)</span></span>
+<span>  <span class="co">#stan_data$log_phi_mean  &lt;- if (dist == "gamma") log(10) else log(1.5)</span></span>
+<span>  <span class="va">stan_data</span>               <span class="op">&lt;-</span> <span class="fu"><a href="../reference/update_phi_prior.html">update_phi_prior</a></span><span class="op">(</span><span class="va">stan_data</span>, <span class="va">datasets</span><span class="op">)</span>  </span>
+<span>  </span>
+<span>  <span class="co"># Initialise from prior means to avoid log(0) rejections for GG / Burr XII</span></span>
+<span>  <span class="va">init_fn</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/make_stan_init_fn.html">make_stan_init_fn</a></span><span class="op">(</span><span class="va">stan_data</span><span class="op">)</span></span>
+<span></span>
+<span>  <span class="co"># GG has a strongly correlated (phi, kappa) posterior: many combinations of</span></span>
+<span>  <span class="co"># sigma and Q fit typical summary statistics equally well, creating an</span></span>
+<span>  <span class="co"># elongated ridge the diagonal mass matrix (diag_e) cannot traverse</span></span>
+<span>  <span class="co"># efficiently.  Switching to a dense mass matrix (dense_e) lets NUTS learn</span></span>
+<span>  <span class="co"># the phi-kappa correlation during warmup and precondition its leapfrog steps</span></span>
+<span>  <span class="co"># to align with the ridge, resolving the max_treedepth saturation seen with</span></span>
+<span>  <span class="co"># diag_e even at max_treedepth = 12.  Warmup is increased to 4000 to give</span></span>
+<span>  <span class="co"># the mass-matrix adaptation enough iterations to converge.</span></span>
+<span>  <span class="va">ctrl</span> <span class="op">&lt;-</span> <span class="kw">if</span> <span class="op">(</span><span class="va">dist</span> <span class="op">==</span> <span class="st">"gg"</span><span class="op">)</span> <span class="op">{</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>adapt_delta <span class="op">=</span> <span class="fl">0.95</span>, max_treedepth <span class="op">=</span> <span class="fl">12</span>, metric <span class="op">=</span> <span class="st">"dense_e"</span><span class="op">)</span></span>
+<span>  <span class="op">}</span> <span class="kw">else</span> <span class="op">{</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>adapt_delta <span class="op">=</span> <span class="fl">0.9</span>,  max_treedepth <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
+<span>  <span class="op">}</span></span>
 <span></span>
 <span>  <span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://mc-stan.org/rstan/reference/stanmodel-method-sampling.html" class="external-link">sampling</a></span><span class="op">(</span></span>
 <span>    <span class="va">stan_model_code</span>,</span>
 <span>    data    <span class="op">=</span> <span class="va">stan_data</span>,</span>
 <span>    chains  <span class="op">=</span> <span class="fl">4</span>,</span>
-<span>    iter    <span class="op">=</span> <span class="fl">12000</span>,</span>
-<span>    warmup  <span class="op">=</span> <span class="fl">2000</span>,</span>
+<span>    iter    <span class="op">=</span> <span class="kw">if</span> <span class="op">(</span><span class="va">dist</span> <span class="op">==</span> <span class="st">"gg"</span><span class="op">)</span> <span class="fl">14000L</span> <span class="kw">else</span> <span class="fl">12000L</span>,</span>
+<span>    warmup  <span class="op">=</span> <span class="kw">if</span> <span class="op">(</span><span class="va">dist</span> <span class="op">==</span> <span class="st">"gg"</span><span class="op">)</span>  <span class="fl">4000L</span> <span class="kw">else</span>  <span class="fl">2000L</span>,</span>
 <span>    thin    <span class="op">=</span> <span class="fl">1</span>,</span>
-<span>    control <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>adapt_delta <span class="op">=</span> <span class="fl">0.999</span>, max_treedepth <span class="op">=</span> <span class="fl">12</span>, stepsize <span class="op">=</span> <span class="fl">0.01</span><span class="op">)</span>,</span>
+<span>    init    <span class="op">=</span> <span class="va">init_fn</span>,</span>
+<span>    control <span class="op">=</span> <span class="va">ctrl</span>,</span>
 <span>    seed    <span class="op">=</span> <span class="fl">123</span></span>
 <span>  <span class="op">)</span></span>
 <span></span>
@@ -411,22 +440,30 @@ CDF with credible bands.</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">cdf_summaries</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
 <span></span>
+<span><span class="va">cdf_mats</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
+<span></span>
 <span><span class="kw">for</span> <span class="op">(</span><span class="va">dist</span> <span class="kw">in</span> <span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">fits</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Computing CDF for"</span>, <span class="va">dist</span>, <span class="st">"...\n"</span><span class="op">)</span></span>
-<span>  <span class="va">cdf_summaries</span><span class="op">[[</span><span class="va">dist</span><span class="op">]</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/compute_predictive_cdf.html">compute_predictive_cdf</a></span><span class="op">(</span></span>
+<span>  <span class="va">cdf_result</span>          <span class="op">&lt;-</span> <span class="fu"><a href="../reference/compute_predictive_cdf.html">compute_predictive_cdf</a></span><span class="op">(</span></span>
 <span>    <span class="va">fits</span><span class="op">[[</span><span class="va">dist</span><span class="op">]</span><span class="op">]</span>,</span>
 <span>    <span class="va">dist</span>,</span>
 <span>    x_seq   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">30</span>, length.out <span class="op">=</span> <span class="fl">500</span><span class="op">)</span>,</span>
 <span>    n_draws <span class="op">=</span> <span class="fl">500</span>,</span>
 <span>    L       <span class="op">=</span> <span class="fl">2000</span></span>
 <span>  <span class="op">)</span></span>
+<span>  <span class="va">cdf_summaries</span><span class="op">[[</span><span class="va">dist</span><span class="op">]</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="va">cdf_result</span><span class="op">$</span><span class="va">summary</span></span>
+<span>  <span class="va">cdf_mats</span><span class="op">[[</span><span class="va">dist</span><span class="op">]</span><span class="op">]</span>      <span class="op">&lt;-</span> <span class="va">cdf_result</span><span class="op">$</span><span class="va">cdf_mat</span></span>
 <span><span class="op">}</span></span>
 <span></span>
 <span><span class="va">cdf_df</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/bind_rows.html" class="external-link">bind_rows</a></span><span class="op">(</span><span class="va">cdf_summaries</span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># Extract key quantiles from the predictive CDF</span></span>
+<span><span class="co"># Extract key quantiles from the predictive CDF.</span></span>
+<span><span class="co"># Passing cdf_mat ensures the PI bounds are derived from the same posterior</span></span>
+<span><span class="co"># draws as the ribbon, making the dashed/dotted segments fully consistent</span></span>
+<span><span class="co"># with the shaded credible band.</span></span>
 <span><span class="va">quantile_summaries</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">cdf_summaries</span><span class="op">)</span>, <span class="kw">function</span><span class="op">(</span><span class="va">nm</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span>model <span class="op">=</span> <span class="va">nm</span>, <span class="fu"><a href="../reference/extract_quantiles.html">extract_quantiles</a></span><span class="op">(</span><span class="va">cdf_summaries</span><span class="op">[[</span><span class="va">nm</span><span class="op">]</span><span class="op">]</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span>model <span class="op">=</span> <span class="va">nm</span>, <span class="fu"><a href="../reference/extract_quantiles.html">extract_quantiles</a></span><span class="op">(</span><span class="va">cdf_summaries</span><span class="op">[[</span><span class="va">nm</span><span class="op">]</span><span class="op">]</span>,</span>
+<span>                                      cdf_mat <span class="op">=</span> <span class="va">cdf_mats</span><span class="op">[[</span><span class="va">nm</span><span class="op">]</span><span class="op">]</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="op">}</span><span class="op">)</span></span>
 <span><span class="va">quantile_df</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/bind_rows.html" class="external-link">bind_rows</a></span><span class="op">(</span><span class="va">quantile_summaries</span><span class="op">)</span></span>
 <span></span>
@@ -499,7 +536,7 @@ CDF with credible bands.</p>
 <span>        panel.grid.major.y <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_blank</a></span><span class="op">(</span><span class="op">)</span>, legend.position <span class="op">=</span> <span class="st">"right"</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># ---- Per-model CDF panels ----</span></span>
-<span><span class="va">model_colors</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>lognormal <span class="op">=</span> <span class="st">"darkblue"</span>, weibull <span class="op">=</span> <span class="st">"darkred"</span><span class="op">)</span></span>
+<span><span class="va">model_colors</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>lognormal <span class="op">=</span> <span class="st">"darkblue"</span>, gamma <span class="op">=</span> <span class="st">"darkgreen"</span>, weibull <span class="op">=</span> <span class="st">"darkred"</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">plot_model_cdf</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">model_name</span>, <span class="va">model_color</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
@@ -534,9 +571,10 @@ CDF with credible bands.</p>
 <span></span>
 <span><span class="va">p_lognormal</span> <span class="op">&lt;-</span> <span class="fu">plot_model_cdf</span><span class="op">(</span><span class="st">"lognormal"</span>, <span class="va">model_colors</span><span class="op">[</span><span class="st">"lognormal"</span><span class="op">]</span><span class="op">)</span></span>
 <span><span class="va">p_weibull</span>   <span class="op">&lt;-</span> <span class="fu">plot_model_cdf</span><span class="op">(</span><span class="st">"weibull"</span>,   <span class="va">model_colors</span><span class="op">[</span><span class="st">"weibull"</span><span class="op">]</span><span class="op">)</span></span>
+<span><span class="va">p_gamma</span>     <span class="op">&lt;-</span> <span class="fu">plot_model_cdf</span><span class="op">(</span><span class="st">"gamma"</span>,   <span class="va">model_colors</span><span class="op">[</span><span class="st">"gamma"</span><span class="op">]</span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">p_final</span> <span class="op">&lt;-</span> <span class="op">(</span><span class="va">p_lognormal</span> <span class="op">/</span> <span class="va">p_weibull</span> <span class="op">/</span> <span class="va">p_obs</span><span class="op">)</span> <span class="op">+</span></span>
-<span>  <span class="fu"><a href="https://patchwork.data-imaginist.com/reference/plot_layout.html" class="external-link">plot_layout</a></span><span class="op">(</span>heights <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">2</span>, <span class="fl">1.5</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
+<span><span class="va">p_final</span> <span class="op">&lt;-</span> <span class="op">(</span><span class="va">p_lognormal</span> <span class="op">/</span> <span class="va">p_gamma</span> <span class="op">/</span> <span class="va">p_weibull</span> <span class="op">/</span> <span class="va">p_obs</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://patchwork.data-imaginist.com/reference/plot_layout.html" class="external-link">plot_layout</a></span><span class="op">(</span>heights <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">2</span>, <span class="fl">2</span>, <span class="fl">1.5</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://patchwork.data-imaginist.com/reference/plot_annotation.html" class="external-link">plot_annotation</a></span><span class="op">(</span></span>
 <span>    title    <span class="op">=</span> <span class="st">"Posterior Predictive CDFs with Observed Data by Model"</span>,</span>
 <span>    subtitle <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span><span class="st">"Dashed: predicted median"</span>,</span>
@@ -579,11 +617,11 @@ CDF with credible bands.</p>
 <span><span class="co">#&gt; loaded via a namespace (and not attached):</span></span>
 <span><span class="co">#&gt;  [1] digest_0.6.39     desc_1.4.3        R6_2.6.1          fastmap_1.2.0    </span></span>
 <span><span class="co">#&gt;  [5] xfun_0.57         cachem_1.1.0      knitr_1.51        htmltools_0.5.9  </span></span>
-<span><span class="co">#&gt;  [9] rmarkdown_2.31    lifecycle_1.0.5   cli_3.6.5         sass_0.4.10      </span></span>
+<span><span class="co">#&gt;  [9] rmarkdown_2.31    lifecycle_1.0.5   cli_3.6.6         sass_0.4.10      </span></span>
 <span><span class="co">#&gt; [13] pkgdown_2.2.0     textshaping_1.0.5 jquerylib_0.1.4   systemfonts_1.3.2</span></span>
 <span><span class="co">#&gt; [17] compiler_4.5.3    tools_4.5.3       ragg_1.5.2        evaluate_1.0.5   </span></span>
-<span><span class="co">#&gt; [21] bslib_0.10.0      yaml_2.3.12       jsonlite_2.0.0    rlang_1.1.7      </span></span>
-<span><span class="co">#&gt; [25] fs_2.0.1</span></span></code></pre></div>
+<span><span class="co">#&gt; [21] bslib_0.10.0      yaml_2.3.12       jsonlite_2.0.0    rlang_1.2.0      </span></span>
+<span><span class="co">#&gt; [25] fs_2.1.0</span></span></code></pre></div>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>

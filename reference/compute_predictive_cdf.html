@@ -49,7 +49,7 @@ a predictive CDF with pointwise credible bands.</p>
 <span>  <span class="va">dist_name</span>,</span>
 <span>  x_seq <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">30</span>, length.out <span class="op">=</span> <span class="fl">500</span><span class="op">)</span>,</span>
 <span>  n_draws <span class="op">=</span> <span class="fl">500</span>,</span>
-<span>  L <span class="op">=</span> <span class="fl">50</span></span>
+<span>  L <span class="op">=</span> <span class="fl">2000</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -62,7 +62,9 @@ a predictive CDF with pointwise credible bands.</p>
 
 
 <dt id="arg-dist-name">dist_name<a class="anchor" aria-label="anchor" href="#arg-dist-name"></a></dt>
-<dd><p>Character string: <code>"lognormal"</code>, <code>"gamma"</code>, or <code>"weibull"</code>.</p></dd>
+<dd><p>Character string: <code>"lognormal"</code>, <code>"gamma"</code>, <code>"weibull"</code>,
+<code>"burr12"</code> (Burr Type XII), or <code>"gengamma"</code> (Generalised Gamma, Prentice
+parameterisation).</p></dd>
 
 
 <dt id="arg-x-seq">x_seq<a class="anchor" aria-label="anchor" href="#arg-x-seq"></a></dt>
@@ -76,7 +78,10 @@ a predictive CDF with pointwise credible bands.</p>
 
 <dt id="arg-l">L<a class="anchor" aria-label="anchor" href="#arg-l"></a></dt>
 <dd><p>Number of study-level locations to integrate over per draw
-(default: 50).</p></dd>
+(default: 2000). When <code>n_datasets &lt; 5</code>, <code>mean(loc_d)</code> is used directly
+for all <code>L</code> locations (i.e. no between-study sampling) for consistency
+with the Stan generated quantities block — see
+<code><a href="prepare_stan_data_from_datasets.html">prepare_stan_data_from_datasets()</a></code> for details.</p></dd>
 
 </dl></div>
     <div class="section level2">

@@ -49,11 +49,17 @@ sessionInfo()
 #> [1] ddsynth_0.0.0.9000
 #> 
 #> loaded via a namespace (and not attached):
-#>  [1] digest_0.6.39     desc_1.4.3        R6_2.6.1          codetools_0.2-20 
-#>  [5] fastmap_1.2.0     xfun_0.57         iterators_1.0.14  cachem_1.1.0     
-#>  [9] knitr_1.51        htmltools_0.5.9   rmarkdown_2.31    lifecycle_1.0.5  
-#> [13] cli_3.6.5         foreach_1.5.2     sass_0.4.10       pkgdown_2.2.0    
-#> [17] textshaping_1.0.5 jquerylib_0.1.4   systemfonts_1.3.2 compiler_4.5.3   
-#> [21] tools_4.5.3       ragg_1.5.2        evaluate_1.0.5    bslib_0.10.0     
-#> [25] yaml_2.3.12       jsonlite_2.0.0    rlang_1.1.7       fs_2.0.1
+#>  [1] gtable_0.3.6       jsonlite_2.0.0     dplyr_1.2.1        compiler_4.5.3    
+#>  [5] tidyselect_1.2.1   stringr_1.6.0      tidyr_1.3.2        jquerylib_0.1.4   
+#>  [9] systemfonts_1.3.2  scales_1.4.0       textshaping_1.0.5  yaml_2.3.12       
+#> [13] fastmap_1.2.0      lattice_0.22-9     coda_0.19-4.1      ggplot2_4.0.2     
+#> [17] R6_2.6.1           generics_0.1.4     knitr_1.51         iterators_1.0.14  
+#> [21] tibble_3.3.1       desc_1.4.3         bslib_0.10.0       pillar_1.11.1     
+#> [25] RColorBrewer_1.1-3 rlang_1.2.0        stringi_1.8.7      ggsci_5.0.0       
+#> [29] cachem_1.1.0       xfun_0.57          fs_2.1.0           sass_0.4.10       
+#> [33] S7_0.2.1-1         cli_3.6.6          pkgdown_2.2.0      magrittr_2.0.5    
+#> [37] foreach_1.5.2      digest_0.6.39      grid_4.5.3         lifecycle_1.0.5   
+#> [41] vctrs_0.7.3        evaluate_1.0.5     glue_1.8.1         farver_2.1.2      
+#> [45] codetools_0.2-20   ragg_1.5.2         purrr_1.2.2        rmarkdown_2.31    
+#> [49] tools_4.5.3        pkgconfig_2.0.3    htmltools_0.5.9
 ```

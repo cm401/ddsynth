@@ -44,10 +44,11 @@
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">generate_hierarchical_data_mixed</span><span class="op">(</span></span>
 <span>  <span class="va">n_datasets</span>,</span>
 <span>  <span class="va">n_obs</span>,</span>
-<span>  dist_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lognormal"</span>, <span class="st">"gamma"</span>, <span class="st">"weibull"</span><span class="op">)</span>,</span>
+<span>  dist_type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lognormal"</span>, <span class="st">"gamma"</span>, <span class="st">"weibull"</span>, <span class="st">"burr12"</span>, <span class="st">"gengamma"</span><span class="op">)</span>,</span>
 <span>  <span class="va">mu0</span>,</span>
 <span>  <span class="va">tau</span>,</span>
 <span>  <span class="va">phi</span>,</span>
+<span>  kappa <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  summary_type <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>

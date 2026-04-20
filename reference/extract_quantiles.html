@@ -44,7 +44,7 @@ credible bounds) crosses that probability.</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">extract_quantiles</span><span class="op">(</span><span class="va">cdf_summary</span>, probs <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.5</span>, <span class="fl">0.95</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">extract_quantiles</span><span class="op">(</span><span class="va">cdf_summary</span>, probs <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.5</span>, <span class="fl">0.95</span><span class="op">)</span>, cdf_mat <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -60,11 +60,25 @@ with columns <code>x</code>, <code>median</code>, <code>low</code>, and <code>hi
 <dd><p>Numeric vector of probabilities to extract (default:
 <code>c(0.5, 0.95)</code>).</p></dd>
 
+
+<dt id="arg-cdf-mat">cdf_mat<a class="anchor" aria-label="anchor" href="#arg-cdf-mat"></a></dt>
+<dd><p>Numeric matrix of posterior CDF draws as returned by
+<code><a href="compute_predictive_cdf.html">compute_predictive_cdf()</a></code> (rows = posterior draws, columns = <code>x_seq</code>
+grid points). When supplied, the 95% prediction interval bounds
+(<code>x_low</code>, <code>x_high</code>) are computed by interpolating each draw's CDF to
+find the x at which it crosses <code>p</code>, then taking the 2.5% and 97.5%
+quantiles across draws. This is fully consistent with the ribbon in
+the CDF plot (both derive from the same <code>cdf_mat</code>). If <code>NULL</code>, falls
+back to inverting the summary credible bands, which can fail near the
+tails.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A data frame with columns <code>quantile</code>, <code>quantile_label</code>, <code>x_median</code>,
-<code>x_low</code>, and <code>x_high</code>.</p>
+    <p>A data frame with columns <code>quantile</code>, <code>quantile_label</code>, <code>x_low</code>,
+and <code>x_high</code>. <code>x_low</code> and <code>x_high</code> are the 2.5% and 97.5% bounds of
+the 95% prediction interval for that quantile, on the same scale as
+the <code>x</code> column of <code>cdf_summary</code>.</p>
     </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

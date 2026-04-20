@@ -4,15 +4,32 @@
 
 Functions for synthesising delay distribution data
 
+- [`create_data_map()`](https://cm401.github.io/ddsynth/reference/create_data_map.md)
+  : Create a global map of dataset geographic distribution
 - [`create_scenario()`](https://cm401.github.io/ddsynth/reference/create_scenario.md)
   : Create a scenario with specific characteristics
+- [`generate_cdf_plot_simulation_study_input()`](https://cm401.github.io/ddsynth/reference/generate_cdf_plot_simulation_study_input.md)
+  : Plot true CDFs for simulation study input scenarios
+- [`generate_data_table()`](https://cm401.github.io/ddsynth/reference/generate_data_table.md)
+  : Generate a multi-page landscape LaTeX data summary table
 - [`generate_hierarchical_data_mixed()`](https://cm401.github.io/ddsynth/reference/generate_hierarchical_data_mixed.md)
   : Generate data from hierarchical model with mixed summary types and
   sample sizes
+- [`generate_matched_moments_plot()`](https://cm401.github.io/ddsynth/reference/generate_matched_moments_plot.md)
+  : Matched-moments distribution comparison plot
+- [`generate_results_table()`](https://cm401.github.io/ddsynth/reference/generate_results_table.md)
+  : Generate a LaTeX summary table of incubation period estimates
+- [`generate_results_table_split()`](https://cm401.github.io/ddsynth/reference/generate_results_table_split.md)
+  : Generate a LaTeX summary table split into three panels by data
+  availability
 - [`generate_scenario_library()`](https://cm401.github.io/ddsynth/reference/generate_scenario_library.md)
   : Generate a comprehensive set of scenarios
 - [`prepare_stan_data_from_datasets()`](https://cm401.github.io/ddsynth/reference/prepare_stan_data_from_datasets.md)
   : Prepare Stan data from a list of dataset summaries
+- [`extract_dataset_summary()`](https://cm401.github.io/ddsynth/reference/extract_dataset_summary.md)
+  : Extract a tidy summary of all built-in datasets
+- [`filter_datasets()`](https://cm401.github.io/ddsynth/reference/filter_datasets.md)
+  : Filter a dataset list by subgroup and/or location
 
 ## Model Fitting
 
@@ -41,10 +58,26 @@ Functions for fitting hierarchical Bayesian models
   intervals
 - [`bsl_to_mcmc_list_multi()`](https://cm401.github.io/ddsynth/reference/bsl_to_mcmc_list_multi.md)
   : Convert a multi-chain BSL fit list to coda mcmc.list objects
+- [`make_stan_init_fn()`](https://cm401.github.io/ddsynth/reference/make_stan_init_fn.md)
+  : Create a Stan initialisation function from prior means
+- [`pre_inference_checks()`](https://cm401.github.io/ddsynth/reference/pre_inference_checks.md)
+  : Run pre-inference checks on a list of datasets
+- [`should_attempt_gg()`](https://cm401.github.io/ddsynth/reference/should_attempt_gg.md)
+  : Check whether the Generalised Gamma is likely identifiable from a
+  dataset
+- [`update_phi_prior()`](https://cm401.github.io/ddsynth/reference/update_phi_prior.md)
+  : Update the log_phi prior mean from method-of-moments estimates
 
 ## Results & Plotting
 
 Functions for summarising and visualising results
+
+- [`compute_pathogen_model_bayes_factors()`](https://cm401.github.io/ddsynth/reference/compute_pathogen_model_bayes_factors.md)
+  : Compute LOO-based model weights for all pathogens
+- [`plot_main_figure()`](https://cm401.github.io/ddsynth/reference/plot_main_figure.md)
+  : Build the main incubation-period analysis figure
+- [`plot_main_figure_split()`](https://cm401.github.io/ddsynth/reference/plot_main_figure_split.md)
+  : Split main figure into three panels by data availability
 
 ## Simulation Metrics
 
@@ -58,7 +91,23 @@ Functions for evaluating simulation study performance
   : Compute median bias
 - [`compute_predictive_cdf()`](https://cm401.github.io/ddsynth/reference/compute_predictive_cdf.md)
   : Compute posterior predictive CDF from a fitted Stan model
+- [`compute_posterior_predictive_quantile_ci()`](https://cm401.github.io/ddsynth/reference/compute_posterior_predictive_quantile_ci.md)
+  : Compute credible interval for posterior predictive quantiles
+- [`compute_true_marginal_quantile()`](https://cm401.github.io/ddsynth/reference/compute_true_marginal_quantile.md)
+  : Compute true marginal quantiles of the predictive distribution
+- [`compute_wis()`](https://cm401.github.io/ddsynth/reference/compute_wis.md)
+  : Compute the mean Weighted Interval Score for the posterior
+  predictive distribution
 - [`extract_quantiles()`](https://cm401.github.io/ddsynth/reference/extract_quantiles.md)
   : Extract quantiles from a predictive CDF summary
+- [`gamma_type2_reliable()`](https://cm401.github.io/ddsynth/reference/gamma_type2_reliable.md)
+  : Check whether Gamma can be reliably fitted from median + IQR summary
+  statistics
 - [`summarise_parameters()`](https://cm401.github.io/ddsynth/reference/summarise_parameters.md)
   : Summarise posterior parameter estimates across BSL models
+
+## Package
+
+- [`ddsynth`](https://cm401.github.io/ddsynth/reference/ddsynth-package.md)
+  [`ddsynth-package`](https://cm401.github.io/ddsynth/reference/ddsynth-package.md)
+  : ddsynth: Delay Distribution from Summary Statistics

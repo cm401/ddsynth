@@ -11,7 +11,7 @@ compute_predictive_cdf(
   dist_name,
   x_seq = seq(0, 30, length.out = 500),
   n_draws = 500,
-  L = 50
+  L = 2000
 )
 ```
 
@@ -24,7 +24,9 @@ compute_predictive_cdf(
 
 - dist_name:
 
-  Character string: `"lognormal"`, `"gamma"`, or `"weibull"`.
+  Character string: `"lognormal"`, `"gamma"`, `"weibull"`, `"burr12"`
+  (Burr Type XII), or `"gengamma"` (Generalised Gamma, Prentice
+  parameterisation).
 
 - x_seq:
 
@@ -38,7 +40,11 @@ compute_predictive_cdf(
 - L:
 
   Number of study-level locations to integrate over per draw (default:
-  50).
+  2000). When `n_datasets < 5`, `mean(loc_d)` is used directly for all
+  `L` locations (i.e. no between-study sampling) for consistency with
+  the Stan generated quantities block — see
+  [`prepare_stan_data_from_datasets()`](https://cm401.github.io/ddsynth/reference/prepare_stan_data_from_datasets.md)
+  for details.
 
 ## Value
 

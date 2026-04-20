@@ -45,6 +45,13 @@
 
       <dl><dt>
 
+          <code><a href="create_data_map.html">create_data_map()</a></code>
+
+        </dt>
+        <dd>Create a global map of dataset geographic distribution</dd>
+
+        <dt>
+
           <code><a href="create_scenario.html">create_scenario()</a></code>
 
         </dt>
@@ -52,10 +59,45 @@
 
         <dt>
 
+          <code><a href="generate_cdf_plot_simulation_study_input.html">generate_cdf_plot_simulation_study_input()</a></code>
+
+        </dt>
+        <dd>Plot true CDFs for simulation study input scenarios</dd>
+
+        <dt>
+
+          <code><a href="generate_data_table.html">generate_data_table()</a></code>
+
+        </dt>
+        <dd>Generate a multi-page landscape LaTeX data summary table</dd>
+
+        <dt>
+
           <code><a href="generate_hierarchical_data_mixed.html">generate_hierarchical_data_mixed()</a></code>
 
         </dt>
         <dd>Generate data from hierarchical model with mixed summary types and sample sizes</dd>
+
+        <dt>
+
+          <code><a href="generate_matched_moments_plot.html">generate_matched_moments_plot()</a></code>
+
+        </dt>
+        <dd>Matched-moments distribution comparison plot</dd>
+
+        <dt>
+
+          <code><a href="generate_results_table.html">generate_results_table()</a></code>
+
+        </dt>
+        <dd>Generate a LaTeX summary table of incubation period estimates</dd>
+
+        <dt>
+
+          <code><a href="generate_results_table_split.html">generate_results_table_split()</a></code>
+
+        </dt>
+        <dd>Generate a LaTeX summary table split into three panels by data availability</dd>
 
         <dt>
 
@@ -70,6 +112,20 @@
 
         </dt>
         <dd>Prepare Stan data from a list of dataset summaries</dd>
+
+        <dt>
+
+          <code><a href="extract_dataset_summary.html">extract_dataset_summary()</a></code>
+
+        </dt>
+        <dd>Extract a tidy summary of all built-in datasets</dd>
+
+        <dt>
+
+          <code><a href="filter_datasets.html">filter_datasets()</a></code>
+
+        </dt>
+        <dd>Filter a dataset list by subgroup and/or location</dd>
       </dl></div><div class="section level2">
       <h2 id="model-fitting">Model Fitting<a class="anchor" aria-label="anchor" href="#model-fitting"></a></h2>
 
@@ -156,6 +212,34 @@
 
         </dt>
         <dd>Convert a multi-chain BSL fit list to coda mcmc.list objects</dd>
+
+        <dt>
+
+          <code><a href="make_stan_init_fn.html">make_stan_init_fn()</a></code>
+
+        </dt>
+        <dd>Create a Stan initialisation function from prior means</dd>
+
+        <dt>
+
+          <code><a href="pre_inference_checks.html">pre_inference_checks()</a></code>
+
+        </dt>
+        <dd>Run pre-inference checks on a list of datasets</dd>
+
+        <dt>
+
+          <code><a href="should_attempt_gg.html">should_attempt_gg()</a></code>
+
+        </dt>
+        <dd>Check whether the Generalised Gamma is likely identifiable from a dataset</dd>
+
+        <dt>
+
+          <code><a href="update_phi_prior.html">update_phi_prior()</a></code>
+
+        </dt>
+        <dd>Update the log_phi prior mean from method-of-moments estimates</dd>
       </dl></div><div class="section level2">
       <h2 id="results-plotting">Results &amp; Plotting<a class="anchor" aria-label="anchor" href="#results-plotting"></a></h2>
 
@@ -166,7 +250,27 @@
 
 
 
-      <dl></dl></div><div class="section level2">
+      <dl><dt>
+
+          <code><a href="compute_pathogen_model_bayes_factors.html">compute_pathogen_model_bayes_factors()</a></code>
+
+        </dt>
+        <dd>Compute LOO-based model weights for all pathogens</dd>
+
+        <dt>
+
+          <code><a href="plot_main_figure.html">plot_main_figure()</a></code>
+
+        </dt>
+        <dd>Build the main incubation-period analysis figure</dd>
+
+        <dt>
+
+          <code><a href="plot_main_figure_split.html">plot_main_figure_split()</a></code>
+
+        </dt>
+        <dd>Split main figure into three panels by data availability</dd>
+      </dl></div><div class="section level2">
       <h2 id="simulation-metrics">Simulation Metrics<a class="anchor" aria-label="anchor" href="#simulation-metrics"></a></h2>
 
       <div class="section-desc"><p>Functions for evaluating simulation study performance</p></div>
@@ -206,6 +310,27 @@
 
         <dt>
 
+          <code><a href="compute_posterior_predictive_quantile_ci.html">compute_posterior_predictive_quantile_ci()</a></code>
+
+        </dt>
+        <dd>Compute credible interval for posterior predictive quantiles</dd>
+
+        <dt>
+
+          <code><a href="compute_true_marginal_quantile.html">compute_true_marginal_quantile()</a></code>
+
+        </dt>
+        <dd>Compute true marginal quantiles of the predictive distribution</dd>
+
+        <dt>
+
+          <code><a href="compute_wis.html">compute_wis()</a></code>
+
+        </dt>
+        <dd>Compute the mean Weighted Interval Score for the posterior predictive distribution</dd>
+
+        <dt>
+
           <code><a href="extract_quantiles.html">extract_quantiles()</a></code>
 
         </dt>
@@ -213,10 +338,33 @@
 
         <dt>
 
+          <code><a href="gamma_type2_reliable.html">gamma_type2_reliable()</a></code>
+
+        </dt>
+        <dd>Check whether Gamma can be reliably fitted from median + IQR summary statistics</dd>
+
+        <dt>
+
           <code><a href="summarise_parameters.html">summarise_parameters()</a></code>
 
         </dt>
         <dd>Summarise posterior parameter estimates across BSL models</dd>
+      </dl></div><div class="section level2">
+      <h2 id="package">Package<a class="anchor" aria-label="anchor" href="#package"></a></h2>
+
+
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="ddsynth-package.html">ddsynth</a></code> <code><a href="ddsynth-package.html">ddsynth-package</a></code>
+
+        </dt>
+        <dd>ddsynth: Delay Distribution from Summary Statistics</dd>
       </dl></div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside></div>

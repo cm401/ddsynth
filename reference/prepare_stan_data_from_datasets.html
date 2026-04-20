@@ -51,7 +51,7 @@ and a sample size) into the named list expected by the
 <span>  <span class="va">datasets</span>,</span>
 <span>  dist_type <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  use_custom_priors <span class="op">=</span> <span class="fl">0</span>,</span>
-<span>  custom_priors <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  custom_priors <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -60,22 +60,37 @@ and a sample size) into the named list expected by the
 
 
 <dl><dt id="arg-datasets">datasets<a class="anchor" aria-label="anchor" href="#arg-datasets"></a></dt>
-<dd><p>A named list of lists.  Each element must contain <code>n</code> (sample
-size) and one of the following combinations of summary statistics:</p><dl><dt><code>median</code>, <code>min</code>, <code>max</code></dt>
-<dd><p>Median and range (summary type 1).</p></dd>
+<dd><p>A named list of lists. Each element must contain one of the
+following combinations of summary statistics:</p><dl><dt><code>median</code>, <code>min</code>, <code>max</code></dt>
+<dd><p>Median and range (summary type 1). <code>n</code>
+(sample size) is required.</p></dd>
 
 <dt><code>median</code>, <code>Q1</code>, <code>Q3</code></dt>
-<dd><p>Median and inter-quartile range (summary type 2).</p></dd>
+<dd><p>Median and inter-quartile range (summary
+type 2). <code>n</code> is required.</p></dd>
 
 <dt><code>mean</code>, <code>sd</code></dt>
-<dd><p>Mean and standard deviation (summary type 3).</p></dd>
+<dd><p>Mean and standard deviation (summary type 3). <code>n</code>
+is required.</p></dd>
 
 <dt><code>freq_value</code>, <code>freq_count</code></dt>
-<dd><p>Frequency table of (value, count) pairs
-(summary type 4). <code>n</code> is optional and defaults to <code>sum(freq_count)</code>.</p></dd>
+<dd><p>Frequency table of (value, count)
+pairs (summary type 4). <code>n</code> is optional and defaults to
+<code>sum(freq_count)</code>.</p></dd>
+
+<dt><code>freq_lower</code>, <code>freq_upper</code>, <code>freq_count</code></dt>
+<dd><p>Interval-censored
+frequency table (summary type 5). Each entry gives the lower and
+upper bound of the censoring interval and the count of individuals
+in that interval. When <code>freq_lower[i] == freq_upper[i]</code> the
+observation is treated as exact. <code>n</code> is optional and defaults to
+<code>sum(freq_count)</code>.</p></dd>
 
 
-</dl></dd>
+</dl><p>Each element may also contain an optional <code>source</code> field — a free-text
+character string recording the bibliographic reference for that dataset
+(e.g. <code>"Surname (year), doi: doi.org/xyz"</code>). This field is ignored
+during Stan data preparation and is never passed to the model.</p></dd>
 
 
 <dt id="arg-dist-type">dist_type<a class="anchor" aria-label="anchor" href="#arg-dist-type"></a></dt>
@@ -89,13 +104,37 @@ Currently unused; reserved for future extension. Defaults to <code>0</code>.</p>
 
 
 <dt id="arg-custom-priors">custom_priors<a class="anchor" aria-label="anchor" href="#arg-custom-priors"></a></dt>
-<dd><p>Optional list of custom prior values. Currently unused.</p></dd>
+<dd><p>Named list of prior overrides. Any values not supplied
+fall back to distribution-appropriate defaults (see Details). Recognised
+names: <code>mu0_sd</code>, <code>log_tau_mean</code>, <code>log_tau_sd</code>, <code>log_phi_mean</code>,
+<code>log_phi_sd</code>.</p></dd>
 
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>A named list suitable for passing to <code><a href="https://mc-stan.org/rstan/reference/stanmodel-method-sampling.html" class="external-link">rstan::sampling()</a></code> as the
-<code>data</code> argument.</p>
+<code>data</code> argument. The list always includes <code>freq_lower</code> and <code>freq_upper</code>
+fields (populated with zeros for non-type-5 datasets), as these are
+required by the Stan model regardless of which summary types are present.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
+    <p><strong>Distribution-specific defaults for <code>log_phi</code>:</strong></p>
+<p>Because <code>phi</code> has a different meaning in each distribution, the default
+prior for <code>log_phi_mean</code> is chosen per <code>dist_type</code>:</p><table class="table table"><tr><td><code>dist_type</code></td><td>Distribution</td><td><code>phi</code></td><td>Default <code>log_phi_mean</code></td><td>Prior median phi</td></tr><tr><td>1</td><td>Lognormal</td><td>log-SD (σ)</td><td>-0.7</td><td>0.50</td></tr><tr><td>2</td><td>Gamma</td><td>shape</td><td>2.5</td><td>12.2</td></tr><tr><td>3</td><td>Weibull</td><td>shape</td><td>1.0</td><td>2.7</td></tr></table><p>Users can override any individual prior by passing only the relevant
+element(s) in <code>custom_priors</code>, e.g.
+<code>custom_priors = list(log_phi_mean = 3.0)</code> — all other priors will use
+the distribution-appropriate defaults above.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="note">Note<a class="anchor" aria-label="anchor" href="#note"></a></h2>
+    <p><strong>Backward compatibility:</strong> The Stan model requires <code>freq_lower</code> and
+<code>freq_upper</code> to be present in the data list for all runs, including those
+that contain only type 1–4 datasets. This is handled automatically when
+using this function. If you construct the Stan data list manually (rather
+than via this function), you must include these fields explicitly, e.g.:</p>
+<p></p><div class="sourceCode r"><pre><code><span><span class="va">stan_data</span><span class="op">$</span><span class="va">freq_lower</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fl">0</span>, <span class="va">stan_data</span><span class="op">$</span><span class="va">n_freq_total</span><span class="op">)</span></span>
+<span><span class="va">stan_data</span><span class="op">$</span><span class="va">freq_upper</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fl">0</span>, <span class="va">stan_data</span><span class="op">$</span><span class="va">n_freq_total</span><span class="op">)</span></span></code></pre><p></p></div>
     </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

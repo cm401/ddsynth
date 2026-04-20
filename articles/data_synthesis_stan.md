@@ -34,6 +34,18 @@ options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 ```
 
+## Compile the Stan Model
+
+The Stan model file is shipped with the package under `inst/stan/`.
+
+``` r
+stan_model_path <- system.file(
+  "stan", "hierarchical_data_synthesis_summary_stats.stan",
+  package = "ddsynth"
+)
+stan_model_code <- stan_model(stan_model_path)
+```
+
 ## Prepare Data
 
 Each element of `datasets` describes one study via its reported summary
@@ -64,19 +76,16 @@ datasets <- list(
   )
 )
 
-stan_data <- prepare_stan_data_from_datasets(datasets)
-```
+custom_priors = list(mu0_sd = 1.0,
+                     log_tau_mean = 0.2,
+                     log_tau_sd = 0.5,
+                     log_phi_mean = -0.7,
+                     log_phi_sd   = 0.5)
 
-## Compile the Stan Model
-
-The Stan model file is shipped with the package under `inst/stan/`.
-
-``` r
-stan_model_path <- system.file(
-  "stan", "hierarchical_data_synthesis_summary_stats.stan",
-  package = "ddsynth"
-)
-stan_model_code <- stan_model(stan_model_path)
+checks   <- pre_inference_checks(datasets_Cholera, stan_model_code, dist_type = 2, filter = TRUE)
+datasets_clean <- checks$datasets 
+datasets_clean <- datasets_clean[!sapply(datasets_clean, is.null)]
+stan_data <- prepare_stan_data_from_datasets(datasets_clean,custom_priors = custom_priors)
 ```
 
 ## Fit Models
@@ -84,8 +93,9 @@ stan_model_code <- stan_model(stan_model_path)
 We fit the hierarchical model under each candidate distribution family.
 
 ``` r
-distributions <- c("lognormal", "gamma", "weibull")
-dist_codes    <- c(lognormal = 1, gamma = 2, weibull = 3)
+distributions <- c("lognormal", "gamma", "weibull", "burr", "gg" )
+#distributions <- c("lognormal")
+dist_codes    <- c(lognormal = 1, gamma = 2, weibull = 3, burr = 4, gg = 5)
 
 fits           <- list()
 bridge_samples <- list()
@@ -94,16 +104,35 @@ for (dist in distributions) {
   cat("\n\n========== Fitting", dist, "model ==========\n")
 
   stan_data$dist_type     <- dist_codes[dist]
-  stan_data$log_phi_mean  <- if (dist == "gamma") log(10) else log(1.5)
+  #stan_data$log_phi_mean  <- if (dist == "gamma") log(10) else log(1.5)
+  stan_data               <- update_phi_prior(stan_data, datasets)  
+  
+  # Initialise from prior means to avoid log(0) rejections for GG / Burr XII
+  init_fn <- make_stan_init_fn(stan_data)
+
+  # GG has a strongly correlated (phi, kappa) posterior: many combinations of
+  # sigma and Q fit typical summary statistics equally well, creating an
+  # elongated ridge the diagonal mass matrix (diag_e) cannot traverse
+  # efficiently.  Switching to a dense mass matrix (dense_e) lets NUTS learn
+  # the phi-kappa correlation during warmup and precondition its leapfrog steps
+  # to align with the ridge, resolving the max_treedepth saturation seen with
+  # diag_e even at max_treedepth = 12.  Warmup is increased to 4000 to give
+  # the mass-matrix adaptation enough iterations to converge.
+  ctrl <- if (dist == "gg") {
+    list(adapt_delta = 0.95, max_treedepth = 12, metric = "dense_e")
+  } else {
+    list(adapt_delta = 0.9,  max_treedepth = 10)
+  }
 
   fit <- sampling(
     stan_model_code,
     data    = stan_data,
     chains  = 4,
-    iter    = 12000,
-    warmup  = 2000,
+    iter    = if (dist == "gg") 14000L else 12000L,
+    warmup  = if (dist == "gg")  4000L else  2000L,
     thin    = 1,
-    control = list(adapt_delta = 0.999, max_treedepth = 12, stepsize = 0.01),
+    init    = init_fn,
+    control = ctrl,
     seed    = 123
   )
 
@@ -317,22 +346,30 @@ to produce a predictive CDF with credible bands.
 ``` r
 cdf_summaries <- list()
 
+cdf_mats <- list()
+
 for (dist in names(fits)) {
   cat("Computing CDF for", dist, "...\n")
-  cdf_summaries[[dist]] <- compute_predictive_cdf(
+  cdf_result          <- compute_predictive_cdf(
     fits[[dist]],
     dist,
     x_seq   = seq(0, 30, length.out = 500),
     n_draws = 500,
     L       = 2000
   )
+  cdf_summaries[[dist]] <- cdf_result$summary
+  cdf_mats[[dist]]      <- cdf_result$cdf_mat
 }
 
 cdf_df <- bind_rows(cdf_summaries)
 
-# Extract key quantiles from the predictive CDF
+# Extract key quantiles from the predictive CDF.
+# Passing cdf_mat ensures the PI bounds are derived from the same posterior
+# draws as the ribbon, making the dashed/dotted segments fully consistent
+# with the shaded credible band.
 quantile_summaries <- lapply(names(cdf_summaries), function(nm) {
-  cbind(model = nm, extract_quantiles(cdf_summaries[[nm]]))
+  cbind(model = nm, extract_quantiles(cdf_summaries[[nm]],
+                                      cdf_mat = cdf_mats[[nm]]))
 })
 quantile_df <- bind_rows(quantile_summaries)
 
@@ -405,7 +442,7 @@ p_obs <- ggplot(observed_summary_compact, aes(x = center_obs, y = y_pos)) +
         panel.grid.major.y = element_blank(), legend.position = "right")
 
 # ---- Per-model CDF panels ----
-model_colors <- c(lognormal = "darkblue", weibull = "darkred")
+model_colors <- c(lognormal = "darkblue", gamma = "darkgreen", weibull = "darkred")
 
 plot_model_cdf <- function(model_name, model_color) {
   ggplot() +
@@ -440,9 +477,10 @@ plot_model_cdf <- function(model_name, model_color) {
 
 p_lognormal <- plot_model_cdf("lognormal", model_colors["lognormal"])
 p_weibull   <- plot_model_cdf("weibull",   model_colors["weibull"])
+p_gamma     <- plot_model_cdf("gamma",   model_colors["gamma"])
 
-p_final <- (p_lognormal / p_weibull / p_obs) +
-  plot_layout(heights = c(2, 2, 1.5)) +
+p_final <- (p_lognormal / p_gamma / p_weibull / p_obs) +
+  plot_layout(heights = c(2, 2, 2, 1.5)) +
   plot_annotation(
     title    = "Posterior Predictive CDFs with Observed Data by Model",
     subtitle = paste("Dashed: predicted median",
@@ -484,9 +522,9 @@ sessionInfo()
 #> loaded via a namespace (and not attached):
 #>  [1] digest_0.6.39     desc_1.4.3        R6_2.6.1          fastmap_1.2.0    
 #>  [5] xfun_0.57         cachem_1.1.0      knitr_1.51        htmltools_0.5.9  
-#>  [9] rmarkdown_2.31    lifecycle_1.0.5   cli_3.6.5         sass_0.4.10      
+#>  [9] rmarkdown_2.31    lifecycle_1.0.5   cli_3.6.6         sass_0.4.10      
 #> [13] pkgdown_2.2.0     textshaping_1.0.5 jquerylib_0.1.4   systemfonts_1.3.2
 #> [17] compiler_4.5.3    tools_4.5.3       ragg_1.5.2        evaluate_1.0.5   
-#> [21] bslib_0.10.0      yaml_2.3.12       jsonlite_2.0.0    rlang_1.1.7      
-#> [25] fs_2.0.1
+#> [21] bslib_0.10.0      yaml_2.3.12       jsonlite_2.0.0    rlang_1.2.0      
+#> [25] fs_2.1.0
 ```

@@ -79,9 +79,11 @@ well the model recovers the true population parameters
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>ϕ</mi><annotation encoding="application/x-tex">\phi</annotation></semantics></math>)
 when individual observations are unavailable and only summary statistics
 are reported.</p>
-<p>Three parametric families are considered —
+<p>Three standard parametric families are considered —
 <strong>log-normal</strong>, <strong>Gamma</strong>, and
-<strong>Weibull</strong> — along with five summary-statistic types:</p>
+<strong>Weibull</strong> — along with two extended families:
+<strong>Burr XII</strong> and <strong>Generalised Gamma</strong> (GG).
+Five summary-statistic types are evaluated:</p>
 <table class="table">
 <thead><tr class="header">
 <th><code>summary_type</code></th>
@@ -110,11 +112,45 @@ are reported.</p>
 </tr>
 </tbody>
 </table>
-<p>Performance is assessed via <strong>credible-interval
-coverage</strong>, <strong>median bias</strong>, <strong>mean absolute
-error (MAE)</strong>, and <strong>MCMC convergence rates</strong>, each
-broken down by distribution family, summary type, number of datasets,
-and within-study sample size.</p>
+<blockquote>
+<p><strong>Note on Generalised Gamma identifiability.</strong> The GG
+distribution has three parameters
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>μ</mi><mn>0</mn></msub><annotation encoding="application/x-tex">\mu_0</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>ϕ</mi><annotation encoding="application/x-tex">\phi</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>κ</mi><annotation encoding="application/x-tex">\kappa</annotation></semantics></math>).
+In a hierarchical synthesis setting, certain combinations of
+summary-statistic types and sample sizes render the shape parameter
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>κ</mi><annotation encoding="application/x-tex">\kappa</annotation></semantics></math>
+weakly identified. Scenarios flagged by the <code>gg_heuristic</code>
+rule are excluded from the summaries below; only scenarios where GG was
+judged estimable are retained.</p>
+</blockquote>
+<p>Performance is assessed via:</p>
+<ul>
+<li>
+<strong>Credible-interval coverage</strong> — empirical 95% CI
+coverage for model parameters
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>μ</mi><mn>0</mn></msub><annotation encoding="application/x-tex">\mu_0</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>τ</mi><annotation encoding="application/x-tex">\tau</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>ϕ</mi><annotation encoding="application/x-tex">\phi</annotation></semantics></math>)
+and for two predictive quantiles (P50, P95); nominal target: 0.95.</li>
+<li>
+<strong>Median bias</strong> — median of (posterior median
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mo>−</mo><annotation encoding="application/x-tex">-</annotation></semantics></math>
+true value) across replicates for parameters and predictive quantiles;
+target: 0.</li>
+<li>
+<strong>Mean absolute error (MAE)</strong> — for model
+parameters.</li>
+<li>
+<strong>Integrated quadratic distance (IQD)</strong> and
+<strong>Weighted Interval Score (WIS)</strong> — measures of predictive
+distribution accuracy; lower is better.</li>
+<li>
+<strong>MCMC convergence rates</strong> — proportion of replicates
+with
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mover><mi>R</mi><mo accent="true">̂</mo></mover><mo>&lt;</mo><mn>1.05</mn></mrow><annotation encoding="application/x-tex">\hat{R} &lt; 1.05</annotation></semantics></math>.</li>
+</ul>
 </div>
 <div class="section level2">
 <h2 id="setup">Setup<a class="anchor" aria-label="anchor" href="#setup"></a>
@@ -123,121 +159,253 @@ and within-study sample size.</p>
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://cm401.github.io/ddsynth">ddsynth</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://tidyverse.tidyverse.org" class="external-link">tidyverse</a></span><span class="op">)</span></span>
 <span><span class="co">#&gt; ── <span style="font-weight: bold;">Attaching core tidyverse packages</span> ──────────────────────── tidyverse 2.0.0 ──</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">dplyr    </span> 1.2.0     <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">readr    </span> 2.2.0</span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">dplyr    </span> 1.2.1     <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">readr    </span> 2.2.0</span></span>
 <span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">forcats  </span> 1.0.1     <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">stringr  </span> 1.6.0</span></span>
 <span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">ggplot2  </span> 4.0.2     <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">tibble   </span> 3.3.1</span></span>
 <span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">lubridate</span> 1.9.5     <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">tidyr    </span> 1.3.2</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">purrr    </span> 1.2.1     </span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">purrr    </span> 1.2.2     </span></span>
 <span><span class="co">#&gt; ── <span style="font-weight: bold;">Conflicts</span> ────────────────────────────────────────── tidyverse_conflicts() ──</span></span>
 <span><span class="co">#&gt; <span style="color: #BB0000;">✖</span> <span style="color: #0000BB;">dplyr</span>::<span style="color: #00BB00;">filter()</span> masks <span style="color: #0000BB;">stats</span>::filter()</span></span>
 <span><span class="co">#&gt; <span style="color: #BB0000;">✖</span> <span style="color: #0000BB;">dplyr</span>::<span style="color: #00BB00;">lag()</span>    masks <span style="color: #0000BB;">stats</span>::lag()</span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Use the conflicted package (<span style="color: #0000BB; font-style: italic;">&lt;http://conflicted.r-lib.org/&gt;</span>) to force all conflicts to become errors</span></span>
-<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://nanx.me/ggsci/" class="external-link">ggsci</a></span><span class="op">)</span></span></code></pre></div>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://nanx.me/ggsci/" class="external-link">ggsci</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://here.r-lib.org/" class="external-link">here</a></span><span class="op">)</span>        <span class="co"># used only for inst/extdata path resolution below</span></span>
+<span><span class="co">#&gt; here() starts at /home/runner/work/ddsynth/ddsynth</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="load-pre-computed-results">Load Pre-computed Results<a class="anchor" aria-label="anchor" href="#load-pre-computed-results"></a>
 </h2>
 <p>Running the full simulation study is computationally intensive. The
 results used here were generated by
-<code><a href="../reference/run_simulation_study_generalized.html">run_simulation_study_generalized()</a></code> and saved to disk.</p>
+<code>analysis/new_simulation_study.R</code> and saved to disk. All
+scenario metadata (distribution family, summary type, sample sizes, true
+parameters) is embedded directly in the results file — no separate
+scenario library is needed.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">res_out</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/readRDS.html" class="external-link">readRDS</a></span><span class="op">(</span><span class="st">"simulation_results_output_generalized.rds"</span><span class="op">)</span></span></code></pre></div>
-</div>
-<div class="section level2">
-<h2 id="build-the-scenario-library">Build the Scenario Library<a class="anchor" aria-label="anchor" href="#build-the-scenario-library"></a>
-</h2>
-<p><code><a href="../reference/generate_scenario_library.html">generate_scenario_library()</a></code> constructs the full
-factorial grid of scenarios used in the study, covering homogeneous,
-mixed,
-varied-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>n</mi><annotation encoding="application/x-tex">n</annotation></semantics></math>,
-and frequency-table conditions.</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Generating scenario library...\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Generating scenario library...</span></span>
-<span></span>
-<span><span class="va">scenarios</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://tibble.tidyverse.org/reference/as_tibble.html" class="external-link">as_tibble</a></span><span class="op">(</span><span class="fu"><a href="../reference/generate_scenario_library.html">generate_scenario_library</a></span><span class="op">(</span></span>
-<span>  include_homogeneous  <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  include_mixed        <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  include_varied_n     <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  include_freq_table   <span class="op">=</span> <span class="cn">TRUE</span></span>
-<span><span class="op">)</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
-<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/mutate.html" class="external-link">mutate</a></span><span class="op">(</span></span>
-<span>    summary_type <span class="op">=</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/case-and-replace-when.html" class="external-link">case_when</a></span><span class="op">(</span></span>
-<span>      <span class="va">summary_type_1_prop</span> <span class="op">==</span> <span class="fl">1</span> <span class="op">~</span> <span class="fl">1L</span>,</span>
-<span>      <span class="va">summary_type_2_prop</span> <span class="op">==</span> <span class="fl">1</span> <span class="op">~</span> <span class="fl">2L</span>,</span>
-<span>      <span class="va">summary_type_3_prop</span> <span class="op">==</span> <span class="fl">1</span> <span class="op">~</span> <span class="fl">3L</span>,</span>
-<span>      <span class="va">summary_type_4_prop</span> <span class="op">==</span> <span class="fl">1</span> <span class="op">~</span> <span class="fl">4L</span>,</span>
-<span>      .default <span class="op">=</span> <span class="fl">5L</span></span>
-<span>    <span class="op">)</span></span>
-<span>  <span class="op">)</span></span>
-<span></span>
-<span><span class="va">scenarios</span><span class="op">$</span><span class="va">scenario_idx</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">scenarios</span><span class="op">)</span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Generated"</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">scenarios</span><span class="op">)</span>, <span class="st">"scenarios\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Generated 156 scenarios</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="co"># Resolve path: installed package uses inst/extdata; source tree falls back to</span></span>
+<span><span class="co"># the same file relative to the package root discovered by here().</span></span>
+<span><span class="va">rds_path</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata"</span>, <span class="st">"simulation_results_all.rds"</span>, package <span class="op">=</span> <span class="st">"ddsynth"</span><span class="op">)</span></span>
+<span><span class="kw">if</span> <span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/nchar.html" class="external-link">nzchar</a></span><span class="op">(</span><span class="va">rds_path</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">rds_path</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu"><a href="https://here.r-lib.org/reference/here.html" class="external-link">here</a></span><span class="op">(</span><span class="op">)</span>, <span class="st">"inst"</span>, <span class="st">"extdata"</span>, <span class="st">"simulation_results_all.rds"</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span><span class="va">has_results</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/files.html" class="external-link">file.exists</a></span><span class="op">(</span><span class="va">rds_path</span><span class="op">)</span></span>
+<span><span class="kw">if</span> <span class="op">(</span><span class="op">!</span><span class="va">has_results</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/message.html" class="external-link">message</a></span><span class="op">(</span><span class="st">"simulation_results_all.rds not found; skipping analysis chunks."</span><span class="op">)</span></span>
+<span><span class="op">}</span> <span class="kw">else</span> <span class="op">{</span></span>
+<span>  <span class="va">res_out</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/readRDS.html" class="external-link">readRDS</a></span><span class="op">(</span><span class="va">rds_path</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"Loaded %d simulation rows across %d unique scenarios.\n"</span>,</span>
+<span>              <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">res_out</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">res_out</span><span class="op">$</span><span class="va">scenario_name</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"Distribution families: %s\n"</span>,</span>
+<span>              <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sort.html" class="external-link">sort</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">res_out</span><span class="op">$</span><span class="va">dist_type</span><span class="op">)</span><span class="op">)</span>, collapse <span class="op">=</span> <span class="st">", "</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="va">n_skipped</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/NA.html" class="external-link">is.na</a></span><span class="op">(</span><span class="va">res_out</span><span class="op">$</span><span class="va">skipped_reason</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="kw">if</span> <span class="op">(</span><span class="va">n_skipped</span> <span class="op">&gt;</span> <span class="fl">0L</span><span class="op">)</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"Note: %d rows excluded as non-identifiable (skipped_reason = '%s').\n"</span>,</span>
+<span>                <span class="va">n_skipped</span>, <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/na.fail.html" class="external-link">na.omit</a></span><span class="op">(</span><span class="va">res_out</span><span class="op">$</span><span class="va">skipped_reason</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span><span class="co">#&gt; simulation_results_all.rds not found; skipping analysis chunks.</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="summarise-results">Summarise Results<a class="anchor" aria-label="anchor" href="#summarise-results"></a>
 </h2>
-<p><code>create_results_summary()</code> aggregates the per-replicate
-outputs (restricting to converged runs) and joins the scenario metadata.
-The resulting table contains, for each scenario:</p>
+<p><code>create_results_summary()</code> aggregates per-replicate
+outputs, restricting to converged, estimable runs. The resulting table
+contains, for each scenario:</p>
 <ul>
 <li>
-<strong>Coverage</strong> — empirical 95% credible-interval coverage
-for
+<strong>Coverage</strong> — empirical 95% CI coverage for
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>μ</mi><mn>0</mn></msub><annotation encoding="application/x-tex">\mu_0</annotation></semantics></math>,
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>τ</mi><annotation encoding="application/x-tex">\tau</annotation></semantics></math>,
-and
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>ϕ</mi><annotation encoding="application/x-tex">\phi</annotation></semantics></math>
-(nominal target: 0.95).</li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>ϕ</mi><annotation encoding="application/x-tex">\phi</annotation></semantics></math>,
+and the predictive median (P50) and 95th percentile (P95).</li>
 <li>
 <strong>Median bias</strong> — median of (posterior median
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mo>−</mo><annotation encoding="application/x-tex">-</annotation></semantics></math>
-true value) across replicates (target: 0).</li>
+true value) for parameters and predictive quantiles.</li>
 <li>
-<strong>MAE</strong> — mean absolute error across replicates.</li>
+<strong>MAE</strong> — mean absolute error for parameters.</li>
 <li>
-<strong>IQD</strong> — mean integrated quadratic distance between
-the true and estimated predictive distributions.</li>
+<strong>IQD</strong> and <strong>WIS</strong> — mean predictive
+scoring rules across replicates.</li>
 </ul>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">summary_res</span> <span class="op">&lt;-</span> <span class="fu">create_results_summary</span><span class="op">(</span><span class="va">res_out</span>, <span class="va">scenarios</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
-<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/mutate.html" class="external-link">mutate</a></span><span class="op">(</span>n_obs <span class="op">=</span> <span class="va">n_obs_mean</span><span class="op">)</span></span></code></pre></div>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">summary_res</span> <span class="op">&lt;-</span> <span class="fu">create_results_summary</span><span class="op">(</span><span class="va">res_out</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"Summary covers %d scenario-level rows.\n"</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">summary_res</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
-<h2 id="coverage-of-95-credible-intervals">Coverage of 95% Credible Intervals<a class="anchor" aria-label="anchor" href="#coverage-of-95-credible-intervals"></a>
+<h2 id="coverage-of-95-credible-intervals-model-parameters">Coverage of 95% Credible Intervals — Model Parameters<a class="anchor" aria-label="anchor" href="#coverage-of-95-credible-intervals-model-parameters"></a>
 </h2>
 <p>Each point represents one scenario. Points near the dashed red line
 (0.95) indicate well-calibrated uncertainty quantification. Points are
 coloured by the number of datasets and shaped by the within-study sample
 size.</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">create_coverage_plot</span><span class="op">(</span><span class="va">summary_res</span><span class="op">)</span></span></code></pre></div>
-<p><img src="simulation_study_files/figure-html/coverage-1.png" class="r-plt" alt="" width="864"></p>
 </div>
 <div class="section level2">
-<h2 id="median-bias-of-parameter-estimates">Median Bias of Parameter Estimates<a class="anchor" aria-label="anchor" href="#median-bias-of-parameter-estimates"></a>
+<h2 id="median-bias-model-parameters">Median Bias — Model Parameters<a class="anchor" aria-label="anchor" href="#median-bias-model-parameters"></a>
 </h2>
 <p>The dashed red line at zero indicates unbiased estimation. Systematic
 departures from zero suggest that certain data configurations (e.g.,
 very small
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>n</mi><annotation encoding="application/x-tex">n</annotation></semantics></math>
 or sparse summary types) introduce recoverable or persistent bias.</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">create_bias_plot</span><span class="op">(</span><span class="va">summary_res</span><span class="op">)</span></span></code></pre></div>
-<p><img src="simulation_study_files/figure-html/bias-1.png" class="r-plt" alt="" width="864"></p>
 </div>
 <div class="section level2">
-<h2 id="mean-absolute-error-of-parameter-estimates">Mean Absolute Error of Parameter Estimates<a class="anchor" aria-label="anchor" href="#mean-absolute-error-of-parameter-estimates"></a>
+<h2 id="mean-absolute-error-model-parameters">Mean Absolute Error — Model Parameters<a class="anchor" aria-label="anchor" href="#mean-absolute-error-model-parameters"></a>
 </h2>
 <p>MAE captures the magnitude of estimation error irrespective of
 direction. Smaller values across larger datasets and richer summary
 types confirm that pooling information across studies reduces estimation
 uncertainty.</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">create_mae_plot</span><span class="op">(</span><span class="va">summary_res</span><span class="op">)</span></span></code></pre></div>
-<p><img src="simulation_study_files/figure-html/mae-1.png" class="r-plt" alt="" width="864"></p>
+</div>
+<div class="section level2">
+<h2 id="coverage-of-95-credible-intervals-predictive-median-p50">Coverage of 95% Credible Intervals — Predictive Median (P50)<a class="anchor" aria-label="anchor" href="#coverage-of-95-credible-intervals-predictive-median-p50"></a>
+</h2>
+<p>Coverage for the posterior predictive median. Points near the dashed
+red line (0.95) indicate that the credible intervals reliably contain
+the true population median. Points are coloured by number of datasets
+and shaped by within-study sample size.</p>
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">create_pred_median_coverage_plot</span><span class="op">(</span><span class="va">summary_res</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="coverage-of-95-credible-intervals-predictive-95th-percentile-p95">Coverage of 95% Credible Intervals — Predictive 95th Percentile
+(P95)<a class="anchor" aria-label="anchor" href="#coverage-of-95-credible-intervals-predictive-95th-percentile-p95"></a>
+</h2>
+<p>Coverage for the posterior predictive 95th percentile. Tail quantiles
+are typically harder to estimate and may show lower coverage in
+data-sparse scenarios.</p>
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">create_pred_q95_coverage_plot</span><span class="op">(</span><span class="va">summary_res</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="median-bias-predictive-median-p50">Median Bias — Predictive Median (P50)<a class="anchor" aria-label="anchor" href="#median-bias-predictive-median-p50"></a>
+</h2>
+<p>Systematic over- or under-estimation of the predictive median across
+scenarios. Departures from zero can reflect inadequate pooling in sparse
+conditions.</p>
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">create_pred_median_bias_plot</span><span class="op">(</span><span class="va">summary_res</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="median-bias-predictive-95th-percentile-p95">Median Bias — Predictive 95th Percentile (P95)<a class="anchor" aria-label="anchor" href="#median-bias-predictive-95th-percentile-p95"></a>
+</h2>
+<p>Bias in the posterior predictive 95th percentile. Persistent
+over-estimation of the tail is common when few datasets are available or
+the summary type provides limited information about the upper tail.</p>
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">create_pred_q95_bias_plot</span><span class="op">(</span><span class="va">summary_res</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="integrated-quadratic-distance-iqd">Integrated Quadratic Distance (IQD)<a class="anchor" aria-label="anchor" href="#integrated-quadratic-distance-iqd"></a>
+</h2>
+<p>IQD measures the average squared discrepancy between the true and
+estimated predictive CDFs across the full support. Lower values indicate
+that the posterior predictive distribution closely matches the
+data-generating distribution.</p>
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">create_iqd_plot</span><span class="op">(</span><span class="va">summary_res</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="weighted-interval-score-wis">Weighted Interval Score (WIS)<a class="anchor" aria-label="anchor" href="#weighted-interval-score-wis"></a>
+</h2>
+<p>WIS is a proper scoring rule that penalises both sharpness (narrow
+intervals) and miscoverage. Lower values indicate better overall
+predictive accuracy. Results here mirror the IQD analysis, providing a
+complementary view of predictive performance.</p>
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">create_wis_plot</span><span class="op">(</span><span class="va">summary_res</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="summary-table">Summary Table<a class="anchor" aria-label="anchor" href="#summary-table"></a>
+</h2>
+<p>The table below aggregates all metrics across scenarios within each
+distribution-family × summary-type cell (averaging over number of
+datasets and within-study sample size). Coverage values are shown as
+percentages (nominal target: 95%). Predictive bias is the median signed
+error in days (target: 0). IQD and WIS are means over scenarios (lower =
+better). Cells marked “—” correspond to distribution–summary-type
+combinations that were excluded as non-identifiable.</p>
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="http://haozhu233.github.io/kableExtra/" class="external-link">kableExtra</a></span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">table_dat</span> <span class="op">&lt;-</span> <span class="va">summary_res</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/group_by.html" class="external-link">group_by</a></span><span class="op">(</span><span class="va">dist_type</span>, <span class="va">summary_type</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/summarise.html" class="external-link">summarise</a></span><span class="op">(</span></span>
+<span>    n_scen   <span class="op">=</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>    cov_mu0  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_mu0</span>,          na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    cov_tau  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_tau</span>,          na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    cov_phi  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_phi</span>,          na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    cov_p50  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_pred_median</span>,  na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    cov_p95  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_pred_q95</span>,     na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    bias_p50 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/median.html" class="external-link">median</a></span><span class="op">(</span><span class="va">bias_pred_median</span>,    na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    bias_p95 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/median.html" class="external-link">median</a></span><span class="op">(</span><span class="va">bias_pred_q95</span>,       na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    iqd      <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">mean_iqd</span>,              na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    wis      <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">mean_wis</span>,              na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    .groups  <span class="op">=</span> <span class="st">"drop"</span></span>
+<span>  <span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/mutate.html" class="external-link">mutate</a></span><span class="op">(</span></span>
+<span>    dist_label <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="va">dist_type</span>,</span>
+<span>      levels <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lognormal"</span>, <span class="st">"gamma"</span>, <span class="st">"weibull"</span>, <span class="st">"burr12"</span>, <span class="st">"gengamma"</span><span class="op">)</span>,</span>
+<span>      labels <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Log-normal"</span>, <span class="st">"Gamma"</span>, <span class="st">"Weibull"</span>, <span class="st">"Burr XII"</span>, <span class="st">"Gen. Gamma"</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>    st_label <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="va">summary_type</span>, levels <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">5</span>,</span>
+<span>      labels <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Median+Range"</span>, <span class="st">"Median+IQR"</span>, <span class="st">"Mean+SD"</span>, <span class="st">"Freq Table"</span>, <span class="st">"Mixed"</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/arrange.html" class="external-link">arrange</a></span><span class="op">(</span><span class="va">dist_label</span>, <span class="va">st_label</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Build display data frame with formatted strings</span></span>
+<span><span class="va">tbl</span> <span class="op">&lt;-</span> <span class="va">table_dat</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/transmute.html" class="external-link">transmute</a></span><span class="op">(</span></span>
+<span>    Distribution    <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">dist_label</span><span class="op">)</span>,</span>
+<span>    `Summary type`  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">st_label</span><span class="op">)</span>,</span>
+<span>    `N`             <span class="op">=</span> <span class="va">n_scen</span>,</span>
+<span>    `mu[0]`         <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.1f"</span>, <span class="va">cov_mu0</span>  <span class="op">*</span> <span class="fl">100</span><span class="op">)</span>,</span>
+<span>    `tau`           <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.1f"</span>, <span class="va">cov_tau</span>  <span class="op">*</span> <span class="fl">100</span><span class="op">)</span>,</span>
+<span>    `phi`           <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.1f"</span>, <span class="va">cov_phi</span>  <span class="op">*</span> <span class="fl">100</span><span class="op">)</span>,</span>
+<span>    `P50`           <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.1f"</span>, <span class="va">cov_p50</span>  <span class="op">*</span> <span class="fl">100</span><span class="op">)</span>,</span>
+<span>    `P95`           <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.1f"</span>, <span class="va">cov_p95</span>  <span class="op">*</span> <span class="fl">100</span><span class="op">)</span>,</span>
+<span>    `P50 `          <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%+.2f"</span>, <span class="va">bias_p50</span><span class="op">)</span>,</span>
+<span>    `P95 `          <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%+.2f"</span>, <span class="va">bias_p95</span><span class="op">)</span>,</span>
+<span>    `IQD`           <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.3f"</span>, <span class="va">iqd</span><span class="op">)</span>,</span>
+<span>    `WIS`           <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.2f"</span>, <span class="va">wis</span><span class="op">)</span></span>
+<span>  <span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Row-group sizes for kableExtra::pack_rows</span></span>
+<span><span class="va">group_sizes</span> <span class="op">&lt;-</span> <span class="va">table_dat</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/count.html" class="external-link">count</a></span><span class="op">(</span><span class="va">dist_label</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://tibble.tidyverse.org/reference/enframe.html" class="external-link">deframe</a></span><span class="op">(</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/kbl.html" class="external-link">kbl</a></span><span class="op">(</span><span class="va">tbl</span>,</span>
+<span>    col.names <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Distribution"</span>, <span class="st">"Summary type"</span>, <span class="st">"N"</span>,</span>
+<span>                  <span class="st">"\u03bc\u2080"</span>, <span class="st">"\u03c4"</span>, <span class="st">"\u03c6"</span>,</span>
+<span>                  <span class="st">"P50"</span>, <span class="st">"P95"</span>,</span>
+<span>                  <span class="st">"P50"</span>, <span class="st">"P95"</span>,</span>
+<span>                  <span class="st">"IQD"</span>, <span class="st">"WIS"</span><span class="op">)</span>,</span>
+<span>    align     <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"l"</span>, <span class="st">"l"</span>, <span class="st">"r"</span>,</span>
+<span>                  <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>,</span>
+<span>                  <span class="st">"r"</span>, <span class="st">"r"</span>,</span>
+<span>                  <span class="st">"r"</span>, <span class="st">"r"</span>,</span>
+<span>                  <span class="st">"r"</span>, <span class="st">"r"</span><span class="op">)</span>,</span>
+<span>    caption   <span class="op">=</span> <span class="st">"Simulation study performance summary (means/medians across scenarios within each cell)"</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/kable_styling.html" class="external-link">kable_styling</a></span><span class="op">(</span>bootstrap_options <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"striped"</span>, <span class="st">"condensed"</span>, <span class="st">"hover"</span><span class="op">)</span>,</span>
+<span>                full_width <span class="op">=</span> <span class="cn">TRUE</span>, font_size <span class="op">=</span> <span class="fl">12</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/add_header_above.html" class="external-link">add_header_above</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">" "</span> <span class="op">=</span> <span class="fl">3</span>,</span>
+<span>                     <span class="st">"Parameter coverage (%)"</span> <span class="op">=</span> <span class="fl">3</span>,</span>
+<span>                     <span class="st">"Predictive coverage (%)"</span> <span class="op">=</span> <span class="fl">2</span>,</span>
+<span>                     <span class="st">"Predictive bias (days)"</span> <span class="op">=</span> <span class="fl">2</span>,</span>
+<span>                     <span class="st">"Scoring rules"</span> <span class="op">=</span> <span class="fl">2</span><span class="op">)</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/group_rows.html" class="external-link">pack_rows</a></span><span class="op">(</span>index <span class="op">=</span> <span class="va">group_sizes</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/footnote.html" class="external-link">footnote</a></span><span class="op">(</span>general <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span>
+<span>    <span class="st">"Coverage: empirical proportion of replicates where the true value fell inside the 95% posterior credible interval. "</span>,</span>
+<span>    <span class="st">"Predictive bias: median signed error (posterior median estimate \u2212 true value) across replicates. "</span>,</span>
+<span>    <span class="st">"IQD: integrated quadratic distance between true and estimated predictive CDFs. "</span>,</span>
+<span>    <span class="st">"WIS: weighted interval score. "</span>,</span>
+<span>    <span class="st">"Gen. Gamma scenarios with fewer than 10 identifiable replicates were excluded prior to aggregation."</span></span>
+<span>  <span class="op">)</span>, general_title <span class="op">=</span> <span class="st">"Note: "</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="mcmc-convergence-rates">MCMC Convergence Rates<a class="anchor" aria-label="anchor" href="#mcmc-convergence-rates"></a>
@@ -250,10 +418,10 @@ line (1.0) indicate perfect convergence across all replicates. Lower
 rates in sparse conditions (few datasets, small
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>n</mi><annotation encoding="application/x-tex">n</annotation></semantics></math>)
 highlight where the model may require more informative priors or
-additional iterations.</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">create_convergence_plot</span><span class="op">(</span><span class="va">res_out</span>, <span class="va">scenarios</span><span class="op">)</span></span></code></pre></div>
-<p><img src="simulation_study_files/figure-html/convergence-1.png" class="r-plt" alt="" width="864"></p>
+additional iterations. Scenarios deemed non-identifiable (e.g. certain
+GG configurations) are excluded.</p>
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">create_convergence_plot</span><span class="op">(</span><span class="va">res_out</span><span class="op">)</span></span></code></pre></div>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>

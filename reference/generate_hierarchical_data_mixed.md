@@ -9,10 +9,11 @@ sample sizes
 generate_hierarchical_data_mixed(
   n_datasets,
   n_obs,
-  dist_type = c("lognormal", "gamma", "weibull"),
+  dist_type = c("lognormal", "gamma", "weibull", "burr12", "gengamma"),
   mu0,
   tau,
   phi,
+  kappa = 1,
   summary_type = NULL
 )
 ```
