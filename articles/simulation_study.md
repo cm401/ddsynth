@@ -45,17 +45,23 @@ Performance is assessed via:
 
 ## Setup
 
-    #> ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
-    #> ✔ dplyr     1.2.1     ✔ readr     2.2.0
-    #> ✔ forcats   1.0.1     ✔ stringr   1.6.0
-    #> ✔ ggplot2   4.0.2     ✔ tibble    3.3.1
-    #> ✔ lubridate 1.9.5     ✔ tidyr     1.3.2
-    #> ✔ purrr     1.2.2     
-    #> ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
-    #> ✖ dplyr::filter() masks stats::filter()
-    #> ✖ dplyr::lag()    masks stats::lag()
-    #> ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
-    #> here() starts at /home/runner/work/ddsynth/ddsynth
+``` r
+library(ddsynth)
+library(tidyverse)
+#> ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+#> ✔ dplyr     1.2.1     ✔ readr     2.2.0
+#> ✔ forcats   1.0.1     ✔ stringr   1.6.0
+#> ✔ ggplot2   4.0.2     ✔ tibble    3.3.1
+#> ✔ lubridate 1.9.5     ✔ tidyr     1.3.2
+#> ✔ purrr     1.2.2     
+#> ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+#> ✖ dplyr::filter() masks stats::filter()
+#> ✖ dplyr::lag()    masks stats::lag()
+#> ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
+library(ggsci)
+library(here)        # used only for inst/extdata path resolution below
+#> here() starts at /home/runner/work/ddsynth/ddsynth
+```
 
 ## Load Pre-computed Results
 
@@ -65,7 +71,32 @@ and saved to disk. All scenario metadata (distribution family, summary
 type, sample sizes, true parameters) is embedded directly in the results
 file — no separate scenario library is needed.
 
-    #> simulation_results_all.rds not found; skipping analysis chunks.
+``` r
+# Resolve path: prefer the installed-package location; fall back to the
+# vignettes/ source file which is tracked in git and available during
+# pkgdown / R CMD build vignette builds.
+rds_path <- system.file("extdata", "simulation_results_all.rds", package = "ddsynth")
+if (!nzchar(rds_path)) {
+  rds_path <- file.path(here(), "vignettes", "simulation_results_all.rds")
+}
+has_results <- file.exists(rds_path)
+if (!has_results) {
+  message("simulation_results_all.rds not found; skipping analysis chunks.")
+} else {
+  res_out <- readRDS(rds_path)
+  cat(sprintf("Loaded %d simulation rows across %d unique scenarios.\n",
+              nrow(res_out), length(unique(res_out$scenario_name))))
+  cat(sprintf("Distribution families: %s\n",
+              paste(sort(unique(res_out$dist_type)), collapse = ", ")))
+  n_skipped <- sum(!is.na(res_out$skipped_reason))
+  if (n_skipped > 0L)
+    cat(sprintf("Note: %d rows excluded as non-identifiable (skipped_reason = '%s').\n",
+                n_skipped, unique(na.omit(res_out$skipped_reason))))
+}
+#> Loaded 21900 simulation rows across 219 unique scenarios.
+#> Distribution families: burr12, gamma, gengamma, lognormal, weibull
+#> Note: 1060 rows excluded as non-identifiable (skipped_reason = 'gg_heuristic').
+```
 
 ## Summarise Results
 
@@ -80,12 +111,24 @@ scenario:
 - **MAE** — mean absolute error for parameters.
 - **IQD** and **WIS** — mean predictive scoring rules across replicates.
 
+``` r
+summary_res <- create_results_summary(res_out)
+cat(sprintf("Summary covers %d scenario-level rows.\n", nrow(summary_res)))
+#> Summary covers 204 scenario-level rows.
+```
+
 ## Coverage of 95% Credible Intervals — Model Parameters
 
 Each point represents one scenario. Points near the dashed red line
 (0.95) indicate well-calibrated uncertainty quantification. Points are
 coloured by the number of datasets and shaped by the within-study sample
 size.
+
+``` r
+create_coverage_plot(summary_res)
+```
+
+![](simulation_study_files/figure-html/coverage-1.png)
 
 ## Median Bias — Model Parameters
 
@@ -94,12 +137,24 @@ departures from zero suggest that certain data configurations (e.g.,
 very small $n$ or sparse summary types) introduce recoverable or
 persistent bias.
 
+``` r
+create_bias_plot(summary_res)
+```
+
+![](simulation_study_files/figure-html/bias-1.png)
+
 ## Mean Absolute Error — Model Parameters
 
 MAE captures the magnitude of estimation error irrespective of
 direction. Smaller values across larger datasets and richer summary
 types confirm that pooling information across studies reduces estimation
 uncertainty.
+
+``` r
+create_mae_plot(summary_res)
+```
+
+![](simulation_study_files/figure-html/mae-1.png)
 
 ## Coverage of 95% Credible Intervals — Predictive Median (P50)
 
@@ -108,11 +163,23 @@ line (0.95) indicate that the credible intervals reliably contain the
 true population median. Points are coloured by number of datasets and
 shaped by within-study sample size.
 
+``` r
+create_pred_median_coverage_plot(summary_res)
+```
+
+![](simulation_study_files/figure-html/pred_median_coverage-1.png)
+
 ## Coverage of 95% Credible Intervals — Predictive 95th Percentile (P95)
 
 Coverage for the posterior predictive 95th percentile. Tail quantiles
 are typically harder to estimate and may show lower coverage in
 data-sparse scenarios.
+
+``` r
+create_pred_q95_coverage_plot(summary_res)
+```
+
+![](simulation_study_files/figure-html/pred_q95_coverage-1.png)
 
 ## Median Bias — Predictive Median (P50)
 
@@ -120,11 +187,23 @@ Systematic over- or under-estimation of the predictive median across
 scenarios. Departures from zero can reflect inadequate pooling in sparse
 conditions.
 
+``` r
+create_pred_median_bias_plot(summary_res)
+```
+
+![](simulation_study_files/figure-html/pred_median_bias-1.png)
+
 ## Median Bias — Predictive 95th Percentile (P95)
 
 Bias in the posterior predictive 95th percentile. Persistent
 over-estimation of the tail is common when few datasets are available or
 the summary type provides limited information about the upper tail.
+
+``` r
+create_pred_q95_bias_plot(summary_res)
+```
+
+![](simulation_study_files/figure-html/pred_q95_bias-1.png)
 
 ## Integrated Quadratic Distance (IQD)
 
@@ -133,12 +212,24 @@ estimated predictive CDFs across the full support. Lower values indicate
 that the posterior predictive distribution closely matches the
 data-generating distribution.
 
+``` r
+create_iqd_plot(summary_res)
+```
+
+![](simulation_study_files/figure-html/iqd-1.png)
+
 ## Weighted Interval Score (WIS)
 
 WIS is a proper scoring rule that penalises both sharpness (narrow
 intervals) and miscoverage. Lower values indicate better overall
 predictive accuracy. Results here mirror the IQD analysis, providing a
 complementary view of predictive performance.
+
+``` r
+create_wis_plot(summary_res)
+```
+
+![](simulation_study_files/figure-html/wis-1.png)
 
 ## Summary Table
 
@@ -150,6 +241,94 @@ error in days (target: 0). IQD and WIS are means over scenarios (lower =
 better). Cells marked “—” correspond to distribution–summary-type
 combinations that were excluded as non-identifiable.
 
+``` r
+library(kableExtra)
+#> 
+#> Attaching package: 'kableExtra'
+#> The following object is masked from 'package:dplyr':
+#> 
+#>     group_rows
+
+table_dat <- summary_res %>%
+  group_by(dist_type, summary_type) %>%
+  summarise(
+    n_scen   = n(),
+    cov_mu0  = mean(coverage_mu0,          na.rm = TRUE),
+    cov_tau  = mean(coverage_tau,          na.rm = TRUE),
+    cov_phi  = mean(coverage_phi,          na.rm = TRUE),
+    cov_p50  = mean(coverage_pred_median,  na.rm = TRUE),
+    cov_p95  = mean(coverage_pred_q95,     na.rm = TRUE),
+    bias_p50 = median(bias_pred_median,    na.rm = TRUE),
+    bias_p95 = median(bias_pred_q95,       na.rm = TRUE),
+    iqd      = mean(mean_iqd,              na.rm = TRUE),
+    wis      = mean(mean_wis,              na.rm = TRUE),
+    .groups  = "drop"
+  ) %>%
+  mutate(
+    dist_label = factor(dist_type,
+      levels = c("lognormal", "gamma", "weibull", "burr12", "gengamma"),
+      labels = c("Log-normal", "Gamma", "Weibull", "Burr XII", "Gen. Gamma")),
+    st_label = factor(summary_type, levels = 1:5,
+      labels = c("Median+Range", "Median+IQR", "Mean+SD", "Freq Table", "Mixed"))
+  ) %>%
+  arrange(dist_label, st_label)
+
+# Build display data frame with formatted strings
+tbl <- table_dat %>%
+  transmute(
+    Distribution    = as.character(dist_label),
+    `Summary type`  = as.character(st_label),
+    `N`             = n_scen,
+    `mu[0]`         = sprintf("%.1f", cov_mu0  * 100),
+    `tau`           = sprintf("%.1f", cov_tau  * 100),
+    `phi`           = sprintf("%.1f", cov_phi  * 100),
+    `P50`           = sprintf("%.1f", cov_p50  * 100),
+    `P95`           = sprintf("%.1f", cov_p95  * 100),
+    `P50 `          = sprintf("%+.2f", bias_p50),
+    `P95 `          = sprintf("%+.2f", bias_p95),
+    `IQD`           = sprintf("%.3f", iqd),
+    `WIS`           = sprintf("%.2f", wis)
+  )
+
+# Row-group sizes for kableExtra::pack_rows
+group_sizes <- table_dat %>%
+  count(dist_label) %>%
+  deframe()
+
+kbl(tbl,
+    col.names = c("Distribution", "Summary type", "N",
+                  "\u03bc\u2080", "\u03c4", "\u03c6",
+                  "P50", "P95",
+                  "P50", "P95",
+                  "IQD", "WIS"),
+    align     = c("l", "l", "r",
+                  "r", "r", "r",
+                  "r", "r",
+                  "r", "r",
+                  "r", "r"),
+    caption   = "Simulation study performance summary (means/medians across scenarios within each cell)") %>%
+  kable_styling(bootstrap_options = c("striped", "condensed", "hover"),
+                full_width = TRUE, font_size = 12) %>%
+  add_header_above(c(" " = 3,
+                     "Parameter coverage (%)" = 3,
+                     "Predictive coverage (%)" = 2,
+                     "Predictive bias (days)" = 2,
+                     "Scoring rules" = 2)) %>%
+  pack_rows(index = group_sizes) %>%
+  footnote(general = paste0(
+    "Coverage: empirical proportion of replicates where the true value fell inside the 95% posterior credible interval. ",
+    "Predictive bias: median signed error (posterior median estimate \u2212 true value) across replicates. ",
+    "IQD: integrated quadratic distance between true and estimated predictive CDFs. ",
+    "WIS: weighted interval score. ",
+    "Gen. Gamma scenarios with fewer than 10 identifiable replicates were excluded prior to aggregation."
+  ), general_title = "Note: ")
+```
+
+[TABLE]
+
+Simulation study performance summary (means/medians across scenarios
+within each cell)
+
 ## MCMC Convergence Rates
 
 The convergence plot shows the proportion of simulation replicates where
@@ -159,3 +338,9 @@ convergence across all replicates. Lower rates in sparse conditions (few
 datasets, small $n$) highlight where the model may require more
 informative priors or additional iterations. Scenarios deemed
 non-identifiable (e.g. certain GG configurations) are excluded.
+
+``` r
+create_convergence_plot(res_out)
+```
+
+![](simulation_study_files/figure-html/convergence-1.png)
