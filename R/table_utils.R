@@ -60,6 +60,7 @@
   SouthKorea    = "South Korea",
   # Cholera
   O1_El_Tor     = "O1 El Tor",
+  O1_El_Tor_Ogawa = "O1 El Tor Ogawa",
   O1_Classical  = "O1 Classical",
   # CCHF
   tick_bite     = "Tick-bite",
@@ -109,10 +110,18 @@
   sprintf("%.*f (%.*f, %.*f)", digits, q[2L], digits, q[1L], digits, q[3L])
 }
 
-# Extract the seven table cells from a single stanfit object.
-.extract_fit_cells <- function(fit, dist_name, probs) {
+# Extract the eight table cells from a single stanfit object.
+# n_datasets: the number of datasets used in this fit (from result$stan_data$n_datasets).
+# When n_datasets < 5, tau is prior-dominated and is shown as "$-$" rather
+# than a spurious posterior summary (matches the Stan model behaviour).
+.extract_fit_cells <- function(fit, dist_name, probs, n_datasets = NULL) {
   sims <- tryCatch(rstan::extract(fit), error = function(e) NULL)
   if (is.null(sims)) return(NULL)
+
+  tau_cell <- if (!is.null(n_datasets) && n_datasets < 5L)
+                "$-$"
+              else
+                .fmt_est(sims$tau, probs, digits = 2L)
 
   list(
     median = .fmt_est(sims$pred_median, probs, digits = 1L),
@@ -123,7 +132,7 @@
                .fmt_est(sims$kappa, probs, digits = 2L)
              else
                "$-$",
-    tau    = .fmt_est(sims$tau,         probs, digits = 2L)
+    tau    = tau_cell
   )
 }
 
@@ -159,7 +168,8 @@
     }
     if (is.null(best_dist)) next
 
-    cells <- .extract_fit_cells(best_res$fit, best_dist, probs)
+    cells <- .extract_fit_cells(best_res$fit, best_dist, probs,
+                                n_datasets = best_res$stan_data$n_datasets)
     if (is.null(cells)) next
 
     table_rows[[length(table_rows) + 1L]] <- c(
@@ -174,7 +184,8 @@
         if (is.null(sg_r) || isTRUE(sg_r$skipped) || is.null(sg_r$fit)) next
         if (!.fit_has_converged(sg_r$fit, rhat_threshold)) next
 
-        sg_cells <- .extract_fit_cells(sg_r$fit, best_dist, probs)
+        sg_cells <- .extract_fit_cells(sg_r$fit, best_dist, probs,
+                                       n_datasets = sg_r$stan_data$n_datasets)
         if (is.null(sg_cells)) next
 
         sg_label <- if (!is.na(.SUBGROUP_LABELS[sg])) .SUBGROUP_LABELS[[sg]] else sg
