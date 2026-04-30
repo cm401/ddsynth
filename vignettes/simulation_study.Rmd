@@ -209,27 +209,38 @@ distribution-family × summary-type cell (averaging over number of datasets and
 within-study sample size). Coverage values are shown as percentages (nominal
 target: 95%). Predictive bias is the median signed error in days (target: 0).
 IQD and WIS are means over scenarios (lower = better).
-Cells marked "—" correspond to distribution–summary-type combinations that were
-excluded as non-identifiable.
 
 ```{r summary_table, eval = has_results}
 library(kableExtra)
 
-table_dat <- summary_res %>%
-  group_by(dist_type, summary_type) %>%
-  summarise(
-    n_scen   = n(),
-    cov_mu0  = mean(coverage_mu0,          na.rm = TRUE),
-    cov_tau  = mean(coverage_tau,          na.rm = TRUE),
-    cov_phi  = mean(coverage_phi,          na.rm = TRUE),
-    cov_p50  = mean(coverage_pred_median,  na.rm = TRUE),
-    cov_p95  = mean(coverage_pred_q95,     na.rm = TRUE),
-    bias_p50 = median(bias_pred_median,    na.rm = TRUE),
-    bias_p95 = median(bias_pred_q95,       na.rm = TRUE),
-    iqd      = mean(mean_iqd,              na.rm = TRUE),
-    wis      = mean(mean_wis,              na.rm = TRUE),
-    .groups  = "drop"
-  ) %>%
+# Shared footnote text reused by both tables
+.fn <- paste0(
+  "Coverage: empirical proportion of replicates where the true value fell ",
+  "inside the 95% posterior credible interval. ",
+  "Predictive bias: median signed error (posterior median estimate \u2212 true value) across replicates. ",
+  "IQD: integrated quadratic distance between true and estimated predictive CDFs. ",
+  "WIS: weighted interval score. ",
+  "Gen. Gamma scenarios with fewer than 10 identifiable replicates were excluded prior to aggregation."
+)
+
+# Helper: format a summarised data frame into a kable
+.fmt <- function(dat) {
+  dat %>%
+    transmute(
+      `mu0`   = sprintf("%.1f", cov_mu0  * 100),
+      `tau`   = sprintf("%.1f", cov_tau  * 100),
+      `phi`   = sprintf("%.1f", cov_phi  * 100),
+      `P50`   = sprintf("%.1f", cov_p50  * 100),
+      `P95`   = sprintf("%.1f", cov_p95  * 100),
+      `P50 `  = sprintf("%+.2f", bias_p50),
+      `P95 `  = sprintf("%+.2f", bias_p95),
+      `IQD`   = sprintf("%.3f", iqd),
+      `WIS`   = sprintf("%.2f", wis)
+    )
+}
+
+# ── Table 1: distribution × summary type ─────────────────────────────────────
+t1_dat <- summary_res %>%
   mutate(
     dist_label = factor(dist_type,
       levels = c("lognormal", "gamma", "weibull", "burr12", "gengamma"),
@@ -237,42 +248,37 @@ table_dat <- summary_res %>%
     st_label = factor(summary_type, levels = 1:5,
       labels = c("Median+Range", "Median+IQR", "Mean+SD", "Freq Table", "Mixed"))
   ) %>%
+  group_by(dist_label, st_label) %>%
+  summarise(
+    n_scen   = n(),
+    cov_mu0  = mean(coverage_mu0,         na.rm = TRUE),
+    cov_tau  = mean(coverage_tau,         na.rm = TRUE),
+    cov_phi  = mean(coverage_phi,         na.rm = TRUE),
+    cov_p50  = mean(coverage_pred_median, na.rm = TRUE),
+    cov_p95  = mean(coverage_pred_q95,    na.rm = TRUE),
+    bias_p50 = median(bias_pred_median,   na.rm = TRUE),
+    bias_p95 = median(bias_pred_q95,      na.rm = TRUE),
+    iqd      = mean(mean_iqd,             na.rm = TRUE),
+    wis      = mean(mean_wis,             na.rm = TRUE),
+    .groups  = "drop"
+  ) %>%
   arrange(dist_label, st_label)
 
-# Build display data frame with formatted strings
-tbl <- table_dat %>%
-  transmute(
-    Distribution    = as.character(dist_label),
-    `Summary type`  = as.character(st_label),
-    `N`             = n_scen,
-    `mu[0]`         = sprintf("%.1f", cov_mu0  * 100),
-    `tau`           = sprintf("%.1f", cov_tau  * 100),
-    `phi`           = sprintf("%.1f", cov_phi  * 100),
-    `P50`           = sprintf("%.1f", cov_p50  * 100),
-    `P95`           = sprintf("%.1f", cov_p95  * 100),
-    `P50 `          = sprintf("%+.2f", bias_p50),
-    `P95 `          = sprintf("%+.2f", bias_p95),
-    `IQD`           = sprintf("%.3f", iqd),
-    `WIS`           = sprintf("%.2f", wis)
-  )
+tbl1 <- bind_cols(
+  t1_dat %>% transmute(
+    Distribution  = as.character(dist_label),
+    `Summary type` = as.character(st_label),
+    `N` = n_scen
+  ),
+  .fmt(t1_dat)
+)
 
-# Row-group sizes for kableExtra::pack_rows
-group_sizes <- table_dat %>%
-  count(dist_label) %>%
-  deframe()
-
-kbl(tbl,
+kbl(tbl1,
     col.names = c("Distribution", "Summary type", "N",
                   "\u03bc\u2080", "\u03c4", "\u03c6",
-                  "P50", "P95",
-                  "P50", "P95",
-                  "IQD", "WIS"),
-    align     = c("l", "l", "r",
-                  "r", "r", "r",
-                  "r", "r",
-                  "r", "r",
-                  "r", "r"),
-    caption   = "Simulation study performance summary (means/medians across scenarios within each cell)") %>%
+                  "P50", "P95", "P50", "P95", "IQD", "WIS"),
+    align   = c("l", "l", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r"),
+    caption = "Performance summary by distribution family and summary type") %>%
   kable_styling(bootstrap_options = c("striped", "condensed", "hover"),
                 full_width = TRUE, font_size = 12) %>%
   add_header_above(c(" " = 3,
@@ -280,14 +286,75 @@ kbl(tbl,
                      "Predictive coverage (%)" = 2,
                      "Predictive bias (days)" = 2,
                      "Scoring rules" = 2)) %>%
-  pack_rows(index = group_sizes) %>%
-  footnote(general = paste0(
-    "Coverage: empirical proportion of replicates where the true value fell inside the 95% posterior credible interval. ",
-    "Predictive bias: median signed error (posterior median estimate \u2212 true value) across replicates. ",
-    "IQD: integrated quadratic distance between true and estimated predictive CDFs. ",
-    "WIS: weighted interval score. ",
-    "Gen. Gamma scenarios with fewer than 10 identifiable replicates were excluded prior to aggregation."
-  ), general_title = "Note: ")
+  pack_rows(index = t1_dat %>% count(dist_label) %>% deframe()) %>%
+  footnote(general = .fn, general_title = "Note: ")
+```
+
+## Summary Table: By Data Availability
+
+The table below pools results across distribution families and shows how
+performance varies with the number of datasets and within-study sample size,
+broken down by summary type. Rows are grouped by summary type.
+
+```{r summary_table2, eval = has_results}
+t2_dat <- summary_res %>%
+  mutate(
+    st_label = factor(summary_type, levels = 1:5,
+      labels = c("Median+Range", "Median+IQR", "Mean+SD", "Freq Table", "Mixed")),
+    n_datasets_bucket = case_when(
+      n_datasets < 10  ~ "<10",
+      n_datasets < 20  ~ "<20",
+      n_datasets < 30  ~ "<30",
+      n_datasets >= 30 ~ "30+"
+    ) %>% factor(levels = c("<10", "<20", "<30", "30+")),
+    n_obs_bucket = case_when(
+      n_obs == 5  ~ "5",
+      n_obs == 10 ~ "10",
+      n_obs == 20 ~ "20",
+      n_obs > 25  ~ "25+"
+    ) %>% factor(levels = c("5", "10", "20", "25+"))
+  ) %>%
+  group_by(st_label, n_datasets_bucket, n_obs_bucket) %>%
+  summarise(
+    n_scen   = n(),
+    cov_mu0  = mean(coverage_mu0,         na.rm = TRUE),
+    cov_tau  = mean(coverage_tau,         na.rm = TRUE),
+    cov_phi  = mean(coverage_phi,         na.rm = TRUE),
+    cov_p50  = mean(coverage_pred_median, na.rm = TRUE),
+    cov_p95  = mean(coverage_pred_q95,    na.rm = TRUE),
+    bias_p50 = median(bias_pred_median,   na.rm = TRUE),
+    bias_p95 = median(bias_pred_q95,      na.rm = TRUE),
+    iqd      = mean(mean_iqd,             na.rm = TRUE),
+    wis      = mean(mean_wis,             na.rm = TRUE),
+    .groups  = "drop"
+  ) %>%
+  arrange(st_label, n_datasets_bucket, n_obs_bucket)
+
+tbl2 <- bind_cols(
+  t2_dat %>% transmute(
+    `Summary type` = as.character(st_label),
+    `N datasets`   = as.character(n_datasets_bucket),
+    `N obs`        = as.character(n_obs_bucket),
+    `N`            = n_scen
+  ),
+  .fmt(t2_dat)
+)
+
+kbl(tbl2,
+    col.names = c("Summary type", "N datasets", "N obs", "N",
+                  "\u03bc\u2080", "\u03c4", "\u03c6",
+                  "P50", "P95", "P50", "P95", "IQD", "WIS"),
+    align   = c("l", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r"),
+    caption = "Performance summary by summary type, number of datasets, and within-study sample size (pooled over distribution families)") %>%
+  kable_styling(bootstrap_options = c("striped", "condensed", "hover"),
+                full_width = TRUE, font_size = 12) %>%
+  add_header_above(c(" " = 4,
+                     "Parameter coverage (%)" = 3,
+                     "Predictive coverage (%)" = 2,
+                     "Predictive bias (days)" = 2,
+                     "Scoring rules" = 2)) %>%
+  pack_rows(index = t2_dat %>% count(st_label) %>% deframe()) %>%
+  footnote(general = .fn, general_title = "Note: ")
 ```
 
 ## MCMC Convergence Rates
