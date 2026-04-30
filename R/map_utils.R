@@ -369,8 +369,10 @@ create_data_map <- function(
       na.value = "grey60"
     ) +
     ggplot2::scale_size_continuous(
-      range = c(0.5, 4),
-      name  = "log(n+1)"
+      range  = c(0.5, 4),
+      name   = "Outbreak size",
+      breaks = c(2, 4, 6, 8),
+      labels = function(x) paste0("&gt; ", round(expm1(x)))
     ) +
     ggplot2::coord_sf(
       crs  = sf::st_crs(4326),
