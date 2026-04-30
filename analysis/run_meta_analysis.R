@@ -217,18 +217,18 @@ dir.create(OUTDIR, showWarnings = FALSE, recursive = TRUE)
 # Each entry: name (used for file names), data (dataset list), label (for plot)
 
 registry <- list(
-  list(name = "Nipah",    data = datasets_Nipah,    label = "Nipah virus disease"),
-  list(name = "EVD",      data = datasets_EVD,      label = "Ebola virus disease (EVD)"),
-  list(name = "SARS",     data = datasets_SARS,     label = "SARS (SARS-CoV-1)"),
-  list(name = "MERS",     data = datasets_MERS,     label = "MERS (MERS-CoV)"),
-  list(name = "Measles",  data = datasets_Measles,  label = "Measles"),
-  list(name = "Mpox",     data = datasets_Mpox,     label = "Mpox"),
-  list(name = "Cholera",  data = datasets_Cholera,  label = "Cholera"),
-  list(name = "CCHF",     data = datasets_CCHF,     label = "Crimean-Congo haemorrhagic fever (CCHF)"),
-  list(name = "COVID_19", data = datasets_COVID_19, label = "COVID-19"),
-  list(name = "Dengue",   data = datasets_Dengue,   label = "Dengue"),
-  list(name = "Flu",      data = datasets_flu,      label = "Influenza"),
-  list(name = "Typhoid",  data = datasets_typhoid,  label = "Typhoid fever")
+  list(name = "Nipah",    data = datasets_Nipah,          label = "Nipah virus disease"),
+  list(name = "EVD",      data = datasets_EVD,            label = "Ebola virus disease (EVD)"),
+  list(name = "SARS",     data = datasets_SARS,           label = "SARS (SARS-CoV-1)"),
+  list(name = "MERS",     data = datasets_MERS,           label = "MERS (MERS-CoV)"),
+  list(name = "Measles",  data = datasets_Measles,        label = "Measles"),
+  list(name = "Mpox",     data = datasets_Mpox,           label = "Mpox"),
+  list(name = "Cholera",  data = datasets_Cholera,        label = "Cholera"),
+  list(name = "CCHF",     data = datasets_CCHF_extended,  label = "Crimean-Congo haemorrhagic fever (CCHF)"),
+  list(name = "COVID_19", data = datasets_COVID_19,       label = "COVID-19"),
+  list(name = "Dengue",   data = datasets_Dengue,         label = "Dengue"),
+  list(name = "Flu",      data = datasets_flu,            label = "Influenza"),
+  list(name = "Typhoid",  data = datasets_typhoid,        label = "Typhoid fever")
 )
 
 
