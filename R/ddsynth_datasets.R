@@ -441,11 +441,10 @@ datasets_Cholera <- list(         # Cholera
   ),
   d7  = list(
     # Exact incubation period values in hours, converted to days (/24)
-    # Exclude the observation of 203 hours, as that refers to a rectal swap of an asymptomatic patient
+    # The observation of 203 hours could be excluded, as that refers to a rectal swap of an asymptomatic patient.
+    # This is kept in for now for consistency with the literature.
     freq_value = c(  4,  24,  31,  34,  36,  38,  44,  57,  59,  61,  62, 114, 133, 203 ) / 24,
     freq_count = c(  1,   1,   1,   3,   2,   2,   1,   1,   1,   1,   1,   1,   1,   1 ),
-    #freq_value = c(  4,  24,  31,  34,  36,  38,  44,  57,  59,  61,  62, 114, 133 ) / 24,
-    #freq_count = c(  1,   1,   1,   3,   2,   2,   1,   1,   1,   1,   1,   1,   1 ),
     subgroup = "O1 El Tor Ogawa",
     country = 'Singapore',
     source = "Goh (1984), doi: 10.1093/ije/13.2.210"
