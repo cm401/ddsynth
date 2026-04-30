@@ -250,9 +250,14 @@ for (pg in registry) {
   message("Running: ", pg$name, " (", n_usable, " datasets)")
 
   m <- tryCatch(
-    .run_metamean(df),
-    error   = function(e) { message("  ERROR: ", conditionMessage(e)); NULL },
-    warning = function(w) { message("  WARN:  ", conditionMessage(w)); .run_metamean(df) }
+    withCallingHandlers(
+      .run_metamean(df),
+      warning = function(w) {
+        message("  WARN:  ", conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
+    ),
+    error = function(e) { message("  ERROR: ", conditionMessage(e)); NULL }
   )
 
   if (is.null(m)) next
