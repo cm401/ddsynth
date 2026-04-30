@@ -66,19 +66,30 @@ dir.create(OUTDIR, showWarnings = FALSE, recursive = TRUE)
          min_val = d$min, max_val = d$max)
 
   } else if (!is.null(d$freq_value)) {
-    vals <- rep(d$freq_value, d$freq_count)
-    list(mean    = mean(vals),
-         sd      = if (length(vals) > 1L) sd(vals) else NA_real_,
+    total_n  <- sum(d$freq_count)
+    mean_val <- sum(d$freq_value * d$freq_count) / total_n
+    sd_val   <- if (total_n > 1L) {
+      sqrt(sum(d$freq_count * (d$freq_value - mean_val)^2) / (total_n - 1L))
+    } else {
+      NA_real_
+    }
+    list(mean    = mean_val,
+         sd      = sd_val,
          n       = n,
          median  = NA_real_, q1 = NA_real_, q3 = NA_real_,
          min_val = NA_real_, max_val = NA_real_)
 
   } else if (!is.null(d$freq_lower)) {
     mids        <- (d$freq_lower + d$freq_upper) / 2
-    vals        <- rep(mids, d$freq_count)
-    between_var <- if (length(vals) > 1L) var(vals) else 0
-    within_var  <- mean(rep((d$freq_upper - d$freq_lower)^2 / 12, d$freq_count))
-    list(mean    = mean(vals),
+    total_n     <- sum(d$freq_count)
+    mean_val    <- sum(mids * d$freq_count) / total_n
+    between_var <- if (total_n > 1L) {
+      sum(d$freq_count * (mids - mean_val)^2) / (total_n - 1L)
+    } else {
+      0
+    }
+    within_var  <- sum(d$freq_count * (d$freq_upper - d$freq_lower)^2 / 12) / total_n
+    list(mean    = mean_val,
          sd      = sqrt(between_var + within_var),
          n       = n,
          median  = NA_real_, q1 = NA_real_, q3 = NA_real_,
