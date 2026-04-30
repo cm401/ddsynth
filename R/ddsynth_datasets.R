@@ -402,15 +402,15 @@ datasets_Mpox <- list(            # Mpox
 # published in Journal of Infection: https://www.journalofinfection.com/article/S0163-4453(12)00347-7/fulltext
 
 datasets_Cholera <- list(         # Cholera
-  d1  = list(median =  21/24, min =  19/24, max = 49/24, n =  7,  country = 'USA', subgroup = "O1 Classical", source = "Morris (1995), doi: 10.1093/infdis/171.4.903"),
-  d2  = list(median =  31/24, min =  19/24, max = 64/24, n =  11, country = 'USA', subgroup = "O1 Classical", source = "Morris (1995), doi: 10.1093/infdis/171.4.903"),
+  d1  = list(median =  21/24, min =  19/24, max = 49/24, n =  7,  country = 'USA', subgroup = "O139", source = "Morris (1995), doi: 10.1093/infdis/171.4.903"),
+  d2  = list(median =  31/24, min =  19/24, max = 64/24, n =  11, country = 'USA', subgroup = "O139", source = "Morris (1995), doi: 10.1093/infdis/171.4.903"),
   d3  = list(
-    freq_lower = c( 0.1, 0.1, 0.1, 0.1,   1, 1.0, 1.0, 1.5,   2,   2,   2,   3,   4,   8,  11 ),
-    freq_upper = c( 1.0, 2.0, 3.0, 1.0, 1.0, 1.5, 3.0, 2.0,   2,   3,   2,   3,   4,   8,  11 ),
-    freq_count = c(    6,   2,   2,   1,   1,   1,   1,   2,   2,   2,   1,   1,   1,   1,   1 ),
+    freq_lower = c( 0.1, 1.0, 1.5, 2.0, 2.0, 1.0, 2.0, 3.0, 6.0, 7.0 ),
+    freq_upper = c( 1.0, 2.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0, 8.0,11.0 ),
+    freq_count = c(   6,   9,   2,   1,   2,   1,   1,   1,   1,   1 ),
     subgroup = "O1 Classical",
-    country = 'United Kingdom',
-    source = "Snow (1854), 'On the Mode of Communication of Cholera'"
+    country = "United Kingdom",
+    source = "Snow (1855), 'On the Mode of Communication of Cholera', 2nd ed."
   ),
   d4  = list(
     # Histogram bins read in hours, converted to days (/24)
@@ -436,14 +436,16 @@ datasets_Cholera <- list(         # Cholera
     freq_lower = c( 0.1,  1,  2,  3,  4,  5,  6 ),
     freq_upper = c(   1,  2,  3,  4,  5,  6,  7 ),
     freq_count = c(   6, 26, 23,  6,  3,  1,  1 ),
-    country = 'Mixed',
+    subgroup = 'O1 El Tor',
     source = "Eberhart-Phillips (1996), doi: 10.1017/S0950268800058891"
   ),
   d7  = list(
     # Exact incubation period values in hours, converted to days (/24)
+    # The observation of 203 hours could be excluded, as that refers to a rectal swap of an asymptomatic patient.
+    # This is kept in for now for consistency with the literature.
     freq_value = c(  4,  24,  31,  34,  36,  38,  44,  57,  59,  61,  62, 114, 133, 203 ) / 24,
     freq_count = c(  1,   1,   1,   3,   2,   2,   1,   1,   1,   1,   1,   1,   1,   1 ),
-    subgroup = "O1 El Tor",
+    subgroup = "O1 El Tor Ogawa",
     country = 'Singapore',
     source = "Goh (1984), doi: 10.1093/ije/13.2.210"
   ),
@@ -479,16 +481,66 @@ datasets_Cholera <- list(         # Cholera
     freq_value = c( 0.1,  2,  5, 12, 15, 22, 24, 48, 72, 96, 120, 144 ) / 24,
     freq_count = c(   4,  2,  1,  4,  1, 11,  2, 13,   7,  4,   1,   3 ),
     country = 'Italy',
-    subgroup = "O1 El Tor",
+    subgroup = "O1 El Tor Ogawa",
     source = "Schiraldi (1974), PMCID: PMC2366304"
   ),
   d11 = list(
     freq_lower = c(0.1, 24, 49, 72)/24,
     freq_upper = c(24, 48, 72, 150)/24,
-    freq_count = c(1, 16, 6, 2),
+    freq_count = c(1, 15, 5, 2),
     subgroup = "O1 El Tor",
     country = 'USA',
     source = "Sutton (1974), doi: 10.1017/S0022172400023688"
+  ),
+  d12 = list(
+    # Table 1: time to onset of diarrhea, ranges in hours converted to days
+    # 10^5 CFU arm: 8 cases, range 25-57h
+    # 10^6 CFU arm: 14 cases, range 21.5-54.5h
+    freq_lower = c( 25.0,  21.5 ) / 24,
+    freq_upper = c( 57.0,  54.5 ) / 24,
+    freq_count = c(     8,    14 ),
+    subgroup = "O139",
+    country = "USA",
+    source = "Cohen (1999), doi: 10.1128/IAI.67.12.6346-6349.1999"
+  ),
+  d13 = list(
+    # Table 4: challenge study, controls challenged with 5x10^6 cfu MO10
+    # Individual incubation periods in hours, converted to days
+    # Controls C, I, N, O, P had diarrhoea; E had 0 stool output (excluded)
+    freq_value = c( 21, 45, 21, 22, 20 ) / 24,
+    freq_count = c(  1,  1,  1,  1,  1 ),
+    subgroup = "O139",
+    country = "USA",
+    source = "Coster (1995), doi: 10.1016/S0140-6736(95)90698-3"
+  ),
+  # Hornick 1971 — classic biotype, volunteer challenge, no/with NaHCO3
+  # Mild diarrhea stratum: mean IP ~47 h = 1.96 days, N ≈ 29
+  # Cholera diarrhea stratum: mean IP ~36 h = 1.50 days, N ≈ 8
+  d14 = list(
+    freq_value = c(47/24, 36/24),
+    freq_count = c(29, 8),
+    country = 'USA',
+    subgroup = "O1 Classical",
+    source = "Hornick (1971), PMID: 5286453"  
+  ),
+  d15 = list(
+    mean  = 28.4 / 24,    # 1.183 days
+    sd    =  8.7 / 24,    # 0.363 days
+    n        = 34,
+    subgroup = "O1 El Tor",
+    country  = "USA",
+    source   = "Sack (1998), doi: 10.1128/iai.66.5.1968-1972.1998"
+  ),
+  d16 = list(
+    # Taylor et al. (1993), J Infect Dis 167(6):1330-1335
+    # Cholera outbreak associated with imported frozen coconut milk, Maryland, USA
+    # Party A on 17 August 1991; 3 symptomatic cases among 6 attendees
+    freq_lower = c( 14,  7, 24) / 24,   # days
+    freq_upper = c( 14,  7, 72) / 24,   # days; attendees 1 & 2 are point estimates (lower == upper)
+    freq_count = c(  1,  1,  1),
+    subgroup   = "O1 El Tor Ogawa",
+    country    = "USA",
+    source     = "Taylor (1993), doi: 10.1093/infdis/167.6.1330"
   )
 )
 
@@ -757,7 +809,18 @@ datasets_COVID_19 <- list(
   d33 = list( mean = 4.4,    sd = 2.5,               n = 255,  source = "Backer (2022), doi: 10.2807/1560-7917.ES.2022.27.6.2200042",     country = "Netherlands", subgroup = "Delta" ),
   d37 = list( median = 3,    min = 1,    max = 13,   n = 171,  source = "McAleavey (2022), doi: 10.1016/j.puhe.2022.06.023",              country = "Ireland",     subgroup = "Delta" ),
   d38 = list( mean = 4.4,    sd = 1.9,               n = 47,   source = "Zhang (2021), doi: 10.46234/ccdcw2021.148",                      country = "China",       subgroup = "Delta" ),
-  d40 = list( mean = 6.5,    sd = 3.7,               n = 64,   source = "Liu (2022), doi: 10.1016/j.onehlt.2022.100425",                  country = "South Korea", subgroup = "Delta" ),
+  
+  # Each case's incubation period window length (onset - earliest possible exposure) treated as the upper bound of an interval-censored observation.
+  # Lower bound set to 0.1 throughout (Weibull convention to avoid zero) -- Manually digitised from Fig S2 using daily gridlines; N=136. 
+  d40 = list(
+    freq_lower = rep(0.1, 12),
+    freq_upper = c( 2,  3,  4,  5,  6,  7,  8, 10, 11, 12, 14, 15),
+    freq_count = c( 4, 30, 21, 10, 26, 14, 10,  5, 11,  1,  3,  1),
+    subgroup   = "Delta",
+    country    = "China",
+    source     = "Li (2022), doi: 10.1371/journal.pntd.0010048"
+  ),
+  
   d42 = list( median = 4,    Q1 = 3,    Q3 = 7,      n = 42,   source = "Zeng (2023), doi: 10.3201/eid2904.220854",                       country = "Singapore",   subgroup = "Delta" ),
   d46 = list( mean = 5.3,    sd = 3.35,              n = 71,   source = "Luo (2023), doi: 10.46234/ccdcw2023.011",                        country = "China",       subgroup = "Delta" ),
   
@@ -785,6 +848,59 @@ datasets_COVID_19 <- list(
     source = "Böhmer (2020), doi: 10.1016/S1473-3099(20)30314-5",
     country = "Germany",
     subgroup = "Wildtype"
+  ),
+  
+  # Galmiche et al. (2023) ComCor study, France
+  # Lancet Microbe 4:e409-17, doi:10.1016/S2666-5247(23)00005-8
+  # N=20,413 total; integer-day counts reconstructed from reported 
+  # mean and SD via gamma method of moments (truncated at 15 days 
+  # per paper inclusion criteria). Self-reported data have a 7-day 
+  # rounding artefact; gamma MOM fit approximates the corrected distribution.
+  # Data extracted from paper Figure 2 using Claude Sonnet 4.6
+  
+  # Alpha (B.1.1.7), N=5133
+  d_comcor_alpha = list(
+    freq_value = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15),
+    freq_count = c(125,515,866,965,857,657,455,293,178,103,58,31,17,9,4),
+    country = "France",
+    subgroup = "Alpha",
+    source = "Galmiche (2023), doi:10.1016/S2666-5247(23)00005-8"
+  ),
+  
+  # Beta/Gamma (B.1.351/P.1), N=453
+  d_comcor_beta_gamma = list(
+    freq_value = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15),
+    freq_count = c(17,49,71,76,67,54,40,28,19,13,8,5,3,2,1),
+    country = "France",
+    subgroup = "Beta",
+    source = "Galmiche (2023), doi:10.1016/S2666-5247(23)00005-8"
+  ),
+  
+  # Delta (B.1.617.2), N=4606
+  d_comcor_delta = list(
+    freq_value = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15),
+    freq_count = c(209,654,912,887,706,495,318,191,110,60,32,17,9,4,2),
+    country = "France",
+    subgroup = "Delta",
+    source = "Galmiche (2023), doi:10.1016/S2666-5247(23)00005-8"
+  ),
+  
+  # Omicron (B.1.1.529/BA.1), N=2682
+  d_comcor_omicron = list(
+    freq_value = c(1  ,  2,  3,  4,  5,  6,  7, 8, 9,10,11,12,13),
+    freq_count = c(234,576,643,509,332,192,102,51,24,11, 5, 2, 1),
+    country = "France",
+    subgroup = "Omicron",
+    source = "Galmiche (2023), doi:10.1016/S2666-5247(23)00005-8"
+  ),
+  
+  # Historical strain (D614G and earlier), N=7539
+  d_comcor_historical = list(
+    freq_value = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15),
+    freq_count = c(281,960,1421,1449,1195,864,570,351,206,116,63,33,17,9,4),
+    country = "France",
+    subgroup = "Wildtype",
+    source = "Galmiche (2023), doi:10.1016/S2666-5247(23)00005-8"
   )
 )
 
@@ -1056,7 +1172,7 @@ datasets_flu <- list(
     freq_count = rep(1,37),
     source  = "Moser (1979), doi: 10.1093/oxfordjournals.aje.a112781",
     country = "USA",
-    subgroup = "H3N2"
+    subgroup = "Influenza A"
   ),
   d7  = list( median = 2,    min = 1,    max = 7,    n = 426,    
               source = "Cao (2009), doi: 10.1056/NEJMoa0906612",                        
@@ -1140,6 +1256,14 @@ datasets_flu <- list(
     subgroup     = "Influenza B",
     country      = "USA",
     source       = "Henle (1946), doi: 10.4049/jimmunol.52.2.145"
+  ),
+  d14 = list(
+    freq_lower = c(0.5),
+    freq_upper = c(1),
+    freq_count = c(54),
+    subgroup     = "Influenza B",
+    country = 'USA',
+    source = "Francis (1944), Am J Public Health 34:317-334"
   )
   
 )
