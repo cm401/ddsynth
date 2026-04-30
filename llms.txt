@@ -31,12 +31,14 @@ the **rstan** package. Stan requires a working C++ toolchain:
 Install rstan from CRAN once the toolchain is ready:
 
 ``` r
+
 install.packages("rstan")
 ```
 
 Verify the installation works by running the built-in example:
 
 ``` r
+
 example(stan_model, package = "rstan", run.dontrun = TRUE)
 ```
 
@@ -46,6 +48,7 @@ Install the development version of **ddsynth** directly from GitHub
 using either `remotes` or `pak`:
 
 ``` r
+
 # Using remotes (install remotes first if needed)
 install.packages("remotes")
 remotes::install_github("cm401/ddsynth")
@@ -58,12 +61,14 @@ pak::pkg_install("cm401/ddsynth")
 ## Quick start
 
 ``` r
+
 library(ddsynth)
 ```
 
 See the package vignettes for detailed usage examples:
 
 ``` r
+
 browseVignettes("ddsynth")
 ```
 

@@ -19,6 +19,7 @@ cross-validation (LOO-CV).
 ## Setup
 
 ``` r
+
 library(ddsynth)
 library(rstan)
 library(bridgesampling)
@@ -39,6 +40,7 @@ rstan_options(auto_write = TRUE)
 The Stan model file is shipped with the package under `inst/stan/`.
 
 ``` r
+
 stan_model_path <- system.file(
   "stan", "hierarchical_data_synthesis_summary_stats.stan",
   package = "ddsynth"
@@ -59,6 +61,7 @@ statistics and sample size. Three summary-statistic types are supported:
 | 4              | `freq_value`, `freq_count` (for frequency tables) |
 
 ``` r
+
 datasets <- list(
   d1  = list(median = 10.0, min =  9.0, max = 12.0, n =  4),
   d2  = list(median =  4.0, min =  2.0, max =  7.0, n =  6),
@@ -93,6 +96,7 @@ stan_data <- prepare_stan_data_from_datasets(datasets_clean,custom_priors = cust
 We fit the hierarchical model under each candidate distribution family.
 
 ``` r
+
 distributions <- c("lognormal", "gamma", "weibull", "burr", "gg" )
 #distributions <- c("lognormal")
 dist_codes    <- c(lognormal = 1, gamma = 2, weibull = 3, burr = 4, gg = 5)
@@ -149,6 +153,7 @@ for (dist in distributions) {
 ### Bridge Sampling (Log Marginal Likelihood)
 
 ``` r
+
 log_ml    <- sapply(bridge_samples, function(x) x$logml)
 rel_prob  <- exp(log_ml - max(log_ml))
 rel_prob  <- rel_prob / sum(rel_prob)
@@ -175,6 +180,7 @@ print(bf_table)
 ### LOO-CV Comparison
 
 ``` r
+
 loo_list <- lapply(fits, loo, save_psis = TRUE)
 loo_comparison <- loo_compare(loo_list)
 cat("\n========== LOO Model Comparison ==========\n")
@@ -184,6 +190,7 @@ print(loo_comparison)
 ## Convergence Diagnostics
 
 ``` r
+
 diagnostic_summary <- list()
 
 for (dist in distributions) {
@@ -213,6 +220,7 @@ print(diagnostic_df)
 ### Traceplots
 
 ``` r
+
 tp <- lapply(distributions, function(dist) {
   traceplot(fits[[dist]], pars = c("mu0", "log_tau", "log_phi"),
             main = paste("Traceplots:", dist))
@@ -225,6 +233,7 @@ tp[["lognormal"]] / tp[["weibull"]]
 ## Posterior Predictive Summaries
 
 ``` r
+
 get_posterior_summaries <- function(fit) {
   sims <- rstan::extract(fit)
   data.frame(
@@ -256,6 +265,7 @@ print(posterior_summaries)
 ## Parameter Summaries
 
 ``` r
+
 summarise_parameters_stan <- function(fit, model_name) {
   sims <- rstan::extract(fit)
 
@@ -292,6 +302,7 @@ print(param_summaries)
 ### Posterior Predictive Summaries Plot
 
 ``` r
+
 plot_data <- posterior_summaries %>%
   select(model, median_mean, median_low, median_high,
          q90_mean, q90_low, q90_high,
@@ -319,6 +330,7 @@ print(p1)
 ### Parameter Estimates Plot
 
 ``` r
+
 param_plot_data <- param_summaries %>%
   mutate(parameter = factor(parameter, levels = c("mu0", "tau", "phi")))
 
@@ -344,6 +356,7 @@ helper integrates over the posterior and the between-study random effect
 to produce a predictive CDF with credible bands.
 
 ``` r
+
 cdf_summaries <- list()
 
 cdf_mats <- list()
@@ -498,8 +511,9 @@ print(p_final)
 ## Session Info
 
 ``` r
+
 sessionInfo()
-#> R version 4.5.3 (2026-03-11)
+#> R version 4.6.0 (2026-04-24)
 #> Platform: x86_64-pc-linux-gnu
 #> Running under: Ubuntu 24.04.4 LTS
 #> 
@@ -524,7 +538,7 @@ sessionInfo()
 #>  [5] xfun_0.57         cachem_1.1.0      knitr_1.51        htmltools_0.5.9  
 #>  [9] rmarkdown_2.31    lifecycle_1.0.5   cli_3.6.6         sass_0.4.10      
 #> [13] pkgdown_2.2.0     textshaping_1.0.5 jquerylib_0.1.4   systemfonts_1.3.2
-#> [17] compiler_4.5.3    tools_4.5.3       ragg_1.5.2        evaluate_1.0.5   
+#> [17] compiler_4.6.0    tools_4.6.0       ragg_1.5.2        evaluate_1.0.5   
 #> [21] bslib_0.10.0      yaml_2.3.12       jsonlite_2.0.0    rlang_1.2.0      
 #> [25] fs_2.1.0
 ```

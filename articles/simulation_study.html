@@ -136,7 +136,7 @@ coverage for model parameters
 and for two predictive quantiles (P50, P95); nominal target: 0.95.</li>
 <li>
 <strong>Median bias</strong> — median of (posterior median
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mo>−</mo><annotation encoding="application/x-tex">-</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>−</mi><annotation encoding="application/x-tex">-</annotation></semantics></math>
 true value) across replicates for parameters and predictive quantiles;
 target: 0.</li>
 <li>
@@ -161,7 +161,7 @@ with
 <span><span class="co">#&gt; ── <span style="font-weight: bold;">Attaching core tidyverse packages</span> ──────────────────────── tidyverse 2.0.0 ──</span></span>
 <span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">dplyr    </span> 1.2.1     <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">readr    </span> 2.2.0</span></span>
 <span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">forcats  </span> 1.0.1     <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">stringr  </span> 1.6.0</span></span>
-<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">ggplot2  </span> 4.0.2     <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">tibble   </span> 3.3.1</span></span>
+<span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">ggplot2  </span> 4.0.3     <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">tibble   </span> 3.3.1</span></span>
 <span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">lubridate</span> 1.9.5     <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">tidyr    </span> 1.3.2</span></span>
 <span><span class="co">#&gt; <span style="color: #00BB00;">✔</span> <span style="color: #0000BB;">purrr    </span> 1.2.2     </span></span>
 <span><span class="co">#&gt; ── <span style="font-weight: bold;">Conflicts</span> ────────────────────────────────────────── tidyverse_conflicts() ──</span></span>
@@ -222,7 +222,7 @@ contains, for each scenario:</p>
 and the predictive median (P50) and 95th percentile (P95).</li>
 <li>
 <strong>Median bias</strong> — median of (posterior median
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mo>−</mo><annotation encoding="application/x-tex">-</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>−</mi><annotation encoding="application/x-tex">-</annotation></semantics></math>
 true value) for parameters and predictive quantiles.</li>
 <li>
 <strong>MAE</strong> — mean absolute error for parameters.</li>
@@ -341,8 +341,7 @@ distribution-family × summary-type cell (averaging over number of
 datasets and within-study sample size). Coverage values are shown as
 percentages (nominal target: 95%). Predictive bias is the median signed
 error in days (target: 0). IQD and WIS are means over scenarios (lower =
-better). Cells marked “—” correspond to distribution–summary-type
-combinations that were excluded as non-identifiable.</p>
+better).</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="http://haozhu233.github.io/kableExtra/" class="external-link">kableExtra</a></span><span class="op">)</span></span>
 <span><span class="co">#&gt; </span></span>
@@ -351,21 +350,34 @@ combinations that were excluded as non-identifiable.</p>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;     group_rows</span></span>
 <span></span>
-<span><span class="va">table_dat</span> <span class="op">&lt;-</span> <span class="va">summary_res</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
-<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/group_by.html" class="external-link">group_by</a></span><span class="op">(</span><span class="va">dist_type</span>, <span class="va">summary_type</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
-<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/summarise.html" class="external-link">summarise</a></span><span class="op">(</span></span>
-<span>    n_scen   <span class="op">=</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span>,</span>
-<span>    cov_mu0  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_mu0</span>,          na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
-<span>    cov_tau  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_tau</span>,          na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
-<span>    cov_phi  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_phi</span>,          na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
-<span>    cov_p50  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_pred_median</span>,  na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
-<span>    cov_p95  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_pred_q95</span>,     na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
-<span>    bias_p50 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/median.html" class="external-link">median</a></span><span class="op">(</span><span class="va">bias_pred_median</span>,    na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
-<span>    bias_p95 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/median.html" class="external-link">median</a></span><span class="op">(</span><span class="va">bias_pred_q95</span>,       na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
-<span>    iqd      <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">mean_iqd</span>,              na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
-<span>    wis      <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">mean_wis</span>,              na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
-<span>    .groups  <span class="op">=</span> <span class="st">"drop"</span></span>
-<span>  <span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span><span class="co"># Shared footnote text reused by both tables</span></span>
+<span><span class="va">.fn</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span>
+<span>  <span class="st">"Coverage: empirical proportion of replicates where the true value fell "</span>,</span>
+<span>  <span class="st">"inside the 95% posterior credible interval. "</span>,</span>
+<span>  <span class="st">"Predictive bias: median signed error (posterior median estimate \u2212 true value) across replicates. "</span>,</span>
+<span>  <span class="st">"IQD: integrated quadratic distance between true and estimated predictive CDFs. "</span>,</span>
+<span>  <span class="st">"WIS: weighted interval score. "</span>,</span>
+<span>  <span class="st">"Gen. Gamma scenarios with fewer than 10 identifiable replicates were excluded prior to aggregation."</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Helper: format a summarised data frame into a kable</span></span>
+<span><span class="va">.fmt</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">dat</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">dat</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>    <span class="fu"><a href="https://dplyr.tidyverse.org/reference/transmute.html" class="external-link">transmute</a></span><span class="op">(</span></span>
+<span>      `mu0`   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.1f"</span>, <span class="va">cov_mu0</span>  <span class="op">*</span> <span class="fl">100</span><span class="op">)</span>,</span>
+<span>      `tau`   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.1f"</span>, <span class="va">cov_tau</span>  <span class="op">*</span> <span class="fl">100</span><span class="op">)</span>,</span>
+<span>      `phi`   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.1f"</span>, <span class="va">cov_phi</span>  <span class="op">*</span> <span class="fl">100</span><span class="op">)</span>,</span>
+<span>      `P50`   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.1f"</span>, <span class="va">cov_p50</span>  <span class="op">*</span> <span class="fl">100</span><span class="op">)</span>,</span>
+<span>      `P95`   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.1f"</span>, <span class="va">cov_p95</span>  <span class="op">*</span> <span class="fl">100</span><span class="op">)</span>,</span>
+<span>      `P50 `  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%+.2f"</span>, <span class="va">bias_p50</span><span class="op">)</span>,</span>
+<span>      `P95 `  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%+.2f"</span>, <span class="va">bias_p95</span><span class="op">)</span>,</span>
+<span>      `IQD`   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.3f"</span>, <span class="va">iqd</span><span class="op">)</span>,</span>
+<span>      `WIS`   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.2f"</span>, <span class="va">wis</span><span class="op">)</span></span>
+<span>    <span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="co"># ── Table 1: distribution × summary type ─────────────────────────────────────</span></span>
+<span><span class="va">t1_dat</span> <span class="op">&lt;-</span> <span class="va">summary_res</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
 <span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/mutate.html" class="external-link">mutate</a></span><span class="op">(</span></span>
 <span>    dist_label <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="va">dist_type</span>,</span>
 <span>      levels <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lognormal"</span>, <span class="st">"gamma"</span>, <span class="st">"weibull"</span>, <span class="st">"burr12"</span>, <span class="st">"gengamma"</span><span class="op">)</span>,</span>
@@ -373,42 +385,37 @@ combinations that were excluded as non-identifiable.</p>
 <span>    st_label <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="va">summary_type</span>, levels <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">5</span>,</span>
 <span>      labels <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Median+Range"</span>, <span class="st">"Median+IQR"</span>, <span class="st">"Mean+SD"</span>, <span class="st">"Freq Table"</span>, <span class="st">"Mixed"</span><span class="op">)</span><span class="op">)</span></span>
 <span>  <span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/group_by.html" class="external-link">group_by</a></span><span class="op">(</span><span class="va">dist_label</span>, <span class="va">st_label</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/summarise.html" class="external-link">summarise</a></span><span class="op">(</span></span>
+<span>    n_scen   <span class="op">=</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>    cov_mu0  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_mu0</span>,         na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    cov_tau  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_tau</span>,         na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    cov_phi  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_phi</span>,         na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    cov_p50  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_pred_median</span>, na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    cov_p95  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_pred_q95</span>,    na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    bias_p50 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/median.html" class="external-link">median</a></span><span class="op">(</span><span class="va">bias_pred_median</span>,   na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    bias_p95 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/median.html" class="external-link">median</a></span><span class="op">(</span><span class="va">bias_pred_q95</span>,      na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    iqd      <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">mean_iqd</span>,             na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    wis      <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">mean_wis</span>,             na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    .groups  <span class="op">=</span> <span class="st">"drop"</span></span>
+<span>  <span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
 <span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/arrange.html" class="external-link">arrange</a></span><span class="op">(</span><span class="va">dist_label</span>, <span class="va">st_label</span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># Build display data frame with formatted strings</span></span>
-<span><span class="va">tbl</span> <span class="op">&lt;-</span> <span class="va">table_dat</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
-<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/transmute.html" class="external-link">transmute</a></span><span class="op">(</span></span>
-<span>    Distribution    <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">dist_label</span><span class="op">)</span>,</span>
-<span>    `Summary type`  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">st_label</span><span class="op">)</span>,</span>
-<span>    `N`             <span class="op">=</span> <span class="va">n_scen</span>,</span>
-<span>    `mu[0]`         <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.1f"</span>, <span class="va">cov_mu0</span>  <span class="op">*</span> <span class="fl">100</span><span class="op">)</span>,</span>
-<span>    `tau`           <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.1f"</span>, <span class="va">cov_tau</span>  <span class="op">*</span> <span class="fl">100</span><span class="op">)</span>,</span>
-<span>    `phi`           <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.1f"</span>, <span class="va">cov_phi</span>  <span class="op">*</span> <span class="fl">100</span><span class="op">)</span>,</span>
-<span>    `P50`           <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.1f"</span>, <span class="va">cov_p50</span>  <span class="op">*</span> <span class="fl">100</span><span class="op">)</span>,</span>
-<span>    `P95`           <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.1f"</span>, <span class="va">cov_p95</span>  <span class="op">*</span> <span class="fl">100</span><span class="op">)</span>,</span>
-<span>    `P50 `          <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%+.2f"</span>, <span class="va">bias_p50</span><span class="op">)</span>,</span>
-<span>    `P95 `          <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%+.2f"</span>, <span class="va">bias_p95</span><span class="op">)</span>,</span>
-<span>    `IQD`           <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.3f"</span>, <span class="va">iqd</span><span class="op">)</span>,</span>
-<span>    `WIS`           <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%.2f"</span>, <span class="va">wis</span><span class="op">)</span></span>
-<span>  <span class="op">)</span></span>
+<span><span class="va">tbl1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/bind_cols.html" class="external-link">bind_cols</a></span><span class="op">(</span></span>
+<span>  <span class="va">t1_dat</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/transmute.html" class="external-link">transmute</a></span><span class="op">(</span></span>
+<span>    Distribution  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">dist_label</span><span class="op">)</span>,</span>
+<span>    `Summary type` <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">st_label</span><span class="op">)</span>,</span>
+<span>    `N` <span class="op">=</span> <span class="va">n_scen</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  <span class="fu">.fmt</span><span class="op">(</span><span class="va">t1_dat</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># Row-group sizes for kableExtra::pack_rows</span></span>
-<span><span class="va">group_sizes</span> <span class="op">&lt;-</span> <span class="va">table_dat</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
-<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/count.html" class="external-link">count</a></span><span class="op">(</span><span class="va">dist_label</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
-<span>  <span class="fu"><a href="https://tibble.tidyverse.org/reference/enframe.html" class="external-link">deframe</a></span><span class="op">(</span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/kbl.html" class="external-link">kbl</a></span><span class="op">(</span><span class="va">tbl</span>,</span>
+<span><span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/kbl.html" class="external-link">kbl</a></span><span class="op">(</span><span class="va">tbl1</span>,</span>
 <span>    col.names <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Distribution"</span>, <span class="st">"Summary type"</span>, <span class="st">"N"</span>,</span>
 <span>                  <span class="st">"\u03bc\u2080"</span>, <span class="st">"\u03c4"</span>, <span class="st">"\u03c6"</span>,</span>
-<span>                  <span class="st">"P50"</span>, <span class="st">"P95"</span>,</span>
-<span>                  <span class="st">"P50"</span>, <span class="st">"P95"</span>,</span>
-<span>                  <span class="st">"IQD"</span>, <span class="st">"WIS"</span><span class="op">)</span>,</span>
-<span>    align     <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"l"</span>, <span class="st">"l"</span>, <span class="st">"r"</span>,</span>
-<span>                  <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>,</span>
-<span>                  <span class="st">"r"</span>, <span class="st">"r"</span>,</span>
-<span>                  <span class="st">"r"</span>, <span class="st">"r"</span>,</span>
-<span>                  <span class="st">"r"</span>, <span class="st">"r"</span><span class="op">)</span>,</span>
-<span>    caption   <span class="op">=</span> <span class="st">"Simulation study performance summary (means/medians across scenarios within each cell)"</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>                  <span class="st">"P50"</span>, <span class="st">"P95"</span>, <span class="st">"P50"</span>, <span class="st">"P95"</span>, <span class="st">"IQD"</span>, <span class="st">"WIS"</span><span class="op">)</span>,</span>
+<span>    align   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"l"</span>, <span class="st">"l"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span><span class="op">)</span>,</span>
+<span>    caption <span class="op">=</span> <span class="st">"Performance summary by distribution family and summary type"</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/kable_styling.html" class="external-link">kable_styling</a></span><span class="op">(</span>bootstrap_options <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"striped"</span>, <span class="st">"condensed"</span>, <span class="st">"hover"</span><span class="op">)</span>,</span>
 <span>                full_width <span class="op">=</span> <span class="cn">TRUE</span>, font_size <span class="op">=</span> <span class="fl">12</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/add_header_above.html" class="external-link">add_header_above</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">" "</span> <span class="op">=</span> <span class="fl">3</span>,</span>
@@ -416,18 +423,11 @@ combinations that were excluded as non-identifiable.</p>
 <span>                     <span class="st">"Predictive coverage (%)"</span> <span class="op">=</span> <span class="fl">2</span>,</span>
 <span>                     <span class="st">"Predictive bias (days)"</span> <span class="op">=</span> <span class="fl">2</span>,</span>
 <span>                     <span class="st">"Scoring rules"</span> <span class="op">=</span> <span class="fl">2</span><span class="op">)</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/group_rows.html" class="external-link">pack_rows</a></span><span class="op">(</span>index <span class="op">=</span> <span class="va">group_sizes</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/footnote.html" class="external-link">footnote</a></span><span class="op">(</span>general <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span>
-<span>    <span class="st">"Coverage: empirical proportion of replicates where the true value fell inside the 95% posterior credible interval. "</span>,</span>
-<span>    <span class="st">"Predictive bias: median signed error (posterior median estimate \u2212 true value) across replicates. "</span>,</span>
-<span>    <span class="st">"IQD: integrated quadratic distance between true and estimated predictive CDFs. "</span>,</span>
-<span>    <span class="st">"WIS: weighted interval score. "</span>,</span>
-<span>    <span class="st">"Gen. Gamma scenarios with fewer than 10 identifiable replicates were excluded prior to aggregation."</span></span>
-<span>  <span class="op">)</span>, general_title <span class="op">=</span> <span class="st">"Note: "</span><span class="op">)</span></span></code></pre></div>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/group_rows.html" class="external-link">pack_rows</a></span><span class="op">(</span>index <span class="op">=</span> <span class="va">t1_dat</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/count.html" class="external-link">count</a></span><span class="op">(</span><span class="va">dist_label</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span> <span class="fu"><a href="https://tibble.tidyverse.org/reference/enframe.html" class="external-link">deframe</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/footnote.html" class="external-link">footnote</a></span><span class="op">(</span>general <span class="op">=</span> <span class="va">.fn</span>, general_title <span class="op">=</span> <span class="st">"Note: "</span><span class="op">)</span></span></code></pre></div>
 <table class="table table table-striped table-condensed table-hover" style="font-size: 12px; margin-left: auto; margin-right: auto;border-bottom: 0;">
 <caption style="font-size: initial !important;">
-Simulation study performance summary (means/medians across scenarios
-within each cell)
+Performance summary by distribution family and summary type
 </caption>
 <thead>
 <tr>
@@ -1301,6 +1301,2036 @@ to aggregation.
 </table>
 </div>
 <div class="section level2">
+<h2 id="summary-table-by-data-availability">Summary Table: By Data Availability<a class="anchor" aria-label="anchor" href="#summary-table-by-data-availability"></a>
+</h2>
+<p>The table below pools results across distribution families and shows
+how performance varies with the number of datasets and within-study
+sample size, broken down by summary type. Rows are grouped by summary
+type.</p>
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">t2_dat</span> <span class="op">&lt;-</span> <span class="va">summary_res</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/mutate.html" class="external-link">mutate</a></span><span class="op">(</span></span>
+<span>    st_label <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="va">summary_type</span>, levels <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">5</span>,</span>
+<span>      labels <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Median+Range"</span>, <span class="st">"Median+IQR"</span>, <span class="st">"Mean+SD"</span>, <span class="st">"Freq Table"</span>, <span class="st">"Mixed"</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>    n_datasets_bucket <span class="op">=</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/case-and-replace-when.html" class="external-link">case_when</a></span><span class="op">(</span></span>
+<span>      <span class="va">n_datasets</span> <span class="op">&lt;</span> <span class="fl">10</span>  <span class="op">~</span> <span class="st">"&lt;10"</span>,</span>
+<span>      <span class="va">n_datasets</span> <span class="op">&lt;</span> <span class="fl">20</span>  <span class="op">~</span> <span class="st">"&lt;20"</span>,</span>
+<span>      <span class="va">n_datasets</span> <span class="op">&lt;</span> <span class="fl">30</span>  <span class="op">~</span> <span class="st">"&lt;30"</span>,</span>
+<span>      <span class="va">n_datasets</span> <span class="op">&gt;=</span> <span class="fl">30</span> <span class="op">~</span> <span class="st">"30+"</span></span>
+<span>    <span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span>levels <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"&lt;10"</span>, <span class="st">"&lt;20"</span>, <span class="st">"&lt;30"</span>, <span class="st">"30+"</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>    n_obs_bucket <span class="op">=</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/case-and-replace-when.html" class="external-link">case_when</a></span><span class="op">(</span></span>
+<span>      <span class="va">n_obs</span> <span class="op">==</span> <span class="fl">5</span>  <span class="op">~</span> <span class="st">"5"</span>,</span>
+<span>      <span class="va">n_obs</span> <span class="op">==</span> <span class="fl">10</span> <span class="op">~</span> <span class="st">"10"</span>,</span>
+<span>      <span class="va">n_obs</span> <span class="op">==</span> <span class="fl">20</span> <span class="op">~</span> <span class="st">"20"</span>,</span>
+<span>      <span class="va">n_obs</span> <span class="op">&gt;</span> <span class="fl">25</span>  <span class="op">~</span> <span class="st">"25+"</span></span>
+<span>    <span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span>levels <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"5"</span>, <span class="st">"10"</span>, <span class="st">"20"</span>, <span class="st">"25+"</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/group_by.html" class="external-link">group_by</a></span><span class="op">(</span><span class="va">st_label</span>, <span class="va">n_datasets_bucket</span>, <span class="va">n_obs_bucket</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/summarise.html" class="external-link">summarise</a></span><span class="op">(</span></span>
+<span>    n_scen   <span class="op">=</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>    cov_mu0  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_mu0</span>,         na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    cov_tau  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_tau</span>,         na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    cov_phi  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_phi</span>,         na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    cov_p50  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_pred_median</span>, na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    cov_p95  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">coverage_pred_q95</span>,    na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    bias_p50 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/median.html" class="external-link">median</a></span><span class="op">(</span><span class="va">bias_pred_median</span>,   na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    bias_p95 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/median.html" class="external-link">median</a></span><span class="op">(</span><span class="va">bias_pred_q95</span>,      na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    iqd      <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">mean_iqd</span>,             na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    wis      <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">mean_wis</span>,             na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    .groups  <span class="op">=</span> <span class="st">"drop"</span></span>
+<span>  <span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/arrange.html" class="external-link">arrange</a></span><span class="op">(</span><span class="va">st_label</span>, <span class="va">n_datasets_bucket</span>, <span class="va">n_obs_bucket</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">tbl2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/bind_cols.html" class="external-link">bind_cols</a></span><span class="op">(</span></span>
+<span>  <span class="va">t2_dat</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/transmute.html" class="external-link">transmute</a></span><span class="op">(</span></span>
+<span>    `Summary type` <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">st_label</span><span class="op">)</span>,</span>
+<span>    `N datasets`   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">n_datasets_bucket</span><span class="op">)</span>,</span>
+<span>    `N obs`        <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">n_obs_bucket</span><span class="op">)</span>,</span>
+<span>    `N`            <span class="op">=</span> <span class="va">n_scen</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  <span class="fu">.fmt</span><span class="op">(</span><span class="va">t2_dat</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/kbl.html" class="external-link">kbl</a></span><span class="op">(</span><span class="va">tbl2</span>,</span>
+<span>    col.names <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Summary type"</span>, <span class="st">"N datasets"</span>, <span class="st">"N obs"</span>, <span class="st">"N"</span>,</span>
+<span>                  <span class="st">"\u03bc\u2080"</span>, <span class="st">"\u03c4"</span>, <span class="st">"\u03c6"</span>,</span>
+<span>                  <span class="st">"P50"</span>, <span class="st">"P95"</span>, <span class="st">"P50"</span>, <span class="st">"P95"</span>, <span class="st">"IQD"</span>, <span class="st">"WIS"</span><span class="op">)</span>,</span>
+<span>    align   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"l"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span>, <span class="st">"r"</span><span class="op">)</span>,</span>
+<span>    caption <span class="op">=</span> <span class="st">"Performance summary by summary type, number of datasets, and within-study sample size (pooled over distribution families)"</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/kable_styling.html" class="external-link">kable_styling</a></span><span class="op">(</span>bootstrap_options <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"striped"</span>, <span class="st">"condensed"</span>, <span class="st">"hover"</span><span class="op">)</span>,</span>
+<span>                full_width <span class="op">=</span> <span class="cn">TRUE</span>, font_size <span class="op">=</span> <span class="fl">12</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/add_header_above.html" class="external-link">add_header_above</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">" "</span> <span class="op">=</span> <span class="fl">4</span>,</span>
+<span>                     <span class="st">"Parameter coverage (%)"</span> <span class="op">=</span> <span class="fl">3</span>,</span>
+<span>                     <span class="st">"Predictive coverage (%)"</span> <span class="op">=</span> <span class="fl">2</span>,</span>
+<span>                     <span class="st">"Predictive bias (days)"</span> <span class="op">=</span> <span class="fl">2</span>,</span>
+<span>                     <span class="st">"Scoring rules"</span> <span class="op">=</span> <span class="fl">2</span><span class="op">)</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/group_rows.html" class="external-link">pack_rows</a></span><span class="op">(</span>index <span class="op">=</span> <span class="va">t2_dat</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/count.html" class="external-link">count</a></span><span class="op">(</span><span class="va">st_label</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span> <span class="fu"><a href="https://tibble.tidyverse.org/reference/enframe.html" class="external-link">deframe</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span> <span class="op"><a href="https://magrittr.tidyverse.org/reference/pipe.html" class="external-link">%&gt;%</a></span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/kableExtra/man/footnote.html" class="external-link">footnote</a></span><span class="op">(</span>general <span class="op">=</span> <span class="va">.fn</span>, general_title <span class="op">=</span> <span class="st">"Note: "</span><span class="op">)</span></span></code></pre></div>
+<table class="table table table-striped table-condensed table-hover" style="font-size: 12px; margin-left: auto; margin-right: auto;border-bottom: 0;">
+<caption style="font-size: initial !important;">
+Performance summary by summary type, number of datasets, and
+within-study sample size (pooled over distribution families)
+</caption>
+<thead>
+<tr>
+<th style="empty-cells: hide;border-bottom:hidden;" colspan="4">
+</th>
+<th style="border-bottom:hidden;padding-bottom:0; padding-left:3px;padding-right:3px;text-align: center; " colspan="3">
+<div style="border-bottom: 1px solid #ddd; padding-bottom: 5px; ">
+Parameter coverage (%)
+</div>
+</th>
+<th style="border-bottom:hidden;padding-bottom:0; padding-left:3px;padding-right:3px;text-align: center; " colspan="2">
+<div style="border-bottom: 1px solid #ddd; padding-bottom: 5px; ">
+Predictive coverage (%)
+</div>
+</th>
+<th style="border-bottom:hidden;padding-bottom:0; padding-left:3px;padding-right:3px;text-align: center; " colspan="2">
+<div style="border-bottom: 1px solid #ddd; padding-bottom: 5px; ">
+Predictive bias (days)
+</div>
+</th>
+<th style="border-bottom:hidden;padding-bottom:0; padding-left:3px;padding-right:3px;text-align: center; " colspan="2">
+<div style="border-bottom: 1px solid #ddd; padding-bottom: 5px; ">
+Scoring rules
+</div>
+</th>
+</tr>
+<tr>
+<th style="text-align:left;">
+Summary type
+</th>
+<th style="text-align:right;">
+N datasets
+</th>
+<th style="text-align:right;">
+N obs
+</th>
+<th style="text-align:right;">
+N
+</th>
+<th style="text-align:right;">
+μ₀
+</th>
+<th style="text-align:right;">
+τ
+</th>
+<th style="text-align:right;">
+φ
+</th>
+<th style="text-align:right;">
+P50
+</th>
+<th style="text-align:right;">
+P95
+</th>
+<th style="text-align:right;">
+P50
+</th>
+<th style="text-align:right;">
+P95
+</th>
+<th style="text-align:right;">
+IQD
+</th>
+<th style="text-align:right;">
+WIS
+</th>
+</tr>
+</thead>
+<tbody>
+<tr grouplength="12">
+<td colspan="13" style="border-bottom: 1px solid;">
+<strong>Median+Range</strong>
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+Range
+</td>
+<td style="text-align:right;">
+&lt;10
+</td>
+<td style="text-align:right;">
+5
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+72.2
+</td>
+<td style="text-align:right;">
+81.0
+</td>
+<td style="text-align:right;">
+99.7
+</td>
+<td style="text-align:right;">
+95.6
+</td>
+<td style="text-align:right;">
+-0.57
+</td>
+<td style="text-align:right;">
++4.98
+</td>
+<td style="text-align:right;">
+0.012
+</td>
+<td style="text-align:right;">
+1.99
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+Range
+</td>
+<td style="text-align:right;">
+&lt;10
+</td>
+<td style="text-align:right;">
+10
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+79.0
+</td>
+<td style="text-align:right;">
+85.7
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+96.3
+</td>
+<td style="text-align:right;">
+-0.54
+</td>
+<td style="text-align:right;">
++5.05
+</td>
+<td style="text-align:right;">
+0.011
+</td>
+<td style="text-align:right;">
+2.00
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+Range
+</td>
+<td style="text-align:right;">
+&lt;10
+</td>
+<td style="text-align:right;">
+20
+</td>
+<td style="text-align:right;">
+7
+</td>
+<td style="text-align:right;">
+99.4
+</td>
+<td style="text-align:right;">
+78.3
+</td>
+<td style="text-align:right;">
+95.1
+</td>
+<td style="text-align:right;">
+99.6
+</td>
+<td style="text-align:right;">
+95.4
+</td>
+<td style="text-align:right;">
+-0.34
+</td>
+<td style="text-align:right;">
++5.07
+</td>
+<td style="text-align:right;">
+0.014
+</td>
+<td style="text-align:right;">
+1.63
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+Range
+</td>
+<td style="text-align:right;">
+&lt;10
+</td>
+<td style="text-align:right;">
+25+
+</td>
+<td style="text-align:right;">
+7
+</td>
+<td style="text-align:right;">
+99.9
+</td>
+<td style="text-align:right;">
+82.7
+</td>
+<td style="text-align:right;">
+95.6
+</td>
+<td style="text-align:right;">
+99.7
+</td>
+<td style="text-align:right;">
+95.1
+</td>
+<td style="text-align:right;">
+-0.35
+</td>
+<td style="text-align:right;">
++4.20
+</td>
+<td style="text-align:right;">
+0.013
+</td>
+<td style="text-align:right;">
+1.62
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+Range
+</td>
+<td style="text-align:right;">
+&lt;20
+</td>
+<td style="text-align:right;">
+5
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+98.7
+</td>
+<td style="text-align:right;">
+82.3
+</td>
+<td style="text-align:right;">
+80.0
+</td>
+<td style="text-align:right;">
+99.0
+</td>
+<td style="text-align:right;">
+97.3
+</td>
+<td style="text-align:right;">
+-0.28
+</td>
+<td style="text-align:right;">
++2.40
+</td>
+<td style="text-align:right;">
+0.004
+</td>
+<td style="text-align:right;">
+1.92
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+Range
+</td>
+<td style="text-align:right;">
+&lt;20
+</td>
+<td style="text-align:right;">
+10
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+99.0
+</td>
+<td style="text-align:right;">
+84.3
+</td>
+<td style="text-align:right;">
+85.7
+</td>
+<td style="text-align:right;">
+99.0
+</td>
+<td style="text-align:right;">
+97.0
+</td>
+<td style="text-align:right;">
++0.02
+</td>
+<td style="text-align:right;">
++2.81
+</td>
+<td style="text-align:right;">
+0.004
+</td>
+<td style="text-align:right;">
+1.92
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+Range
+</td>
+<td style="text-align:right;">
+&lt;20
+</td>
+<td style="text-align:right;">
+20
+</td>
+<td style="text-align:right;">
+7
+</td>
+<td style="text-align:right;">
+98.3
+</td>
+<td style="text-align:right;">
+85.4
+</td>
+<td style="text-align:right;">
+92.7
+</td>
+<td style="text-align:right;">
+99.0
+</td>
+<td style="text-align:right;">
+95.4
+</td>
+<td style="text-align:right;">
+-0.09
+</td>
+<td style="text-align:right;">
++1.89
+</td>
+<td style="text-align:right;">
+0.005
+</td>
+<td style="text-align:right;">
+1.56
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+Range
+</td>
+<td style="text-align:right;">
+&lt;20
+</td>
+<td style="text-align:right;">
+25+
+</td>
+<td style="text-align:right;">
+7
+</td>
+<td style="text-align:right;">
+99.1
+</td>
+<td style="text-align:right;">
+88.4
+</td>
+<td style="text-align:right;">
+95.0
+</td>
+<td style="text-align:right;">
+98.7
+</td>
+<td style="text-align:right;">
+95.0
+</td>
+<td style="text-align:right;">
+-0.11
+</td>
+<td style="text-align:right;">
++1.80
+</td>
+<td style="text-align:right;">
+0.004
+</td>
+<td style="text-align:right;">
+1.55
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+Range
+</td>
+<td style="text-align:right;">
+&lt;30
+</td>
+<td style="text-align:right;">
+5
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+97.7
+</td>
+<td style="text-align:right;">
+83.3
+</td>
+<td style="text-align:right;">
+82.0
+</td>
+<td style="text-align:right;">
+98.0
+</td>
+<td style="text-align:right;">
+96.3
+</td>
+<td style="text-align:right;">
+-0.20
+</td>
+<td style="text-align:right;">
++0.95
+</td>
+<td style="text-align:right;">
+0.002
+</td>
+<td style="text-align:right;">
+1.88
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+Range
+</td>
+<td style="text-align:right;">
+&lt;30
+</td>
+<td style="text-align:right;">
+10
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+97.0
+</td>
+<td style="text-align:right;">
+85.7
+</td>
+<td style="text-align:right;">
+85.7
+</td>
+<td style="text-align:right;">
+96.3
+</td>
+<td style="text-align:right;">
+93.7
+</td>
+<td style="text-align:right;">
++0.05
+</td>
+<td style="text-align:right;">
++1.35
+</td>
+<td style="text-align:right;">
+0.002
+</td>
+<td style="text-align:right;">
+1.87
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+Range
+</td>
+<td style="text-align:right;">
+&lt;30
+</td>
+<td style="text-align:right;">
+20
+</td>
+<td style="text-align:right;">
+7
+</td>
+<td style="text-align:right;">
+97.3
+</td>
+<td style="text-align:right;">
+89.6
+</td>
+<td style="text-align:right;">
+92.0
+</td>
+<td style="text-align:right;">
+97.0
+</td>
+<td style="text-align:right;">
+94.3
+</td>
+<td style="text-align:right;">
+-0.00
+</td>
+<td style="text-align:right;">
++1.07
+</td>
+<td style="text-align:right;">
+0.002
+</td>
+<td style="text-align:right;">
+1.53
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+Range
+</td>
+<td style="text-align:right;">
+&lt;30
+</td>
+<td style="text-align:right;">
+25+
+</td>
+<td style="text-align:right;">
+15
+</td>
+<td style="text-align:right;">
+97.3
+</td>
+<td style="text-align:right;">
+89.9
+</td>
+<td style="text-align:right;">
+94.9
+</td>
+<td style="text-align:right;">
+97.5
+</td>
+<td style="text-align:right;">
+95.5
+</td>
+<td style="text-align:right;">
+-0.02
+</td>
+<td style="text-align:right;">
++0.94
+</td>
+<td style="text-align:right;">
+0.002
+</td>
+<td style="text-align:right;">
+1.62
+</td>
+</tr>
+<tr grouplength="12">
+<td colspan="13" style="border-bottom: 1px solid;">
+<strong>Median+IQR</strong>
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+IQR
+</td>
+<td style="text-align:right;">
+&lt;10
+</td>
+<td style="text-align:right;">
+5
+</td>
+<td style="text-align:right;">
+2
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+68.5
+</td>
+<td style="text-align:right;">
+27.0
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+97.5
+</td>
+<td style="text-align:right;">
+-0.11
+</td>
+<td style="text-align:right;">
++5.08
+</td>
+<td style="text-align:right;">
+0.010
+</td>
+<td style="text-align:right;">
+1.94
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+IQR
+</td>
+<td style="text-align:right;">
+&lt;10
+</td>
+<td style="text-align:right;">
+10
+</td>
+<td style="text-align:right;">
+2
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+75.0
+</td>
+<td style="text-align:right;">
+25.0
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+98.5
+</td>
+<td style="text-align:right;">
+-0.42
+</td>
+<td style="text-align:right;">
++4.32
+</td>
+<td style="text-align:right;">
+0.009
+</td>
+<td style="text-align:right;">
+1.89
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+IQR
+</td>
+<td style="text-align:right;">
+&lt;10
+</td>
+<td style="text-align:right;">
+20
+</td>
+<td style="text-align:right;">
+2
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+74.9
+</td>
+<td style="text-align:right;">
+89.5
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+96.0
+</td>
+<td style="text-align:right;">
+-0.34
+</td>
+<td style="text-align:right;">
++5.54
+</td>
+<td style="text-align:right;">
+0.010
+</td>
+<td style="text-align:right;">
+1.92
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+IQR
+</td>
+<td style="text-align:right;">
+&lt;10
+</td>
+<td style="text-align:right;">
+25+
+</td>
+<td style="text-align:right;">
+2
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+76.5
+</td>
+<td style="text-align:right;">
+81.5
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+95.5
+</td>
+<td style="text-align:right;">
+-0.49
+</td>
+<td style="text-align:right;">
++4.67
+</td>
+<td style="text-align:right;">
+0.010
+</td>
+<td style="text-align:right;">
+1.91
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+IQR
+</td>
+<td style="text-align:right;">
+&lt;20
+</td>
+<td style="text-align:right;">
+5
+</td>
+<td style="text-align:right;">
+2
+</td>
+<td style="text-align:right;">
+99.5
+</td>
+<td style="text-align:right;">
+73.0
+</td>
+<td style="text-align:right;">
+5.0
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+97.5
+</td>
+<td style="text-align:right;">
++0.07
+</td>
+<td style="text-align:right;">
++1.94
+</td>
+<td style="text-align:right;">
+0.004
+</td>
+<td style="text-align:right;">
+1.83
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+IQR
+</td>
+<td style="text-align:right;">
+&lt;20
+</td>
+<td style="text-align:right;">
+10
+</td>
+<td style="text-align:right;">
+2
+</td>
+<td style="text-align:right;">
+98.5
+</td>
+<td style="text-align:right;">
+82.0
+</td>
+<td style="text-align:right;">
+6.0
+</td>
+<td style="text-align:right;">
+97.5
+</td>
+<td style="text-align:right;">
+98.0
+</td>
+<td style="text-align:right;">
++0.11
+</td>
+<td style="text-align:right;">
++1.36
+</td>
+<td style="text-align:right;">
+0.004
+</td>
+<td style="text-align:right;">
+1.83
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+IQR
+</td>
+<td style="text-align:right;">
+&lt;20
+</td>
+<td style="text-align:right;">
+20
+</td>
+<td style="text-align:right;">
+2
+</td>
+<td style="text-align:right;">
+99.0
+</td>
+<td style="text-align:right;">
+84.5
+</td>
+<td style="text-align:right;">
+66.5
+</td>
+<td style="text-align:right;">
+99.0
+</td>
+<td style="text-align:right;">
+96.5
+</td>
+<td style="text-align:right;">
+-0.00
+</td>
+<td style="text-align:right;">
++2.22
+</td>
+<td style="text-align:right;">
+0.003
+</td>
+<td style="text-align:right;">
+1.82
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+IQR
+</td>
+<td style="text-align:right;">
+&lt;20
+</td>
+<td style="text-align:right;">
+25+
+</td>
+<td style="text-align:right;">
+5
+</td>
+<td style="text-align:right;">
+97.8
+</td>
+<td style="text-align:right;">
+86.4
+</td>
+<td style="text-align:right;">
+53.2
+</td>
+<td style="text-align:right;">
+98.6
+</td>
+<td style="text-align:right;">
+97.2
+</td>
+<td style="text-align:right;">
+-0.05
+</td>
+<td style="text-align:right;">
++0.91
+</td>
+<td style="text-align:right;">
+0.004
+</td>
+<td style="text-align:right;">
+1.52
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+IQR
+</td>
+<td style="text-align:right;">
+&lt;30
+</td>
+<td style="text-align:right;">
+5
+</td>
+<td style="text-align:right;">
+2
+</td>
+<td style="text-align:right;">
+97.5
+</td>
+<td style="text-align:right;">
+66.0
+</td>
+<td style="text-align:right;">
+0.0
+</td>
+<td style="text-align:right;">
+97.0
+</td>
+<td style="text-align:right;">
+98.0
+</td>
+<td style="text-align:right;">
++0.19
+</td>
+<td style="text-align:right;">
++0.28
+</td>
+<td style="text-align:right;">
+0.003
+</td>
+<td style="text-align:right;">
+1.80
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+IQR
+</td>
+<td style="text-align:right;">
+&lt;30
+</td>
+<td style="text-align:right;">
+10
+</td>
+<td style="text-align:right;">
+2
+</td>
+<td style="text-align:right;">
+98.0
+</td>
+<td style="text-align:right;">
+81.0
+</td>
+<td style="text-align:right;">
+0.0
+</td>
+<td style="text-align:right;">
+93.5
+</td>
+<td style="text-align:right;">
+96.0
+</td>
+<td style="text-align:right;">
++0.29
+</td>
+<td style="text-align:right;">
++0.18
+</td>
+<td style="text-align:right;">
+0.003
+</td>
+<td style="text-align:right;">
+1.81
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+IQR
+</td>
+<td style="text-align:right;">
+&lt;30
+</td>
+<td style="text-align:right;">
+20
+</td>
+<td style="text-align:right;">
+2
+</td>
+<td style="text-align:right;">
+98.0
+</td>
+<td style="text-align:right;">
+84.0
+</td>
+<td style="text-align:right;">
+31.0
+</td>
+<td style="text-align:right;">
+97.0
+</td>
+<td style="text-align:right;">
+96.0
+</td>
+<td style="text-align:right;">
++0.09
+</td>
+<td style="text-align:right;">
++0.76
+</td>
+<td style="text-align:right;">
+0.002
+</td>
+<td style="text-align:right;">
+1.80
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Median+IQR
+</td>
+<td style="text-align:right;">
+&lt;30
+</td>
+<td style="text-align:right;">
+25+
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+98.0
+</td>
+<td style="text-align:right;">
+92.3
+</td>
+<td style="text-align:right;">
+38.0
+</td>
+<td style="text-align:right;">
+97.7
+</td>
+<td style="text-align:right;">
+96.7
+</td>
+<td style="text-align:right;">
++0.07
+</td>
+<td style="text-align:right;">
++0.42
+</td>
+<td style="text-align:right;">
+0.002
+</td>
+<td style="text-align:right;">
+1.58
+</td>
+</tr>
+<tr grouplength="12">
+<td colspan="13" style="border-bottom: 1px solid;">
+<strong>Mean+SD</strong>
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mean+SD
+</td>
+<td style="text-align:right;">
+&lt;10
+</td>
+<td style="text-align:right;">
+5
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+99.7
+</td>
+<td style="text-align:right;">
+75.3
+</td>
+<td style="text-align:right;">
+78.3
+</td>
+<td style="text-align:right;">
+99.7
+</td>
+<td style="text-align:right;">
+97.7
+</td>
+<td style="text-align:right;">
+-0.45
+</td>
+<td style="text-align:right;">
++5.27
+</td>
+<td style="text-align:right;">
+0.011
+</td>
+<td style="text-align:right;">
+2.00
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mean+SD
+</td>
+<td style="text-align:right;">
+&lt;10
+</td>
+<td style="text-align:right;">
+10
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+99.7
+</td>
+<td style="text-align:right;">
+76.3
+</td>
+<td style="text-align:right;">
+87.0
+</td>
+<td style="text-align:right;">
+99.7
+</td>
+<td style="text-align:right;">
+97.7
+</td>
+<td style="text-align:right;">
+-0.69
+</td>
+<td style="text-align:right;">
++4.34
+</td>
+<td style="text-align:right;">
+0.011
+</td>
+<td style="text-align:right;">
+1.98
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mean+SD
+</td>
+<td style="text-align:right;">
+&lt;10
+</td>
+<td style="text-align:right;">
+20
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+99.7
+</td>
+<td style="text-align:right;">
+75.3
+</td>
+<td style="text-align:right;">
+91.3
+</td>
+<td style="text-align:right;">
+99.3
+</td>
+<td style="text-align:right;">
+97.7
+</td>
+<td style="text-align:right;">
+-0.74
+</td>
+<td style="text-align:right;">
++5.40
+</td>
+<td style="text-align:right;">
+0.011
+</td>
+<td style="text-align:right;">
+1.98
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mean+SD
+</td>
+<td style="text-align:right;">
+&lt;10
+</td>
+<td style="text-align:right;">
+25+
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+99.7
+</td>
+<td style="text-align:right;">
+79.3
+</td>
+<td style="text-align:right;">
+97.0
+</td>
+<td style="text-align:right;">
+99.7
+</td>
+<td style="text-align:right;">
+95.3
+</td>
+<td style="text-align:right;">
+-0.54
+</td>
+<td style="text-align:right;">
++5.17
+</td>
+<td style="text-align:right;">
+0.010
+</td>
+<td style="text-align:right;">
+1.99
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mean+SD
+</td>
+<td style="text-align:right;">
+&lt;20
+</td>
+<td style="text-align:right;">
+5
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+99.7
+</td>
+<td style="text-align:right;">
+84.3
+</td>
+<td style="text-align:right;">
+70.7
+</td>
+<td style="text-align:right;">
+99.7
+</td>
+<td style="text-align:right;">
+97.3
+</td>
+<td style="text-align:right;">
+-0.19
+</td>
+<td style="text-align:right;">
++2.15
+</td>
+<td style="text-align:right;">
+0.004
+</td>
+<td style="text-align:right;">
+1.91
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mean+SD
+</td>
+<td style="text-align:right;">
+&lt;20
+</td>
+<td style="text-align:right;">
+10
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+99.3
+</td>
+<td style="text-align:right;">
+83.7
+</td>
+<td style="text-align:right;">
+86.0
+</td>
+<td style="text-align:right;">
+99.0
+</td>
+<td style="text-align:right;">
+96.7
+</td>
+<td style="text-align:right;">
+-0.16
+</td>
+<td style="text-align:right;">
++2.21
+</td>
+<td style="text-align:right;">
+0.004
+</td>
+<td style="text-align:right;">
+1.90
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mean+SD
+</td>
+<td style="text-align:right;">
+&lt;20
+</td>
+<td style="text-align:right;">
+20
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+98.0
+</td>
+<td style="text-align:right;">
+83.7
+</td>
+<td style="text-align:right;">
+91.3
+</td>
+<td style="text-align:right;">
+98.0
+</td>
+<td style="text-align:right;">
+95.7
+</td>
+<td style="text-align:right;">
+-0.24
+</td>
+<td style="text-align:right;">
++2.35
+</td>
+<td style="text-align:right;">
+0.004
+</td>
+<td style="text-align:right;">
+1.89
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mean+SD
+</td>
+<td style="text-align:right;">
+&lt;20
+</td>
+<td style="text-align:right;">
+25+
+</td>
+<td style="text-align:right;">
+4
+</td>
+<td style="text-align:right;">
+98.8
+</td>
+<td style="text-align:right;">
+82.8
+</td>
+<td style="text-align:right;">
+94.5
+</td>
+<td style="text-align:right;">
+98.8
+</td>
+<td style="text-align:right;">
+97.2
+</td>
+<td style="text-align:right;">
+-0.22
+</td>
+<td style="text-align:right;">
++1.57
+</td>
+<td style="text-align:right;">
+0.004
+</td>
+<td style="text-align:right;">
+1.74
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mean+SD
+</td>
+<td style="text-align:right;">
+&lt;30
+</td>
+<td style="text-align:right;">
+5
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+97.3
+</td>
+<td style="text-align:right;">
+80.0
+</td>
+<td style="text-align:right;">
+63.0
+</td>
+<td style="text-align:right;">
+98.0
+</td>
+<td style="text-align:right;">
+95.7
+</td>
+<td style="text-align:right;">
++0.05
+</td>
+<td style="text-align:right;">
++1.28
+</td>
+<td style="text-align:right;">
+0.002
+</td>
+<td style="text-align:right;">
+1.87
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mean+SD
+</td>
+<td style="text-align:right;">
+&lt;30
+</td>
+<td style="text-align:right;">
+10
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+96.0
+</td>
+<td style="text-align:right;">
+90.7
+</td>
+<td style="text-align:right;">
+80.7
+</td>
+<td style="text-align:right;">
+95.7
+</td>
+<td style="text-align:right;">
+94.3
+</td>
+<td style="text-align:right;">
++0.14
+</td>
+<td style="text-align:right;">
++1.18
+</td>
+<td style="text-align:right;">
+0.002
+</td>
+<td style="text-align:right;">
+1.88
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mean+SD
+</td>
+<td style="text-align:right;">
+&lt;30
+</td>
+<td style="text-align:right;">
+20
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+97.7
+</td>
+<td style="text-align:right;">
+89.0
+</td>
+<td style="text-align:right;">
+87.0
+</td>
+<td style="text-align:right;">
+97.3
+</td>
+<td style="text-align:right;">
+97.3
+</td>
+<td style="text-align:right;">
+-0.05
+</td>
+<td style="text-align:right;">
++1.08
+</td>
+<td style="text-align:right;">
+0.002
+</td>
+<td style="text-align:right;">
+1.87
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mean+SD
+</td>
+<td style="text-align:right;">
+&lt;30
+</td>
+<td style="text-align:right;">
+25+
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+97.0
+</td>
+<td style="text-align:right;">
+91.3
+</td>
+<td style="text-align:right;">
+93.3
+</td>
+<td style="text-align:right;">
+98.0
+</td>
+<td style="text-align:right;">
+97.3
+</td>
+<td style="text-align:right;">
+-0.07
+</td>
+<td style="text-align:right;">
++1.08
+</td>
+<td style="text-align:right;">
+0.001
+</td>
+<td style="text-align:right;">
+1.86
+</td>
+</tr>
+<tr grouplength="4">
+<td colspan="13" style="border-bottom: 1px solid;">
+<strong>Freq Table</strong>
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Freq Table
+</td>
+<td style="text-align:right;">
+&lt;10
+</td>
+<td style="text-align:right;">
+10
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+70.0
+</td>
+<td style="text-align:right;">
+88.3
+</td>
+<td style="text-align:right;">
+51.0
+</td>
+<td style="text-align:right;">
+40.3
+</td>
+<td style="text-align:right;">
++0.13
+</td>
+<td style="text-align:right;">
+-4.22
+</td>
+<td style="text-align:right;">
+0.017
+</td>
+<td style="text-align:right;">
+2.16
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Freq Table
+</td>
+<td style="text-align:right;">
+&lt;10
+</td>
+<td style="text-align:right;">
+25+
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+71.0
+</td>
+<td style="text-align:right;">
+94.0
+</td>
+<td style="text-align:right;">
+31.3
+</td>
+<td style="text-align:right;">
+23.0
+</td>
+<td style="text-align:right;">
++0.23
+</td>
+<td style="text-align:right;">
+-3.93
+</td>
+<td style="text-align:right;">
+0.013
+</td>
+<td style="text-align:right;">
+2.09
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Freq Table
+</td>
+<td style="text-align:right;">
+&lt;20
+</td>
+<td style="text-align:right;">
+25+
+</td>
+<td style="text-align:right;">
+3
+</td>
+<td style="text-align:right;">
+98.3
+</td>
+<td style="text-align:right;">
+89.0
+</td>
+<td style="text-align:right;">
+97.3
+</td>
+<td style="text-align:right;">
+99.7
+</td>
+<td style="text-align:right;">
+95.3
+</td>
+<td style="text-align:right;">
+-0.06
+</td>
+<td style="text-align:right;">
++1.55
+</td>
+<td style="text-align:right;">
+0.006
+</td>
+<td style="text-align:right;">
+1.34
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Freq Table
+</td>
+<td style="text-align:right;">
+&lt;30
+</td>
+<td style="text-align:right;">
+25+
+</td>
+<td style="text-align:right;">
+1
+</td>
+<td style="text-align:right;">
+96.0
+</td>
+<td style="text-align:right;">
+94.0
+</td>
+<td style="text-align:right;">
+98.0
+</td>
+<td style="text-align:right;">
+97.0
+</td>
+<td style="text-align:right;">
+94.0
+</td>
+<td style="text-align:right;">
+-0.04
+</td>
+<td style="text-align:right;">
++0.65
+</td>
+<td style="text-align:right;">
+0.002
+</td>
+<td style="text-align:right;">
+1.21
+</td>
+</tr>
+<tr grouplength="5">
+<td colspan="13" style="border-bottom: 1px solid;">
+<strong>Mixed</strong>
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mixed
+</td>
+<td style="text-align:right;">
+&lt;10
+</td>
+<td style="text-align:right;">
+25+
+</td>
+<td style="text-align:right;">
+1
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+82.3
+</td>
+<td style="text-align:right;">
+92.4
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+94.9
+</td>
+<td style="text-align:right;">
+-0.50
+</td>
+<td style="text-align:right;">
++4.65
+</td>
+<td style="text-align:right;">
+0.009
+</td>
+<td style="text-align:right;">
+1.81
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mixed
+</td>
+<td style="text-align:right;">
+&lt;20
+</td>
+<td style="text-align:right;">
+10
+</td>
+<td style="text-align:right;">
+1
+</td>
+<td style="text-align:right;">
+98.3
+</td>
+<td style="text-align:right;">
+86.4
+</td>
+<td style="text-align:right;">
+98.3
+</td>
+<td style="text-align:right;">
+100.0
+</td>
+<td style="text-align:right;">
+94.9
+</td>
+<td style="text-align:right;">
+-0.32
+</td>
+<td style="text-align:right;">
++2.15
+</td>
+<td style="text-align:right;">
+0.004
+</td>
+<td style="text-align:right;">
+1.75
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mixed
+</td>
+<td style="text-align:right;">
+&lt;20
+</td>
+<td style="text-align:right;">
+25+
+</td>
+<td style="text-align:right;">
+20
+</td>
+<td style="text-align:right;">
+97.8
+</td>
+<td style="text-align:right;">
+88.4
+</td>
+<td style="text-align:right;">
+88.6
+</td>
+<td style="text-align:right;">
+98.2
+</td>
+<td style="text-align:right;">
+95.6
+</td>
+<td style="text-align:right;">
+-0.05
+</td>
+<td style="text-align:right;">
++1.55
+</td>
+<td style="text-align:right;">
+0.003
+</td>
+<td style="text-align:right;">
+1.77
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mixed
+</td>
+<td style="text-align:right;">
+&lt;30
+</td>
+<td style="text-align:right;">
+25+
+</td>
+<td style="text-align:right;">
+27
+</td>
+<td style="text-align:right;">
+97.2
+</td>
+<td style="text-align:right;">
+87.3
+</td>
+<td style="text-align:right;">
+87.9
+</td>
+<td style="text-align:right;">
+97.8
+</td>
+<td style="text-align:right;">
+96.5
+</td>
+<td style="text-align:right;">
++0.00
+</td>
+<td style="text-align:right;">
++0.74
+</td>
+<td style="text-align:right;">
+0.001
+</td>
+<td style="text-align:right;">
+2.00
+</td>
+</tr>
+<tr>
+<td style="text-align:left;padding-left: 2em;" indentlevel="1">
+Mixed
+</td>
+<td style="text-align:right;">
+30+
+</td>
+<td style="text-align:right;">
+25+
+</td>
+<td style="text-align:right;">
+12
+</td>
+<td style="text-align:right;">
+95.0
+</td>
+<td style="text-align:right;">
+91.3
+</td>
+<td style="text-align:right;">
+77.5
+</td>
+<td style="text-align:right;">
+95.3
+</td>
+<td style="text-align:right;">
+94.8
+</td>
+<td style="text-align:right;">
++0.06
+</td>
+<td style="text-align:right;">
++0.56
+</td>
+<td style="text-align:right;">
+0.001
+</td>
+<td style="text-align:right;">
+1.86
+</td>
+</tr>
+</tbody>
+<tfoot>
+<tr>
+<td style="padding: 0; " colspan="100%">
+<span style="font-style: italic;">Note: </span>
+</td>
+</tr>
+<tr>
+<td style="padding: 0; " colspan="100%">
+<sup></sup> Coverage: empirical proportion of replicates where the true
+value fell inside the 95% posterior credible interval. Predictive bias:
+median signed error (posterior median estimate − true value) across
+replicates. IQD: integrated quadratic distance between true and
+estimated predictive CDFs. WIS: weighted interval score. Gen. Gamma
+scenarios with fewer than 10 identifiable replicates were excluded prior
+to aggregation.
+</td>
+</tr>
+</tfoot>
+</table>
+</div>
+<div class="section level2">
 <h2 id="mcmc-convergence-rates">MCMC Convergence Rates<a class="anchor" aria-label="anchor" href="#mcmc-convergence-rates"></a>
 </h2>
 <p>The convergence plot shows the proportion of simulation replicates
@@ -1313,7 +3343,7 @@ rates in sparse conditions (few datasets, small
 highlight where the model may require more informative priors or
 additional iterations. Scenarios deemed non-identifiable (e.g. certain
 GG configurations) are excluded.</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">create_convergence_plot</span><span class="op">(</span><span class="va">res_out</span><span class="op">)</span></span></code></pre></div>
 <p><img src="simulation_study_files/figure-html/convergence-1.png" class="r-plt" alt="" width="864"></p>
 </div>

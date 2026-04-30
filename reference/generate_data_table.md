@@ -62,6 +62,7 @@ For Type D entries where `n` is absent, \\n\\ is computed as
 
 Required LaTeX packages (add to preamble):
 
+
       \usepackage{longtable}
       \usepackage{array}
       \usepackage[table]{xcolor}
