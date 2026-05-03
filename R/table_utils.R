@@ -671,7 +671,7 @@ generate_data_table <- function(
 ) {
   stopifnot(is.list(datasets), length(datasets) > 0L, !is.null(names(datasets)))
 
-  col_spec <- "|C{4cm}|C{2.0cm}|C{2.5cm}|R{0.7cm}|C{5.5cm}|C{6cm}|"
+  col_spec <- "|C{4cm}|C{2.0cm}|C{2.5cm}|R{0.7cm}|C{7.3cm}|C{6cm}|"
 
   header_cells <- paste(
     "\\textbf{Reference}",

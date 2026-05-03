@@ -6,9 +6,30 @@
 [![lifecycle](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 <!--[ ![DOI](https://zenodo.org/badge/DOI/XYZ)](https://doi.org/XYZ) -->
 
-Methods to compute delay distributions from summary statistics
+Bayesian hierarchical synthesis of incubation period distributions from individual-level data and published summary statistics.
 
 <br clear="right"/>
+
+## Overview
+
+The incubation period -- the interval between pathogen exposure and symptom onset -- is a critical parameter for quarantine policy and outbreak response, yet individual-level exposure data remain scarce in the published literature. For most pathogens, only summary statistics are available, and restricting inference to individual-level data alone would leave too few datasets for reliable between-study heterogeneity estimation.
+
+**ddsynth** introduces a Bayesian hierarchical framework that jointly models individual-level observations and published summary statistics under a unified federated analysis approach. Key features:
+
+- Accurately recovers incubation period distributions across a range of data availability scenarios
+- Outperforms approaches that use summary data alone
+- Quantifies between-study heterogeneity, including by outbreak country, pathogen variant, and exposure pathway
+- Covers 18 pathogens with outbreak potential, spanning six pathogen groups
+
+## Dataset coverage
+
+The package includes a curated dataset of incubation period studies spanning outbreaks worldwide:
+
+<img src="man/figures/map_figure.png" width="100%" alt="Geographic distribution of incubation period datasets across 18 pathogens" />
+
+Datasets cover six pathogen groups:
+
+<img src="man/figures/pathogen_grouping.png" width="100%" alt="Pathogen grouping diagram showing six disease categories with WHO R&D Blueprint priority pathogens highlighted" />
 
 ## Prerequisites
 
