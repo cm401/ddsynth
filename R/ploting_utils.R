@@ -1524,3 +1524,130 @@ plot_main_figure_split <- function(
       )
     )
 }
+
+
+# Internal core builder shared by the main and sensitivity simulation figures.
+# x_var:     column to put on the x-axis ("summary_type_label" or "dist_type").
+# facet_var: column to facet by, or NULL for no faceting.
+# color_var / shape_var: columns mapped to colour and shape aesthetics.
+.sim_figure_core <- function(summary_res, base_size = 9,
+                             x_var     = "summary_type_label",
+                             x_lab     = "Summary type",
+                             facet_var = "dist_type",
+                             color_var = "n_datasets_bucket",
+                             shape_var = "n_obs_bucket",
+                             color_lab = "N datasets",
+                             shape_lab = "N obs per study") {
+  dat <- .pred_buckets(summary_res)
+
+  .row <- function(data, y_col, ref_line = NULL, y_lab,
+                   hide_x = FALSE, hide_strip = FALSE) {
+    p <- ggplot(data,
+                aes(x     = .data[[x_var]],
+                    y     = .data[[y_col]],
+                    color = .data[[color_var]],
+                    shape = .data[[shape_var]]))
+
+    if (!is.null(ref_line))
+      p <- p + geom_hline(yintercept = ref_line, linetype = "dashed",
+                          color = "red", linewidth = 0.4)
+
+    p <- p +
+      geom_point(alpha    = 0.7,
+                 size     = 1,
+                 position = position_jitterdodge(jitter.width = 0.1,
+                                                 dodge.width  = 0.4)) +
+      scale_color_aaas() +
+      labs(x = if (hide_x) NULL else x_lab,
+           y = y_lab,
+           color = color_lab, shape = shape_lab) +
+      theme_minimal(base_size = base_size) +
+      theme(
+        axis.text.x  = if (hide_x) element_blank() else element_text(angle = 40, hjust = 1),
+        axis.ticks.x = if (hide_x) element_blank() else element_line(),
+        strip.text   = if (hide_strip) element_blank() else element_text()
+      )
+
+    if (!is.null(facet_var))
+      p <- p + facet_wrap(reformulate(facet_var), nrow = 1,
+                          labeller = label_value, scales = "free_x")
+
+    return(p)
+  }
+
+  p1 <- .row(dat, "mean_wis",             ref_line = NULL, y_lab = "Mean WIS",
+             hide_x = TRUE,  hide_strip = FALSE)
+  p2 <- .row(dat, "coverage_pred_median", ref_line = 0.95, y_lab = "Coverage - P50",
+             hide_x = TRUE,  hide_strip = TRUE)
+  p3 <- .row(dat, "bias_pred_median",     ref_line = 0,    y_lab = "Bias - P50 (days)",
+             hide_x = TRUE,  hide_strip = TRUE)
+  p4 <- .row(dat, "coverage_pred_q95",    ref_line = 0.95, y_lab = "Coverage - P95",
+             hide_x = TRUE,  hide_strip = TRUE)
+  p5 <- .row(dat, "bias_pred_q95",        ref_line = 0,    y_lab = "Bias - P95 (days)",
+             hide_x = FALSE, hide_strip = TRUE)
+
+  patchwork::wrap_plots(p1, p2, p3, p4, p5, ncol = 1) +
+    patchwork::plot_layout(guides = "collect") +
+    patchwork::plot_annotation(tag_levels = "A") &
+    theme(legend.position = "bottom",
+          plot.tag = element_text(face = "bold"))
+}
+
+#' Main-text simulation study figure
+#'
+#' Assembles a five-row composite figure from the simulation study summary,
+#' excluding sensitivity scenarios (\code{TauSens} / \code{Mu0Sens}).
+#'
+#' @param summary_res A data frame returned by \code{create_results_summary()}.
+#' @param base_size   Base font size passed to \code{theme_minimal()}.
+#' @return A \code{patchwork} object.
+#' @export
+plot_simulation_study_figure <- function(summary_res, base_size = 9) {
+  summary_res <- summary_res %>%
+    filter(!grepl("TauSens|Mu0Sens", scenario_name))
+  fig <- .sim_figure_core(summary_res, base_size = base_size)
+  fig & scale_shape_manual(values = c("5" = 4, "10" = 3, "20" = 8, "25+" = 5))
+}
+
+#' Supplementary simulation study figure — sensitivity scenarios
+#'
+#' Same layout as \code{plot_simulation_study_figure()} but restricted to
+#' \code{TauSens} and \code{Mu0Sens} scenarios.
+#'
+#' @param summary_res A data frame returned by \code{create_results_summary()}.
+#' @param base_size   Base font size passed to \code{theme_minimal()}.
+#' @return A \code{patchwork} object.
+#' @export
+plot_simulation_study_sens_figure <- function(summary_res, base_size = 9) {
+  summary_res <- summary_res %>%
+    filter(grepl("TauSens|Mu0Sens", scenario_name)) %>%
+    mutate(
+      sens_type = if_else(grepl("TauSens", scenario_name),
+                          "τ sensitivity", "μ₀ sensitivity"),
+      sens_value = case_when(
+        grepl("TauSens", scenario_name) ~
+          paste0("τ = ", stringr::str_extract(scenario_name, "(?<=tau)[0-9.]+")),
+        TRUE ~
+          stringr::str_replace(
+            scenario_name,
+            "^Mu0Sens_(?:lognormal|gamma|weibull|burr12|gengamma)_(.+)_D\\d+.*",
+            "μ₀ = \\1"
+          )
+      )
+    ) %>%
+    mutate(
+      sens_value = forcats::fct_reorder(sens_value, grepl("μ", sens_value))
+    )
+
+  fig <- .sim_figure_core(summary_res, base_size = base_size,
+                          x_var     = "dist_type",
+                          x_lab     = "Distribution",
+                          facet_var = NULL,
+                          color_var = "sens_value",
+                          shape_var = "sens_type",
+                          color_lab = "Parameter value",
+                          shape_lab = "Sensitivity")
+
+  fig & guides(color = guide_legend(nrow = 2, byrow = FALSE),
+               shape = guide_legend(nrow = 2, byrow = FALSE))
+}
