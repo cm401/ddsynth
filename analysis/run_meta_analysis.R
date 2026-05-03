@@ -364,7 +364,7 @@ write.csv(summary_tbl,
 
 saveRDS(results, file.path(OUTDIR, "meta_analysis_results.rds"))
 
-message("\nSummary table (metamean τ vs Stan log-normal τ):\n")
+message("\nSummary table (metamean τ vs Stan τ from best-fitting distribution):\n")
 print(summary_tbl[, c("pathogen", "k", "I2_pct", "metamean_tau",
                        "stan_best_dist", "stan_tau_median", "stan_tau_lo", "stan_tau_hi")],
       row.names = FALSE)
