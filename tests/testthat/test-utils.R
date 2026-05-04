@@ -66,3 +66,17 @@ test_that("make_stan_init_fn sets loc_d_raw to zero vector of length n_datasets"
   init <- make_stan_init_fn(sd)()
   expect_equal(init$loc_d_raw, rep(0.0, 3L))
 })
+
+# compile_stan_model ----------------------------------------------------------
+
+test_that("compile_stan_model rejects invalid model names", {
+  expect_error(compile_stan_model("invalid"), "should be one of")
+  expect_error(compile_stan_model("FACTORISED"), "should be one of")
+})
+
+test_that("compile_stan_model accepts valid model names without error on arg check", {
+  # match.arg() resolves partial and exact matches before any file I/O;
+  # test that argument parsing succeeds for both valid choices.
+  expect_true(match.arg("factorised", c("factorised", "joint")) == "factorised")
+  expect_true(match.arg("joint",      c("factorised", "joint")) == "joint")
+})

@@ -195,9 +195,18 @@ subgroup_config <- list(
 
 
 # ── 5. Compile Stan model (once) ──────────────────────────────────────────────
+# Set to "factorised" (default) or "joint" to switch between Stan models.
+STAN_MODEL <- "factorised"
+if (!STAN_MODEL %in% c("factorised", "joint"))
+  stop('STAN_MODEL must be "factorised" or "joint", got: "', STAN_MODEL, '"')
 
-stan_file  <- system.file("stan", "hierarchical_data_synthesis_summary_stats.stan",
-                          package = "ddsynth")
+stan_model_file <- switch(STAN_MODEL,
+  factorised = "hierarchical_data_synthesis_summary_stats.stan",
+  joint      = "hierarchical_data_synthesis_summary_stats_joint.stan"
+)
+stan_file  <- system.file("stan", stan_model_file, package = "ddsynth")
+if (!nzchar(stan_file))
+  stop("Stan file '", stan_model_file, "' not found in ddsynth installation.")
 stan_model <- rstan::stan_model(stan_file)
 
 
