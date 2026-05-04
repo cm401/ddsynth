@@ -38,6 +38,9 @@ RESULTS_DIR <- file.path(MAIN_FOLDER, "results", "new_scenarios")
 N_SIM       <- 100    # replications per scenario
 SEED        <- 123    # global RNG seed (per-sim seeds derived from this)
 
+# STAN_MODEL: "factorised" (default) or "joint".
+STAN_MODEL  <- "factorised"
+
 # FORCE_RERUN: FALSE = resume; TRUE = rerun all; character vector = rerun named.
 FORCE_RERUN <- FALSE
 
@@ -64,9 +67,12 @@ dir.create(RESULTS_DIR,                       recursive = TRUE, showWarnings = F
 dir.create(file.path(MAIN_FOLDER, "results"), recursive = TRUE, showWarnings = FALSE)
 
 cat("Compiling Stan model...\n")
+stan_model_file <- switch(STAN_MODEL,
+  factorised = "hierarchical_data_synthesis_summary_stats.stan",
+  joint      = "hierarchical_data_synthesis_summary_stats_joint.stan"
+)
 stan_model <- rstan::stan_model(
-  file.path(MAIN_FOLDER, "inst", "stan",
-            "hierarchical_data_synthesis_summary_stats.stan")
+  file.path(MAIN_FOLDER, "inst", "stan", stan_model_file)
 )
 cat("Done.\n\n")
 
