@@ -944,6 +944,35 @@ gamma_type2_reliable <- function(datasets,
 }
 
 
+# Compile Stan model -------------------------------------------------------
+
+#' Compile a ddsynth Stan model
+#'
+#' Compiles and returns one of the Stan models shipped with the package.
+#' Pass the returned object to [pre_inference_checks()], [fit_model()], or
+#' [run_simulation_study_generalized()].
+#'
+#' @param model Character string: `"factorised"` (default) uses the
+#'   order-statistic factorised likelihood
+#'   (`hierarchical_data_synthesis_summary_stats.stan`); `"joint"` uses the
+#'   joint parameterisation
+#'   (`hierarchical_data_synthesis_summary_stats_joint.stan`).
+#' @return A compiled `stanmodel` object.
+#' @export
+compile_stan_model <- function(model = c("factorised", "joint")) {
+  model <- match.arg(model)
+  filename <- switch(model,
+    factorised = "hierarchical_data_synthesis_summary_stats.stan",
+    joint      = "hierarchical_data_synthesis_summary_stats_joint.stan"
+  )
+  stan_file <- system.file("stan", filename, package = "ddsynth")
+  if (!nzchar(stan_file)) {
+    stop("Stan model file '", filename, "' not found in ddsynth installation.")
+  }
+  rstan::stan_model(stan_file)
+}
+
+
 # Pre-inference checks -----------------------------------------------------
 
 #' Run pre-inference checks on a list of datasets
