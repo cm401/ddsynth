@@ -40,6 +40,8 @@ SEED        <- 123    # global RNG seed (per-sim seeds derived from this)
 
 # STAN_MODEL: "factorised" (default) or "joint".
 STAN_MODEL  <- "factorised"
+if (!STAN_MODEL %in% c("factorised", "joint"))
+  stop('STAN_MODEL must be "factorised" or "joint", got: "', STAN_MODEL, '"')
 
 # FORCE_RERUN: FALSE = resume; TRUE = rerun all; character vector = rerun named.
 FORCE_RERUN <- FALSE
