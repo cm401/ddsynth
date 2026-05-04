@@ -179,11 +179,22 @@ for (pathogen in pathogens) {
       next
     }
 
-    # Skip if already fitted in a previous run.
-    if (!is.null(joint_results[[pathogen]][[dist_name]])) {
-      message("\n  [SKIP] ", pathogen, " / ", dist_name,
-              " — joint fit already in results.")
-      next
+    # Skip if already fitted in a previous run, but retry prior failures
+    # (where the entry exists but fit = NULL due to a sampling error).
+    existing_joint <- joint_results[[pathogen]][[dist_name]]
+    if (!is.null(existing_joint)) {
+      if (isTRUE(existing_joint$identical_likelihood)) {
+        message("\n  [SKIP] ", pathogen, " / ", dist_name,
+                " — identical-likelihood sentinel already in results.")
+        next
+      }
+      if (!is.null(existing_joint$fit)) {
+        message("\n  [SKIP] ", pathogen, " / ", dist_name,
+                " — joint fit already in results.")
+        next
+      }
+      message("\n  [RETRY] ", pathogen, " / ", dist_name,
+              " — previous entry has no fit; retrying.")
     }
 
     stan_data <- existing_fact$stan_data
