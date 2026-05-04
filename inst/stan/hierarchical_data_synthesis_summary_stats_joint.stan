@@ -185,6 +185,8 @@ functions {
       int n,
       int dist_type, real loc, real phi, real kappa
   ) {
+    if (x1 >= x2 || x2 >= x3) return negative_infinity();
+
     real log_nc = lgamma(n + 1)
                   - lgamma(i1)
                   - lgamma(i2 - i1)
@@ -261,12 +263,12 @@ transformed data {
 
   for (d in 1:n_datasets) {
     if (summary_type[d] == 1) {
-      if (obs_stat2[d] > obs_stat1[d] || obs_stat1[d] > obs_stat3[d]) {
-        reject("For summary_type=1, must have min <= median <= max");
+      if (obs_stat2[d] >= obs_stat1[d] || obs_stat1[d] >= obs_stat3[d]) {
+        reject("For summary_type=1, must have min < median < max");
       }
     } else if (summary_type[d] == 2) {
-      if (obs_stat2[d] > obs_stat1[d] || obs_stat1[d] > obs_stat3[d]) {
-        reject("For summary_type=2, must have q25 <= median <= q75");
+      if (obs_stat2[d] >= obs_stat1[d] || obs_stat1[d] >= obs_stat3[d]) {
+        reject("For summary_type=2, must have q25 < median < q75");
       }
     } else if (summary_type[d] == 4) {
       if (freq_len[d] == 0) {
