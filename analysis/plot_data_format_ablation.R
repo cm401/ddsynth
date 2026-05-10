@@ -667,24 +667,8 @@ dist_label_lookup <- setNames(
   as.character(wide_best$pathogen)
 )
 
-# Long format for point + CrI layers — both P50 and P95 as facets.
-.to_forest_long <- function(wb, med_col, lo_col, hi_col, metric_label) {
-  wb |>
-    select(pathogen,
-           A_med = {{ med_col }}, A_lo = {{ lo_col }}, A_hi = {{ hi_col }},
-           B_med = B_med,         B_lo = B_lo,         B_hi = B_hi,
-           C_med = C_med,         C_lo = C_lo,         C_hi = C_hi) |>
-    pivot_longer(
-      cols          = -pathogen,
-      names_to      = c("arm", ".value"),
-      names_pattern = "^(.)_(.*)"
-    ) |>
-    filter(!is.na(med)) |>
-    mutate(arm    = factor(arm, levels = c("A", "B", "C")),
-           metric = metric_label)
-}
+# ── 8c. Forest data — P50 and P95 facets ─────────────────────────────────────
 
-# Manually build each half so column references are unambiguous.
 forest_p50 <- wide_best |>
   select(pathogen, A_med, A_lo, A_hi, B_med, B_lo, B_hi, C_med, C_lo, C_hi) |>
   pivot_longer(-pathogen, names_to = c("arm", ".value"),
@@ -694,142 +678,237 @@ forest_p50 <- wide_best |>
 
 forest_p95 <- wide_best |>
   select(pathogen,
-         A_med = A_q95, A_lo = A_q95_lo, A_hi = A_q95_hi,
-         B_med = B_q95, B_lo = B_q95_lo, B_hi = B_q95_hi,
-         C_med = C_q95, C_lo = C_q95_lo, C_hi = C_q95_hi) |>
+         A_med = A_q95,    A_lo = A_q95_lo, A_hi = A_q95_hi,
+         B_med = B_q95,    B_lo = B_q95_lo, B_hi = B_q95_hi,
+         C_med = C_q95,    C_lo = C_q95_lo, C_hi = C_q95_hi) |>
   pivot_longer(-pathogen, names_to = c("arm", ".value"),
                names_pattern = "^(.)_(.*)") |>
   filter(!is.na(med)) |>
   mutate(arm = factor(arm, levels = c("A", "B", "C")), metric = "95th percentile (P95)")
 
-forest_both <- bind_rows(forest_p50, forest_p95) |>
-  mutate(metric = factor(metric, levels = c("Median (P50)", "95th percentile (P95)")))
-
-# Dumbbell backbone segments for both metrics.
+# Dumbbell backbone segments for both facets (A-to-B range, un-dodged).
 dumbbell_segs <- bind_rows(
-  wide_best |>
-    filter(!is.na(A_med), !is.na(B_med)) |>
+  wide_best |> filter(!is.na(A_med), !is.na(B_med)) |>
     transmute(pathogen, x = A_med, xend = B_med, metric = "Median (P50)"),
-  wide_best |>
-    filter(!is.na(A_q95), !is.na(B_q95)) |>
+  wide_best |> filter(!is.na(A_q95), !is.na(B_q95)) |>
     transmute(pathogen, x = A_q95, xend = B_q95, metric = "95th percentile (P95)")
 ) |>
   mutate(metric = factor(metric, levels = c("Median (P50)", "95th percentile (P95)")))
 
-# Dodging width and size scales.
-COMB_DODGE <- 0.5
+# Dodging width and size scales (used by panels A and C).
+COMB_DODGE  <- 0.5
 ARM_SIZES_C <- c("A" = 1.8, "B" = 1.8, "C" = 2.8)
 ARM_EBW_C   <- c("A" = 0.35, "B" = 0.35, "C" = 0.75)
 
-# ── 8c. Panel A: faceted dumbbell forest (P50 | P95) ─────────────────────────
+# ── 8d. Extract mu0 CrI widths from Stan fits ─────────────────────────────────
+#
+# mu0 is the population-level location parameter (distribution's log scale).
+# Its 95% CrI width captures pure estimation uncertainty, independent of τ.
+# Ratio arm / C > 1 means arm C has tighter knowledge of the population mean.
 
+.extract_mu0_cri <- function(fit_slot) {
+  empty <- c(med = NA_real_, lo = NA_real_, hi = NA_real_, width = NA_real_)
+  if (is.null(fit_slot) || isTRUE(fit_slot$skipped) || is.null(fit_slot$fit))
+    return(empty)
+  draws <- tryCatch(
+    rstan::extract(fit_slot$fit, pars = "mu0")$mu0,
+    error = function(e) NULL
+  )
+  if (is.null(draws) || length(draws) == 0L) return(empty)
+  q <- quantile(draws, c(0.025, 0.5, 0.975), na.rm = TRUE)
+  c(med = q[2L], lo = q[1L], hi = q[3L], width = q[3L] - q[1L])
+}
+
+DISPLAY_TO_INTERNAL <- setNames(names(MAIN_DIST_TO_DISPLAY), MAIN_DIST_TO_DISPLAY)
+ARM_FIT_KEYS        <- c("A" = "individual_only", "B" = "summary_only",
+                         "C" = "federated")
+
+mu0_tbl <- do.call(rbind, lapply(best_dist_tbl$pathogen, function(p) {
+  bd_int <- DISPLAY_TO_INTERNAL[[ best_dist_tbl$best_dist[best_dist_tbl$pathogen == p] ]]
+  if (is.na(bd_int)) return(NULL)
+  do.call(rbind, lapply(c("A", "B", "C"), function(arm) {
+    slot <- ablation_fits[[p]][[ ARM_FIT_KEYS[[arm]] ]][[ bd_int ]]
+    mt   <- .extract_mu0_cri(slot)
+    data.frame(pathogen = p, arm = arm,
+               mu0_med = mt["med"], mu0_lo = mt["lo"],
+               mu0_hi  = mt["hi"], mu0_width = mt["width"],
+               row.names = NULL, stringsAsFactors = FALSE)
+  }))
+})) |>
+  filter(!is.na(mu0_width)) |>
+  mutate(arm      = factor(arm, levels = c("A", "B", "C")),
+         pathogen = factor(pathogen, levels = levels(wide_best$pathogen)))
+
+# mu0 CrI width ratio: arm / C  (> 1 → arm C is more precise about μ).
+mu0_ratio <- mu0_tbl |>
+  select(pathogen, arm, mu0_width) |>
+  pivot_wider(names_from = arm, values_from = mu0_width,
+              names_prefix = "w_") |>
+  filter(!is.na(w_C)) |>
+  pivot_longer(cols = c(w_A, w_B), names_to = "arm_key", values_to = "ratio") |>
+  filter(!is.na(ratio)) |>
+  mutate(
+    ratio      = ratio / w_C,
+    comparison = factor(arm_key,
+                        levels = c("w_A", "w_B"),
+                        labels = c("Individual-level only",
+                                   "Summary-statistics only"))
+  )
+
+# ── 8e. Parse τ from comparison_tbl ──────────────────────────────────────────
+#
+# τ is the between-study heterogeneity SD.  Only available when n_datasets ≥ 5
+# in that arm (stored as "— (n<5)" otherwise); missing rows are dropped.
+
+tau_long <- wide_best |>
+  rowwise() |>
+  mutate(
+    A_tau_med = .parse_cri(A_tau)[["med"]],
+    A_tau_lo  = .parse_cri(A_tau)[["lo"]],
+    A_tau_hi  = .parse_cri(A_tau)[["hi"]],
+    B_tau_med = .parse_cri(B_tau)[["med"]],
+    B_tau_lo  = .parse_cri(B_tau)[["lo"]],
+    B_tau_hi  = .parse_cri(B_tau)[["hi"]],
+    C_tau_med = .parse_cri(C_tau)[["med"]],
+    C_tau_lo  = .parse_cri(C_tau)[["lo"]],
+    C_tau_hi  = .parse_cri(C_tau)[["hi"]]
+  ) |>
+  ungroup() |>
+  select(pathogen, matches("^[ABC]_tau_(med|lo|hi)$")) |>
+  pivot_longer(-pathogen,
+               names_to      = c("arm", ".value"),
+               names_pattern = "^(.)_tau_(.*)$") |>
+  filter(!is.na(med)) |>
+  mutate(arm = factor(arm, levels = c("A", "B", "C")))
+
+# ── 8f. Unified arm labels for legend merging ─────────────────────────────────
+#
+# Convert the "A"/"B"/"C" factor to full label text in all forest/tau/mu0 data.
+# All panels then use the same colour/shape scale keyed by label text, so
+# patchwork's guides = "collect" produces a single merged legend.
+
+ARM_COLOURS_FULL <- setNames(ARM_COLOURS, ARM_LABELS[names(ARM_COLOURS)])
+ARM_SHAPES_FULL  <- setNames(ARM_SHAPES,  ARM_LABELS[names(ARM_SHAPES)])
+ARM_SIZES_C_FULL <- setNames(ARM_SIZES_C, ARM_LABELS[names(ARM_SIZES_C)])
+ARM_EBW_C_FULL   <- setNames(ARM_EBW_C,   ARM_LABELS[names(ARM_EBW_C)])
+
+COMP_COLOURS <- ARM_COLOURS_FULL[c("Individual-level only",
+                                    "Summary-statistics only")]
+COMP_SHAPES  <- ARM_SHAPES_FULL[ c("Individual-level only",
+                                    "Summary-statistics only")]
+
+.relabel_arm <- function(arm_fac) {
+  factor(ARM_LABELS[as.character(arm_fac)], levels = unname(ARM_LABELS))
+}
+
+forest_both <- bind_rows(forest_p50, forest_p95) |>
+  mutate(metric = factor(metric,
+                          levels = c("Median (P50)", "95th percentile (P95)")),
+         arm    = .relabel_arm(arm))
+
+tau_long <- tau_long |> mutate(arm = .relabel_arm(arm))
+mu0_tbl  <- mu0_tbl  |> mutate(arm = .relabel_arm(arm))
+
+# ── 8g. Build all four panels ─────────────────────────────────────────────────
+
+# Shared y-axis theme for the narrow strip panels (labels suppressed).
+y_shared <- list(
+  scale_y_discrete(drop = FALSE),
+  theme_ablation(),
+  theme(axis.text.y  = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank())
+)
+
+# Panel A: faceted dumbbell forest (P50 | P95).
 pA <- ggplot(forest_both,
              aes(x = med, y = pathogen, colour = arm, shape = arm)) +
-  # Grey dumbbell backbone (A-to-B range), drawn at the un-dodged y position.
   geom_segment(
-    data      = dumbbell_segs,
+    data        = dumbbell_segs,
     aes(x = x, xend = xend, y = pathogen, yend = pathogen),
-    colour    = "grey78",
-    linewidth = 0.9,
-    lineend   = "round",
+    colour      = "grey78", linewidth = 0.9, lineend = "round",
     inherit.aes = FALSE
   ) +
-  # 95 % posterior CrI bars, dodged vertically.
   geom_errorbarh(
     aes(xmin = lo, xmax = hi, linewidth = arm),
     height   = 0,
     position = position_dodge(width = COMB_DODGE)
   ) +
-  # Point estimates, same dodge.
-  geom_point(
-    aes(size = arm),
-    position = position_dodge(width = COMB_DODGE)
-  ) +
+  geom_point(aes(size = arm), position = position_dodge(width = COMB_DODGE)) +
   facet_wrap(~ metric, nrow = 1L, scales = "free_x") +
-  scale_x_log10(
-    breaks = c(1, 2, 5, 10, 20, 50, 100),
-    labels = c("1", "2", "5", "10", "20", "50", "100")
-  ) +
+  scale_x_log10(breaks = c(1, 2, 5, 10, 20, 50, 100),
+                labels = c("1", "2", "5", "10", "20", "50", "100")) +
   scale_y_discrete(labels = dist_label_lookup) +
-  scale_colour_manual(values = ARM_COLOURS,      labels = ARM_LABELS) +
-  scale_shape_manual( values = ARM_SHAPES,       labels = ARM_LABELS) +
-  scale_size_manual(  values = ARM_SIZES_C,      labels = ARM_LABELS) +
-  scale_linewidth_manual(values = ARM_EBW_C,     labels = ARM_LABELS) +
+  scale_colour_manual(values = ARM_COLOURS_FULL) +
+  scale_shape_manual( values = ARM_SHAPES_FULL) +
+  scale_size_manual(  values = ARM_SIZES_C_FULL) +
+  scale_linewidth_manual(values = ARM_EBW_C_FULL) +
   labs(x        = "Days (log scale)",
        subtitle = "Best-fitting distribution per pathogen (main analysis model weights)") +
   theme_ablation() +
-  guides(
-    colour    = guide_legend(override.aes = list(size = 2.5)),
-    size      = "none",
-    linewidth = "none",
-    shape     = "none"
-  )
+  guides(colour    = guide_legend(override.aes = list(size = 2.5)),
+         size      = "none",
+         linewidth = "none",
+         shape     = "none")
 
-# ── 8d. Panels B and C: gain metrics ─────────────────────────────────────────
-
-# Colours/shapes for the two comparison directions, using the same names as
-# ARM_LABELS so the collected legend is unified across all three panels.
-COMP_COLOURS <- c(
-  "Individual-level only"   = ARM_COLOURS[["A"]],
-  "Summary-statistics only" = ARM_COLOURS[["B"]]
-)
-COMP_SHAPES  <- c("Individual-level only" = 19, "Summary-statistics only" = 17)
-
-gain_best <- wide_best |>
-  select(pathogen, ratio_CA, ratio_CB, JS_CA, JS_CB) |>
-  pivot_longer(
-    cols          = -pathogen,
-    names_to      = c("metric", "comparison"),
-    names_pattern = "^(.*)_(C[AB])$"
-  ) |>
-  filter(!is.na(value)) |>
-  mutate(
-    comparison = factor(
-      comparison,
-      levels = c("CA", "CB"),
-      labels = c("Individual-level only", "Summary-statistics only")
-    )
-  )
-
-# Shared y scale for panels B and C — same factor, labels suppressed.
-y_shared <- list(
-  scale_y_discrete(drop = FALSE),
-  theme_ablation(),
-  theme(
-    axis.text.y  = element_blank(),
-    axis.ticks.y = element_blank(),
-    axis.title.y = element_blank()
-  )
-)
-
-pB <- ggplot(
-    filter(gain_best, metric == "ratio"),
-    aes(x = value, y = pathogen, colour = comparison, shape = comparison)
-  ) +
+# Panel B: μ₀ CrI width ratio — pure information gain.
+# Values > 1 indicate arm C has tighter posterior for the population mean.
+pB <- ggplot(mu0_ratio,
+             aes(x = ratio, y = pathogen,
+                 colour = comparison, shape = comparison)) +
   geom_vline(xintercept = 1, linetype = "dashed",
              colour = "grey50", linewidth = 0.4) +
   geom_point(size = 2.2) +
   scale_colour_manual(values = COMP_COLOURS) +
   scale_shape_manual( values = COMP_SHAPES) +
-  labs(x = "Interval ratio\n(arm width / C width)") +
+  labs(x = expression(mu[0]~"CrI ratio (arm / C)"),
+       subtitle = "Information gain") +
   y_shared
 
-pC <- ggplot(
-    filter(gain_best, metric == "JS"),
-    aes(x = value, y = pathogen, colour = comparison, shape = comparison)
-  ) +
-  geom_vline(xintercept = 0, linetype = "dashed",
+# Panel C: τ per arm — between-study heterogeneity.
+# Arm C may detect larger τ when cross-data-type contrast reveals more
+# between-study variation; its τ posterior is also better estimated
+# (narrower CrI) due to more studies.
+pC <- ggplot(tau_long,
+             aes(x = med, y = pathogen, colour = arm, shape = arm)) +
+  geom_errorbarh(aes(xmin = lo, xmax = hi),
+                 height    = 0, linewidth = 0.35,
+                 position  = position_dodge(width = COMB_DODGE)) +
+  geom_point(size = 2.0, position = position_dodge(width = COMB_DODGE)) +
+  scale_colour_manual(values = ARM_COLOURS_FULL) +
+  scale_shape_manual( values = ARM_SHAPES_FULL) +
+  labs(x        = expression(tau~"(heterogeneity SD)"),
+       subtitle = "Between-study heterogeneity") +
+  y_shared
+
+# Panel D: predictive CrI ratio — the combined (confounded) signal.
+pred_ratio <- wide_best |>
+  select(pathogen, ratio_CA, ratio_CB) |>
+  pivot_longer(cols      = c(ratio_CA, ratio_CB),
+               names_to  = "comparison",
+               values_to = "ratio") |>
+  filter(!is.na(ratio)) |>
+  mutate(comparison = factor(comparison,
+                              levels = c("ratio_CA", "ratio_CB"),
+                              labels = c("Individual-level only",
+                                         "Summary-statistics only")))
+
+pD <- ggplot(pred_ratio,
+             aes(x = ratio, y = pathogen,
+                 colour = comparison, shape = comparison)) +
+  geom_vline(xintercept = 1, linetype = "dashed",
              colour = "grey50", linewidth = 0.4) +
   geom_point(size = 2.2) +
   scale_colour_manual(values = COMP_COLOURS) +
   scale_shape_manual( values = COMP_SHAPES) +
-  labs(x = "JS divergence (bits)") +
+  labs(x        = "Predictive CrI ratio (arm / C)",
+       subtitle = "Combined effect") +
   y_shared
 
-# ── 8d. Assemble and save ─────────────────────────────────────────────────────
+# ── 8h. Assemble and save ─────────────────────────────────────────────────────
 
-fig4 <- (pA | pB | pC) +
-  plot_layout(widths = c(2, 1, 1), guides = "collect") +
+fig4 <- (pA | pB | pC | pD) +
+  plot_layout(widths = c(2, 1, 1, 1), guides = "collect") +
   plot_annotation(tag_levels = "A") &
   theme(legend.position = "bottom",
         plot.tag        = element_text(face = "bold", size = 10))
@@ -837,9 +916,9 @@ fig4 <- (pA | pB | pC) +
 fig4_height <- max(4, n_pathogens * FIG_HEIGHT_ROW + 1.8)
 
 ggsave(file.path(OUTPUT_DIR, "fig_ablation_combined.pdf"),
-       fig4, width = FIG_WIDTH_WIDE, height = fig4_height, device = "pdf")
+       fig4, width = FIG_WIDTH_WIDE * 1.35, height = fig4_height, device = "pdf")
 ggsave(file.path(OUTPUT_DIR, "fig_ablation_combined.png"),
-       fig4, width = FIG_WIDTH_WIDE, height = fig4_height, dpi = FIG_DPI)
+       fig4, width = FIG_WIDTH_WIDE * 1.35, height = fig4_height, dpi = FIG_DPI)
 message("Figure 4 (combined) saved.")
 
 
