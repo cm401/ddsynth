@@ -63,9 +63,9 @@ ARM_COLOURS <- c(
   "C" = "#009E73"    # green
 )
 ARM_LABELS <- c(
-  "A" = "Individual-level only (A)",
-  "B" = "Summary-statistics only (B)",
-  "C" = "Federated (C)"
+  "A" = "Individual-level only",
+  "B" = "Summary-statistics only",
+  "C" = "Federated"
 )
 ARM_SHAPES <- c("A" = 19, "B" = 17, "C" = 18)  # circle, triangle, diamond
 
@@ -638,15 +638,26 @@ wide_best <- comparison_tbl |>
   mutate(pathogen = factor(pathogen, levels = pathogen_order)) |>
   rowwise() |>
   mutate(
-    A_med = .parse_cri(A_pred_median)[["med"]],
-    A_lo  = .parse_cri(A_pred_median)[["lo"]],
-    A_hi  = .parse_cri(A_pred_median)[["hi"]],
-    B_med = .parse_cri(B_pred_median)[["med"]],
-    B_lo  = .parse_cri(B_pred_median)[["lo"]],
-    B_hi  = .parse_cri(B_pred_median)[["hi"]],
-    C_med = .parse_cri(C_pred_median)[["med"]],
-    C_lo  = .parse_cri(C_pred_median)[["lo"]],
-    C_hi  = .parse_cri(C_pred_median)[["hi"]]
+    # Median (P50) posterior predictive estimates + 95 % CrI bounds
+    A_med    = .parse_cri(A_pred_median)[["med"]],
+    A_lo     = .parse_cri(A_pred_median)[["lo"]],
+    A_hi     = .parse_cri(A_pred_median)[["hi"]],
+    B_med    = .parse_cri(B_pred_median)[["med"]],
+    B_lo     = .parse_cri(B_pred_median)[["lo"]],
+    B_hi     = .parse_cri(B_pred_median)[["hi"]],
+    C_med    = .parse_cri(C_pred_median)[["med"]],
+    C_lo     = .parse_cri(C_pred_median)[["lo"]],
+    C_hi     = .parse_cri(C_pred_median)[["hi"]],
+    # 95th percentile (P95) posterior predictive estimates + 95 % CrI bounds
+    A_q95    = .parse_cri(A_pred_q95)[["med"]],
+    A_q95_lo = .parse_cri(A_pred_q95)[["lo"]],
+    A_q95_hi = .parse_cri(A_pred_q95)[["hi"]],
+    B_q95    = .parse_cri(B_pred_q95)[["med"]],
+    B_q95_lo = .parse_cri(B_pred_q95)[["lo"]],
+    B_q95_hi = .parse_cri(B_pred_q95)[["hi"]],
+    C_q95    = .parse_cri(C_pred_q95)[["med"]],
+    C_q95_lo = .parse_cri(C_pred_q95)[["lo"]],
+    C_q95_hi = .parse_cri(C_pred_q95)[["hi"]]
   ) |>
   ungroup()
 
@@ -656,41 +667,74 @@ dist_label_lookup <- setNames(
   as.character(wide_best$pathogen)
 )
 
-# Long format for point + CrI layers.
-forest_best <- wide_best |>
+# Long format for point + CrI layers — both P50 and P95 as facets.
+.to_forest_long <- function(wb, med_col, lo_col, hi_col, metric_label) {
+  wb |>
+    select(pathogen,
+           A_med = {{ med_col }}, A_lo = {{ lo_col }}, A_hi = {{ hi_col }},
+           B_med = B_med,         B_lo = B_lo,         B_hi = B_hi,
+           C_med = C_med,         C_lo = C_lo,         C_hi = C_hi) |>
+    pivot_longer(
+      cols          = -pathogen,
+      names_to      = c("arm", ".value"),
+      names_pattern = "^(.)_(.*)"
+    ) |>
+    filter(!is.na(med)) |>
+    mutate(arm    = factor(arm, levels = c("A", "B", "C")),
+           metric = metric_label)
+}
+
+# Manually build each half so column references are unambiguous.
+forest_p50 <- wide_best |>
   select(pathogen, A_med, A_lo, A_hi, B_med, B_lo, B_hi, C_med, C_lo, C_hi) |>
-  pivot_longer(
-    cols          = -pathogen,
-    names_to      = c("arm", ".value"),
-    names_pattern = "^(.)_(.*)"
-  ) |>
+  pivot_longer(-pathogen, names_to = c("arm", ".value"),
+               names_pattern = "^(.)_(.*)") |>
   filter(!is.na(med)) |>
-  mutate(arm = factor(arm, levels = c("A", "B", "C")))
+  mutate(arm = factor(arm, levels = c("A", "B", "C")), metric = "Median (P50)")
 
-# Segments connecting A to B (length = arm disagreement).
-dumbbell_segs <- wide_best |>
-  filter(!is.na(A_med), !is.na(B_med))
+forest_p95 <- wide_best |>
+  select(pathogen,
+         A_med = A_q95, A_lo = A_q95_lo, A_hi = A_q95_hi,
+         B_med = B_q95, B_lo = B_q95_lo, B_hi = B_q95_hi,
+         C_med = C_q95, C_lo = C_q95_lo, C_hi = C_q95_hi) |>
+  pivot_longer(-pathogen, names_to = c("arm", ".value"),
+               names_pattern = "^(.)_(.*)") |>
+  filter(!is.na(med)) |>
+  mutate(arm = factor(arm, levels = c("A", "B", "C")), metric = "95th percentile (P95)")
 
-# Dodging width for the three arms along the discrete y-axis.
+forest_both <- bind_rows(forest_p50, forest_p95) |>
+  mutate(metric = factor(metric, levels = c("Median (P50)", "95th percentile (P95)")))
+
+# Dumbbell backbone segments for both metrics.
+dumbbell_segs <- bind_rows(
+  wide_best |>
+    filter(!is.na(A_med), !is.na(B_med)) |>
+    transmute(pathogen, x = A_med, xend = B_med, metric = "Median (P50)"),
+  wide_best |>
+    filter(!is.na(A_q95), !is.na(B_q95)) |>
+    transmute(pathogen, x = A_q95, xend = B_q95, metric = "95th percentile (P95)")
+) |>
+  mutate(metric = factor(metric, levels = c("Median (P50)", "95th percentile (P95)")))
+
+# Dodging width and size scales.
 COMB_DODGE <- 0.5
-
-# Arm C rendered more prominently than A/B.
 ARM_SIZES_C <- c("A" = 1.8, "B" = 1.8, "C" = 2.8)
 ARM_EBW_C   <- c("A" = 0.35, "B" = 0.35, "C" = 0.75)
 
-# ── 8c. Panel A: dumbbell forest plot ────────────────────────────────────────
+# ── 8c. Panel A: faceted dumbbell forest (P50 | P95) ─────────────────────────
 
-pA <- ggplot(forest_best,
+pA <- ggplot(forest_both,
              aes(x = med, y = pathogen, colour = arm, shape = arm)) +
-  # Grey segment from A to B (drawn at the un-dodged y position).
+  # Grey dumbbell backbone (A-to-B range), drawn at the un-dodged y position.
   geom_segment(
     data      = dumbbell_segs,
-    aes(x = A_med, xend = B_med, y = pathogen, yend = pathogen),
+    aes(x = x, xend = xend, y = pathogen, yend = pathogen),
     colour    = "grey78",
     linewidth = 0.9,
-    lineend   = "round"
+    lineend   = "round",
+    inherit.aes = FALSE
   ) +
-  # CrI bars, dodged so the three arms sit at distinct y positions.
+  # 95 % posterior CrI bars, dodged vertically.
   geom_errorbarh(
     aes(xmin = lo, xmax = hi, linewidth = arm),
     height   = 0,
@@ -701,16 +745,17 @@ pA <- ggplot(forest_best,
     aes(size = arm),
     position = position_dodge(width = COMB_DODGE)
   ) +
+  facet_wrap(~ metric, nrow = 1L, scales = "free_x") +
   scale_x_log10(
-    breaks = c(1, 2, 5, 10, 20, 50),
-    labels = c("1", "2", "5", "10", "20", "50")
+    breaks = c(1, 2, 5, 10, 20, 50, 100),
+    labels = c("1", "2", "5", "10", "20", "50", "100")
   ) +
   scale_y_discrete(labels = dist_label_lookup) +
   scale_colour_manual(values = ARM_COLOURS,      labels = ARM_LABELS) +
   scale_shape_manual( values = ARM_SHAPES,       labels = ARM_LABELS) +
   scale_size_manual(  values = ARM_SIZES_C,      labels = ARM_LABELS) +
   scale_linewidth_manual(values = ARM_EBW_C,     labels = ARM_LABELS) +
-  labs(x        = "Posterior predictive median (days, log scale)",
+  labs(x        = "Days (log scale)",
        subtitle = "Best-fitting distribution per pathogen (main analysis model weights)") +
   theme_ablation() +
   guides(
@@ -722,12 +767,13 @@ pA <- ggplot(forest_best,
 
 # ── 8d. Panels B and C: gain metrics ─────────────────────────────────────────
 
-# Shared colours/shapes for the two comparison directions.
+# Colours/shapes for the two comparison directions, using the same names as
+# ARM_LABELS so the collected legend is unified across all three panels.
 COMP_COLOURS <- c(
-  "vs A (individual-level)" = ARM_COLOURS[["A"]],
-  "vs B (summary-stats)"    = ARM_COLOURS[["B"]]
+  "Individual-level only"   = ARM_COLOURS[["A"]],
+  "Summary-statistics only" = ARM_COLOURS[["B"]]
 )
-COMP_SHAPES  <- c("vs A (individual-level)" = 19, "vs B (summary-stats)" = 17)
+COMP_SHAPES  <- c("Individual-level only" = 19, "Summary-statistics only" = 17)
 
 gain_best <- wide_best |>
   select(pathogen, ratio_CA, ratio_CB, JS_CA, JS_CB) |>
@@ -741,7 +787,7 @@ gain_best <- wide_best |>
     comparison = factor(
       comparison,
       levels = c("CA", "CB"),
-      labels = c("vs A (individual-level)", "vs B (summary-stats)")
+      labels = c("Individual-level only", "Summary-statistics only")
     )
   )
 
@@ -783,7 +829,7 @@ pC <- ggplot(
 # ── 8d. Assemble and save ─────────────────────────────────────────────────────
 
 fig4 <- (pA | pB | pC) +
-  plot_layout(widths = c(3, 1, 1), guides = "collect") +
+  plot_layout(widths = c(2, 1, 1), guides = "collect") +
   plot_annotation(tag_levels = "A") &
   theme(legend.position = "bottom",
         plot.tag        = element_text(face = "bold", size = 10))
