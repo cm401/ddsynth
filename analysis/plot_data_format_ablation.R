@@ -722,23 +722,6 @@ ARM_EBW_C   <- c("A" = 0.35, "B" = 0.35, "C" = 0.75)
   data.frame(mu0_lo = q[1L], mu0_hi = q[2L], mu0_width = q[2L] - q[1L])
 }
 
-# Extracts τ posterior quantiles (2.5%, 50%, 97.5%) from a Stan fit slot.
-# Returns a one-row data.frame with (med, lo, hi).  τ is always a parameter
-# in the hierarchical Stan model; arms with few datasets will have
-# prior-dominated (wide) CrIs, which is honest and visually informative.
-.extract_tau_cri <- function(fit_slot) {
-  empty <- data.frame(med = NA_real_, lo = NA_real_, hi = NA_real_)
-  if (is.null(fit_slot) || isTRUE(fit_slot$skipped) || is.null(fit_slot$fit))
-    return(empty)
-  draws <- tryCatch(
-    rstan::extract(fit_slot$fit, pars = "tau")$tau,
-    error = function(e) NULL
-  )
-  if (is.null(draws) || length(draws) == 0L) return(empty)
-  q <- unname(quantile(draws, c(0.025, 0.5, 0.975), na.rm = TRUE))
-  data.frame(med = q[2L], lo = q[1L], hi = q[3L])
-}
-
 DISPLAY_TO_INTERNAL <- setNames(names(MAIN_DIST_TO_DISPLAY), MAIN_DIST_TO_DISPLAY)
 ARM_FIT_KEYS        <- c("A" = "individual_only", "B" = "summary_only",
                          "C" = "federated")
@@ -777,29 +760,63 @@ mu0_ratio <- mu0_tbl |>
   ) |>
   select(pathogen, comparison, ratio)
 
-# ── 8e. Extract τ from Stan fits (all arms) ───────────────────────────────────
+# ── 8e. Parse τ from comparison_tbl ──────────────────────────────────────────
 #
-# τ is the between-study heterogeneity SD.  It is always sampled in the
-# hierarchical Stan model, so we extract it directly from each fit rather than
-# relying on the comparison_tbl formatted string (which suppresses τ when
-# n_datasets < 5).  Arms with few datasets show wide CrIs, reflecting
-# prior-dominated estimates; this is honest and lets all three arms appear in
-# Panel C for every pathogen.
+# τ is the between-study heterogeneity SD.  Only available when n_datasets ≥ 5
+# in that arm (stored as "— (n<5)" otherwise); missing rows are dropped.
 
-tau_long <- do.call(rbind, lapply(best_dist_tbl$pathogen, function(p) {
-  bd_int <- DISPLAY_TO_INTERNAL[[ best_dist_tbl$best_dist[best_dist_tbl$pathogen == p] ]]
-  if (is.na(bd_int)) return(NULL)
-  do.call(rbind, lapply(c("A", "B", "C"), function(arm) {
-    slot <- ablation_fits[[p]][[ ARM_FIT_KEYS[[arm]] ]][[ bd_int ]]
-    cbind(
-      data.frame(pathogen = p, arm = arm, stringsAsFactors = FALSE),
-      .extract_tau_cri(slot)
-    )
-  }))
-})) |>
+tau_long <- wide_best |>
+  rowwise() |>
+  mutate(
+    A_tau_med = .parse_cri(A_tau)[["med"]],
+    A_tau_lo  = .parse_cri(A_tau)[["lo"]],
+    A_tau_hi  = .parse_cri(A_tau)[["hi"]],
+    B_tau_med = .parse_cri(B_tau)[["med"]],
+    B_tau_lo  = .parse_cri(B_tau)[["lo"]],
+    B_tau_hi  = .parse_cri(B_tau)[["hi"]],
+    C_tau_med = .parse_cri(C_tau)[["med"]],
+    C_tau_lo  = .parse_cri(C_tau)[["lo"]],
+    C_tau_hi  = .parse_cri(C_tau)[["hi"]]
+  ) |>
+  ungroup() |>
+  select(pathogen, matches("^[ABC]_tau_(med|lo|hi)$")) |>
+  pivot_longer(-pathogen,
+               names_to      = c("arm", ".value"),
+               names_pattern = "^(.)_tau_(.*)$") |>
   filter(!is.na(med)) |>
-  mutate(arm      = factor(arm, levels = c("A", "B", "C")),
-         pathogen = factor(pathogen, levels = levels(wide_best$pathogen)))
+  mutate(arm = factor(arm, levels = c("A", "B", "C")))
+
+# ── 8e-filter. Restrict all panels to pathogens with τ for all three arms ─────
+#
+# Only pathogens where n_datasets ≥ 5 in every arm have τ estimated.  Panels
+# B, C, D require this; Panel A is also restricted so all four panels share the
+# same y-axis rows.
+
+tau_complete <- tau_long |>
+  group_by(pathogen) |>
+  summarise(n_arms = n_distinct(as.character(arm)), .groups = "drop") |>
+  filter(n_arms == 3L) |>
+  pull(pathogen) |>
+  as.character()
+
+# Preserve original C-arm ordering (federated median, descending).
+tau_levels <- intersect(levels(wide_best$pathogen), tau_complete)
+
+.restrict_pathogens <- function(df) {
+  df |>
+    filter(as.character(pathogen) %in% tau_complete) |>
+    mutate(pathogen = factor(as.character(pathogen), levels = tau_levels))
+}
+
+forest_p50    <- .restrict_pathogens(forest_p50)
+forest_p95    <- .restrict_pathogens(forest_p95)
+dumbbell_segs <- .restrict_pathogens(dumbbell_segs)
+tau_long      <- .restrict_pathogens(tau_long)
+mu0_ratio     <- .restrict_pathogens(mu0_ratio)
+wide_best     <- .restrict_pathogens(wide_best)   # feeds pred_ratio in 8g
+
+dist_label_lookup <- dist_label_lookup[tau_levels]
+n_tau_pathogens   <- length(tau_levels)
 
 # ── 8f. Unified arm labels for legend merging ─────────────────────────────────
 #
@@ -861,7 +878,7 @@ pA <- ggplot(forest_both,
   scale_shape_manual( values = ARM_SHAPES_FULL) +
   scale_size_manual(  values = ARM_SIZES_C_FULL) +
   scale_linewidth_manual(values = ARM_EBW_C_FULL) +
-  labs(x        = "Posterior predictive estimate (days, log scale)\nPoints: median or 95th percentile; error bars: 95% credible interval",
+  labs(x        = "Days (log scale)",
        subtitle = "Best-fitting distribution per pathogen (main analysis model weights)") +
   theme_ablation() +
   guides(colour    = guide_legend(override.aes = list(size = 2.5)),
@@ -896,7 +913,7 @@ pC <- ggplot(tau_long,
   scale_colour_manual(values = ARM_COLOURS_FULL) +
   scale_shape_manual( values = ARM_SHAPES_FULL) +
   labs(x        = expression(tau~"(heterogeneity SD)"),
-       subtitle = "Between-study heterogeneity\n(wide CrI: few datasets in arm)") +
+       subtitle = "Between-study heterogeneity") +
   y_shared
 
 # Panel D: predictive CrI ratio — the combined (confounded) signal.
@@ -930,7 +947,7 @@ fig4 <- (pA | pB | pC | pD) +
   theme(legend.position = "bottom",
         plot.tag        = element_text(face = "bold", size = 10))
 
-fig4_height <- max(4, n_pathogens * FIG_HEIGHT_ROW + 1.8)
+fig4_height <- max(4, n_tau_pathogens * FIG_HEIGHT_ROW + 1.8)
 
 ggsave(file.path(OUTPUT_DIR, "fig_ablation_combined.pdf"),
        fig4, width = FIG_WIDTH_WIDE * 1.35, height = fig4_height, device = "pdf")
