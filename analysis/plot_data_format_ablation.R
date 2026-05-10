@@ -722,6 +722,23 @@ ARM_EBW_C   <- c("A" = 0.35, "B" = 0.35, "C" = 0.75)
   data.frame(mu0_lo = q[1L], mu0_hi = q[2L], mu0_width = q[2L] - q[1L])
 }
 
+# Extracts τ posterior quantiles (2.5%, 50%, 97.5%) from a Stan fit slot.
+# Returns a one-row data.frame with (med, lo, hi).  τ is always a parameter
+# in the hierarchical Stan model; arms with few datasets will have
+# prior-dominated (wide) CrIs, which is honest and visually informative.
+.extract_tau_cri <- function(fit_slot) {
+  empty <- data.frame(med = NA_real_, lo = NA_real_, hi = NA_real_)
+  if (is.null(fit_slot) || isTRUE(fit_slot$skipped) || is.null(fit_slot$fit))
+    return(empty)
+  draws <- tryCatch(
+    rstan::extract(fit_slot$fit, pars = "tau")$tau,
+    error = function(e) NULL
+  )
+  if (is.null(draws) || length(draws) == 0L) return(empty)
+  q <- unname(quantile(draws, c(0.025, 0.5, 0.975), na.rm = TRUE))
+  data.frame(med = q[2L], lo = q[1L], hi = q[3L])
+}
+
 DISPLAY_TO_INTERNAL <- setNames(names(MAIN_DIST_TO_DISPLAY), MAIN_DIST_TO_DISPLAY)
 ARM_FIT_KEYS        <- c("A" = "individual_only", "B" = "summary_only",
                          "C" = "federated")
@@ -760,31 +777,29 @@ mu0_ratio <- mu0_tbl |>
   ) |>
   select(pathogen, comparison, ratio)
 
-# ── 8e. Parse τ from comparison_tbl ──────────────────────────────────────────
+# ── 8e. Extract τ from Stan fits (all arms) ───────────────────────────────────
 #
-# τ is the between-study heterogeneity SD.  Only available when n_datasets ≥ 5
-# in that arm (stored as "— (n<5)" otherwise); missing rows are dropped.
+# τ is the between-study heterogeneity SD.  It is always sampled in the
+# hierarchical Stan model, so we extract it directly from each fit rather than
+# relying on the comparison_tbl formatted string (which suppresses τ when
+# n_datasets < 5).  Arms with few datasets show wide CrIs, reflecting
+# prior-dominated estimates; this is honest and lets all three arms appear in
+# Panel C for every pathogen.
 
-tau_long <- wide_best |>
-  rowwise() |>
-  mutate(
-    A_tau_med = .parse_cri(A_tau)[["med"]],
-    A_tau_lo  = .parse_cri(A_tau)[["lo"]],
-    A_tau_hi  = .parse_cri(A_tau)[["hi"]],
-    B_tau_med = .parse_cri(B_tau)[["med"]],
-    B_tau_lo  = .parse_cri(B_tau)[["lo"]],
-    B_tau_hi  = .parse_cri(B_tau)[["hi"]],
-    C_tau_med = .parse_cri(C_tau)[["med"]],
-    C_tau_lo  = .parse_cri(C_tau)[["lo"]],
-    C_tau_hi  = .parse_cri(C_tau)[["hi"]]
-  ) |>
-  ungroup() |>
-  select(pathogen, matches("^[ABC]_tau_(med|lo|hi)$")) |>
-  pivot_longer(-pathogen,
-               names_to      = c("arm", ".value"),
-               names_pattern = "^(.)_tau_(.*)$") |>
+tau_long <- do.call(rbind, lapply(best_dist_tbl$pathogen, function(p) {
+  bd_int <- DISPLAY_TO_INTERNAL[[ best_dist_tbl$best_dist[best_dist_tbl$pathogen == p] ]]
+  if (is.na(bd_int)) return(NULL)
+  do.call(rbind, lapply(c("A", "B", "C"), function(arm) {
+    slot <- ablation_fits[[p]][[ ARM_FIT_KEYS[[arm]] ]][[ bd_int ]]
+    cbind(
+      data.frame(pathogen = p, arm = arm, stringsAsFactors = FALSE),
+      .extract_tau_cri(slot)
+    )
+  }))
+})) |>
   filter(!is.na(med)) |>
-  mutate(arm = factor(arm, levels = c("A", "B", "C")))
+  mutate(arm      = factor(arm, levels = c("A", "B", "C")),
+         pathogen = factor(pathogen, levels = levels(wide_best$pathogen)))
 
 # ── 8f. Unified arm labels for legend merging ─────────────────────────────────
 #
@@ -846,7 +861,7 @@ pA <- ggplot(forest_both,
   scale_shape_manual( values = ARM_SHAPES_FULL) +
   scale_size_manual(  values = ARM_SIZES_C_FULL) +
   scale_linewidth_manual(values = ARM_EBW_C_FULL) +
-  labs(x        = "Days (log scale)",
+  labs(x        = "Posterior predictive estimate (days, log scale)\nPoints: median or 95th percentile; error bars: 95% credible interval",
        subtitle = "Best-fitting distribution per pathogen (main analysis model weights)") +
   theme_ablation() +
   guides(colour    = guide_legend(override.aes = list(size = 2.5)),
@@ -881,7 +896,7 @@ pC <- ggplot(tau_long,
   scale_colour_manual(values = ARM_COLOURS_FULL) +
   scale_shape_manual( values = ARM_SHAPES_FULL) +
   labs(x        = expression(tau~"(heterogeneity SD)"),
-       subtitle = "Between-study heterogeneity") +
+       subtitle = "Between-study heterogeneity\n(wide CrI: few datasets in arm)") +
   y_shared
 
 # Panel D: predictive CrI ratio — the combined (confounded) signal.
