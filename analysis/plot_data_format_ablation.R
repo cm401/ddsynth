@@ -577,10 +577,42 @@ message("Supplementary gain figure (all distributions) saved.")
 #
 #   Output: results/figures/fig_ablation_combined.{pdf,png}
 
-# ── 8a. Wide data for PRIMARY_DIST ───────────────────────────────────────────
+# ── 8a. Best-fitting distribution per pathogen ───────────────────────────────
+#
+# "Best" = highest study-level PSIS-LOO ELPD for arm C (federated).
+# Tie-breaking preference: lognormal > gamma > weibull > burr > gengamma.
+# Falls back to PRIMARY_DIST for pathogens where all ELPD values are NA
+# (fewer than 4 datasets in arm C).
 
-wide_ln <- comparison_tbl |>
-  filter(dist == PRIMARY_DIST) |>
+DIST_PREFERENCE <- c("Log-normal" = 1L, "Gamma" = 2L, "Weibull" = 3L,
+                     "Burr XII" = 4L, "Gen. gamma" = 5L)
+
+best_dist_tbl <- comparison_tbl |>
+  select(pathogen, dist, C_elpd) |>
+  filter(!is.na(C_elpd)) |>
+  mutate(pref = DIST_PREFERENCE[dist]) |>
+  group_by(pathogen) |>
+  arrange(desc(C_elpd), pref, .by_group = TRUE) |>
+  slice_head(n = 1L) |>
+  ungroup() |>
+  select(pathogen, best_dist = dist)
+
+# Pathogens with no valid ELPD fall back to PRIMARY_DIST.
+fallback_pathogens <- setdiff(unique(comparison_tbl$pathogen),
+                               best_dist_tbl$pathogen)
+if (length(fallback_pathogens) > 0L) {
+  best_dist_tbl <- bind_rows(
+    best_dist_tbl,
+    data.frame(pathogen  = fallback_pathogens,
+               best_dist = PRIMARY_DIST,
+               stringsAsFactors = FALSE)
+  )
+}
+
+# ── 8b. Wide data using best distribution per pathogen ───────────────────────
+
+wide_best <- comparison_tbl |>
+  inner_join(best_dist_tbl, by = c("pathogen", "dist" = "best_dist")) |>
   mutate(pathogen = factor(pathogen, levels = pathogen_order)) |>
   rowwise() |>
   mutate(
@@ -596,29 +628,39 @@ wide_ln <- comparison_tbl |>
   ) |>
   ungroup()
 
-# Long format for the point + CrI layers.
-forest_ln <- wide_ln |>
+# y-axis labels: "Pathogen (Distribution)".
+dist_label_lookup <- setNames(
+  paste0(wide_best$pathogen, "\n(", wide_best$dist, ")"),
+  as.character(wide_best$pathogen)
+)
+
+# Long format for point + CrI layers.
+forest_best <- wide_best |>
   select(pathogen, A_med, A_lo, A_hi, B_med, B_lo, B_hi, C_med, C_lo, C_hi) |>
   pivot_longer(
-    cols         = -pathogen,
-    names_to     = c("arm", ".value"),
+    cols          = -pathogen,
+    names_to      = c("arm", ".value"),
     names_pattern = "^(.)_(.*)"
   ) |>
   filter(!is.na(med)) |>
   mutate(arm = factor(arm, levels = c("A", "B", "C")))
 
-# Segments connecting A to B point estimates (length = arm disagreement).
-dumbbell_segs <- wide_ln |>
+# Segments connecting A to B (length = arm disagreement).
+dumbbell_segs <- wide_best |>
   filter(!is.na(A_med), !is.na(B_med))
+
+# Dodging width for the three arms along the discrete y-axis.
+COMB_DODGE <- 0.5
 
 # Arm C rendered more prominently than A/B.
 ARM_SIZES_C <- c("A" = 1.8, "B" = 1.8, "C" = 2.8)
 ARM_EBW_C   <- c("A" = 0.35, "B" = 0.35, "C" = 0.75)
 
-# ── 8b. Panel A: dumbbell forest plot ────────────────────────────────────────
+# ── 8c. Panel A: dumbbell forest plot ────────────────────────────────────────
 
-pA <- ggplot(forest_ln,
+pA <- ggplot(forest_best,
              aes(x = med, y = pathogen, colour = arm, shape = arm)) +
+  # Grey segment from A to B (drawn at the un-dodged y position).
   geom_segment(
     data      = dumbbell_segs,
     aes(x = A_med, xend = B_med, y = pathogen, yend = pathogen),
@@ -626,21 +668,28 @@ pA <- ggplot(forest_ln,
     linewidth = 0.9,
     lineend   = "round"
   ) +
+  # CrI bars, dodged so the three arms sit at distinct y positions.
   geom_errorbarh(
     aes(xmin = lo, xmax = hi, linewidth = arm),
-    height = 0
+    height   = 0,
+    position = position_dodge(width = COMB_DODGE)
   ) +
-  geom_point(aes(size = arm)) +
+  # Point estimates, same dodge.
+  geom_point(
+    aes(size = arm),
+    position = position_dodge(width = COMB_DODGE)
+  ) +
   scale_x_log10(
     breaks = c(1, 2, 5, 10, 20, 50),
     labels = c("1", "2", "5", "10", "20", "50")
   ) +
-  scale_colour_manual(values = ARM_COLOURS,    labels = ARM_LABELS) +
-  scale_shape_manual( values = ARM_SHAPES,     labels = ARM_LABELS) +
-  scale_size_manual(  values = ARM_SIZES_C,    labels = ARM_LABELS) +
-  scale_linewidth_manual(values = ARM_EBW_C,   labels = ARM_LABELS) +
+  scale_y_discrete(labels = dist_label_lookup) +
+  scale_colour_manual(values = ARM_COLOURS,      labels = ARM_LABELS) +
+  scale_shape_manual( values = ARM_SHAPES,       labels = ARM_LABELS) +
+  scale_size_manual(  values = ARM_SIZES_C,      labels = ARM_LABELS) +
+  scale_linewidth_manual(values = ARM_EBW_C,     labels = ARM_LABELS) +
   labs(x        = "Posterior predictive median (days, log scale)",
-       subtitle = PRIMARY_DIST) +
+       subtitle = "Best-fitting distribution per pathogen (highest LOO-ELPD)") +
   theme_ablation() +
   guides(
     colour    = guide_legend(override.aes = list(size = 2.5)),
@@ -649,22 +698,20 @@ pA <- ggplot(forest_ln,
     shape     = "none"
   )
 
-# ── 8c. Panels B and C: gain metrics ─────────────────────────────────────────
+# ── 8d. Panels B and C: gain metrics ─────────────────────────────────────────
 
-# Shared data for the two metric panels.
+# Shared colours/shapes for the two comparison directions.
 COMP_COLOURS <- c(
   "vs A (individual-level)" = ARM_COLOURS[["A"]],
   "vs B (summary-stats)"    = ARM_COLOURS[["B"]]
 )
 COMP_SHAPES  <- c("vs A (individual-level)" = 19, "vs B (summary-stats)" = 17)
 
-gain_ln <- comparison_tbl |>
-  filter(dist == PRIMARY_DIST) |>
-  mutate(pathogen = factor(pathogen, levels = pathogen_order)) |>
+gain_best <- wide_best |>
   select(pathogen, ratio_CA, ratio_CB, JS_CA, JS_CB) |>
   pivot_longer(
-    cols         = -pathogen,
-    names_to     = c("metric", "comparison"),
+    cols          = -pathogen,
+    names_to      = c("metric", "comparison"),
     names_pattern = "^(.*)_(C[AB])$"
   ) |>
   filter(!is.na(value)) |>
