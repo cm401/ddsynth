@@ -63,9 +63,9 @@ ARM_COLOURS <- c(
   "C" = "#009E73"    # green
 )
 ARM_LABELS <- c(
-  "A" = "Individual-level only",
-  "B" = "Summary-statistics only",
-  "C" = "Federated"
+  "A" = "Individual-level only (I)",
+  "B" = "Summary-statistics only (S)",
+  "C" = "Federated (F)"
 )
 ARM_SHAPES <- c("A" = 19, "B" = 17, "C" = 18)  # circle, triangle, diamond
 
@@ -193,7 +193,7 @@ fig1 <- ggplot(forest_long,
   facet_wrap(~ dist, nrow = 1L, scales = "free_x") +
   labs(
     x        = "Posterior predictive median (days, log scale)",
-    caption  = "Horizontal bars: 95% credible intervals.  Dashed line: federated (C) point estimate."
+    caption  = "Horizontal bars: 95% credible intervals.  Dashed line: federated (F) point estimate."
   ) +
   theme_ablation() +
   guides(colour = guide_legend(override.aes = list(size = 2.5)))
@@ -231,7 +231,7 @@ gain_df <- comparison_tbl |>
   mutate(
     comparison = factor(comparison,
                         levels = c("CA", "CB"),
-                        labels = c("vs A (individual-level)", "vs B (summary-stats)")),
+                        labels = c("vs (I) individual-level", "vs (S) summary-stats")),
     metric = factor(metric,
                     levels = c("ratio", "JS", "OVL"),
                     labels = c("Interval ratio\n(arm / federated)",
@@ -252,12 +252,12 @@ y_scale <- scale_y_discrete(drop = FALSE)
     y_scale +
     labs(x = x_lab) +
     scale_colour_manual(
-      values = c("vs A (individual-level)" = ARM_COLOURS[["A"]],
-                 "vs B (summary-stats)"    = ARM_COLOURS[["B"]])
+      values = c("vs (I) individual-level" = ARM_COLOURS[["A"]],
+                 "vs (S) summary-stats"    = ARM_COLOURS[["B"]])
     ) +
     scale_shape_manual(
-      values = c("vs A (individual-level)" = 19,
-                 "vs B (summary-stats)"    = 17)
+      values = c("vs (I) individual-level" = 19,
+                 "vs (S) summary-stats"    = 17)
     ) +
     theme_ablation() +
     theme(legend.position = if (show_y) "none" else "bottom")
@@ -495,8 +495,8 @@ gain_all_dists <- comparison_tbl |>
   mutate(
     comparison = factor(comparison,
                         levels = c("CA", "CB"),
-                        labels = c("vs A (individual-level)",
-                                   "vs B (summary-stats)")),
+                        labels = c("vs (I) individual-level",
+                                   "vs (S) summary-stats")),
     metric = factor(metric,
                     levels = c("ratio", "JS", "OVL"),
                     labels = c("Interval ratio",
@@ -522,12 +522,12 @@ fig_supp <- ggplot(gain_all_dists,
     linewidth = 0.35,
   ) +
   scale_colour_manual(
-    values = c("vs A (individual-level)" = ARM_COLOURS[["A"]],
-               "vs B (summary-stats)"    = ARM_COLOURS[["B"]])
+    values = c("vs (I) individual-level" = ARM_COLOURS[["A"]],
+               "vs (S) summary-stats"    = ARM_COLOURS[["B"]])
   ) +
   scale_shape_manual(
-    values = c("vs A (individual-level)" = 19,
-               "vs B (summary-stats)"    = 17)
+    values = c("vs (I) individual-level" = 19,
+               "vs (S) summary-stats"    = 17)
   ) +
   facet_grid(dist ~ metric, scales = "free_x") +
   labs(x = NULL) +
@@ -756,8 +756,7 @@ mu0_ratio <- mu0_tbl |>
     ratio      = mu0_width / c_width,
     comparison = factor(as.character(arm),
                         levels = c("A", "B"),
-                        labels = c("Individual-level only",
-                                   "Summary-statistics only"))
+                        labels = ARM_LABELS[c("A", "B")])
   ) |>
   select(pathogen, comparison, ratio)
 
@@ -798,10 +797,8 @@ ARM_SHAPES_FULL  <- setNames(ARM_SHAPES,  ARM_LABELS[names(ARM_SHAPES)])
 ARM_SIZES_C_FULL <- setNames(ARM_SIZES_C, ARM_LABELS[names(ARM_SIZES_C)])
 ARM_EBW_C_FULL   <- setNames(ARM_EBW_C,   ARM_LABELS[names(ARM_EBW_C)])
 
-COMP_COLOURS <- ARM_COLOURS_FULL[c("Individual-level only",
-                                    "Summary-statistics only")]
-COMP_SHAPES  <- ARM_SHAPES_FULL[ c("Individual-level only",
-                                    "Summary-statistics only")]
+COMP_COLOURS <- ARM_COLOURS_FULL[ARM_LABELS[c("A", "B")]]
+COMP_SHAPES  <- ARM_SHAPES_FULL[ ARM_LABELS[c("A", "B")]]
 
 .relabel_arm <- function(arm_fac) {
   factor(ARM_LABELS[as.character(arm_fac)], levels = unname(ARM_LABELS))
@@ -896,8 +893,7 @@ pred_ratio <- wide_best |>
   filter(!is.na(ratio)) |>
   mutate(comparison = factor(comparison,
                               levels = c("ratio_CA", "ratio_CB"),
-                              labels = c("Individual-level only",
-                                         "Summary-statistics only")))
+                              labels = ARM_LABELS[c("A", "B")]))
 
 pD <- ggplot(pred_ratio,
              aes(x = ratio, y = pathogen,
