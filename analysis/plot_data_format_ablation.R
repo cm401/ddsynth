@@ -577,36 +577,58 @@ message("Supplementary gain figure (all distributions) saved.")
 #
 #   Output: results/figures/fig_ablation_combined.{pdf,png}
 
-# ── 8a. Best-fitting distribution per pathogen ───────────────────────────────
+# ── 8a. Best-fitting distribution per pathogen (from main analysis) ──────────
 #
-# "Best" = highest study-level PSIS-LOO ELPD for arm C (federated).
-# Tie-breaking preference: lognormal > gamma > weibull > burr > gengamma.
-# Falls back to PRIMARY_DIST for pathogens where all ELPD values are NA
-# (fewer than 4 datasets in arm C).
+# Load model weights pre-computed from main_results.rds via
+# compute_pathogen_model_bayes_factors().  The best distribution is the
+# first entry in each pathogen's weight vector (highest pseudo-Bayes factor
+# weight).  This is the same criterion used in plot_main_figure() and
+# make_supplementary_figures.R, ensuring consistency across the paper.
+#
+# Falls back to PRIMARY_DIST for pathogens absent from model_weights or
+# whose best distribution was not fitted in the ablation.
 
-DIST_PREFERENCE <- c("Log-normal" = 1L, "Gamma" = 2L, "Weibull" = 3L,
-                     "Burr XII" = 4L, "Gen. gamma" = 5L)
+# Map internal Stan dist names -> display labels used in comparison_tbl$dist
+MAIN_DIST_TO_DISPLAY <- c(
+  lognormal = "Log-normal",
+  gamma     = "Gamma",
+  weibull   = "Weibull",
+  burr      = "Burr XII",
+  gengamma  = "Gen. gamma"
+)
 
-best_dist_tbl <- comparison_tbl |>
-  select(pathogen, dist, C_elpd) |>
-  filter(!is.na(C_elpd)) |>
-  mutate(pref = DIST_PREFERENCE[dist]) |>
-  group_by(pathogen) |>
-  arrange(desc(C_elpd), pref, .by_group = TRUE) |>
-  slice_head(n = 1L) |>
-  ungroup() |>
-  select(pathogen, best_dist = dist)
+model_weights_file <- here::here("results", "model_weights.rds")
+if (!file.exists(model_weights_file))
+  stop("model_weights.rds not found at: ", model_weights_file,
+       "\nPre-compute via: mw <- compute_pathogen_model_bayes_factors(all_results); ",
+       "saveRDS(mw, 'results/model_weights.rds')")
 
-# Pathogens with no valid ELPD fall back to PRIMARY_DIST.
-fallback_pathogens <- setdiff(unique(comparison_tbl$pathogen),
-                               best_dist_tbl$pathogen)
-if (length(fallback_pathogens) > 0L) {
-  best_dist_tbl <- bind_rows(
-    best_dist_tbl,
-    data.frame(pathogen  = fallback_pathogens,
-               best_dist = PRIMARY_DIST,
-               stringsAsFactors = FALSE)
-  )
+main_model_weights <- readRDS(model_weights_file)
+
+# For each ablation pathogen, extract the highest-weight distribution from
+# the main analysis.
+ablation_pathogens <- unique(comparison_tbl$pathogen)
+best_internal <- vapply(ablation_pathogens, function(p) {
+  w <- main_model_weights[[p]]
+  if (is.null(w) || length(w) == 0L) return(NA_character_)
+  names(w)[1L]   # best = highest pseudo-BF weight
+}, character(1L))
+
+best_dist_tbl <- data.frame(
+  pathogen  = ablation_pathogens,
+  best_dist = MAIN_DIST_TO_DISPLAY[best_internal],
+  stringsAsFactors = FALSE
+)
+
+# Fall back to PRIMARY_DIST where the main-analysis best dist is unavailable
+# in the ablation results (e.g. Gen. gamma was not fitted in arm B/C).
+available_dists <- unique(comparison_tbl$dist)
+needs_fallback  <- is.na(best_dist_tbl$best_dist) |
+                   !(best_dist_tbl$best_dist %in% available_dists)
+if (any(needs_fallback)) {
+  message("Note: falling back to PRIMARY_DIST for: ",
+          paste(best_dist_tbl$pathogen[needs_fallback], collapse = ", "))
+  best_dist_tbl$best_dist[needs_fallback] <- PRIMARY_DIST
 }
 
 # ── 8b. Wide data using best distribution per pathogen ───────────────────────
@@ -689,7 +711,7 @@ pA <- ggplot(forest_best,
   scale_size_manual(  values = ARM_SIZES_C,      labels = ARM_LABELS) +
   scale_linewidth_manual(values = ARM_EBW_C,     labels = ARM_LABELS) +
   labs(x        = "Posterior predictive median (days, log scale)",
-       subtitle = "Best-fitting distribution per pathogen (highest LOO-ELPD)") +
+       subtitle = "Best-fitting distribution per pathogen (main analysis model weights)") +
   theme_ablation() +
   guides(
     colour    = guide_legend(override.aes = list(size = 2.5)),
@@ -735,7 +757,7 @@ y_shared <- list(
 )
 
 pB <- ggplot(
-    filter(gain_ln, metric == "ratio"),
+    filter(gain_best, metric == "ratio"),
     aes(x = value, y = pathogen, colour = comparison, shape = comparison)
   ) +
   geom_vline(xintercept = 1, linetype = "dashed",
@@ -747,7 +769,7 @@ pB <- ggplot(
   y_shared
 
 pC <- ggplot(
-    filter(gain_ln, metric == "JS"),
+    filter(gain_best, metric == "JS"),
     aes(x = value, y = pathogen, colour = comparison, shape = comparison)
   ) +
   geom_vline(xintercept = 0, linetype = "dashed",
