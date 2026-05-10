@@ -706,8 +706,11 @@ ARM_EBW_C   <- c("A" = 0.35, "B" = 0.35, "C" = 0.75)
 # Its 95% CrI width captures pure estimation uncertainty, independent of τ.
 # Ratio arm / C > 1 means arm C has tighter knowledge of the population mean.
 
+# Returns a one-row data.frame with unname()d values to avoid the
+# "97.5%" row-name corruption that occurs when quantile output is passed
+# directly to data.frame() as a named numeric vector.
 .extract_mu0_cri <- function(fit_slot) {
-  empty <- c(med = NA_real_, lo = NA_real_, hi = NA_real_, width = NA_real_)
+  empty <- data.frame(mu0_lo = NA_real_, mu0_hi = NA_real_, mu0_width = NA_real_)
   if (is.null(fit_slot) || isTRUE(fit_slot$skipped) || is.null(fit_slot$fit))
     return(empty)
   draws <- tryCatch(
@@ -715,8 +718,8 @@ ARM_EBW_C   <- c("A" = 0.35, "B" = 0.35, "C" = 0.75)
     error = function(e) NULL
   )
   if (is.null(draws) || length(draws) == 0L) return(empty)
-  q <- quantile(draws, c(0.025, 0.5, 0.975), na.rm = TRUE)
-  c(med = q[2L], lo = q[1L], hi = q[3L], width = q[3L] - q[1L])
+  q <- unname(quantile(draws, c(0.025, 0.975), na.rm = TRUE))
+  data.frame(mu0_lo = q[1L], mu0_hi = q[2L], mu0_width = q[2L] - q[1L])
 }
 
 DISPLAY_TO_INTERNAL <- setNames(names(MAIN_DIST_TO_DISPLAY), MAIN_DIST_TO_DISPLAY)
@@ -728,11 +731,10 @@ mu0_tbl <- do.call(rbind, lapply(best_dist_tbl$pathogen, function(p) {
   if (is.na(bd_int)) return(NULL)
   do.call(rbind, lapply(c("A", "B", "C"), function(arm) {
     slot <- ablation_fits[[p]][[ ARM_FIT_KEYS[[arm]] ]][[ bd_int ]]
-    mt   <- .extract_mu0_cri(slot)
-    data.frame(pathogen = p, arm = arm,
-               mu0_med = mt["med"], mu0_lo = mt["lo"],
-               mu0_hi  = mt["hi"], mu0_width = mt["width"],
-               row.names = NULL, stringsAsFactors = FALSE)
+    cbind(
+      data.frame(pathogen = p, arm = arm, stringsAsFactors = FALSE),
+      .extract_mu0_cri(slot)
+    )
   }))
 })) |>
   filter(!is.na(mu0_width)) |>
@@ -740,20 +742,24 @@ mu0_tbl <- do.call(rbind, lapply(best_dist_tbl$pathogen, function(p) {
          pathogen = factor(pathogen, levels = levels(wide_best$pathogen)))
 
 # mu0 CrI width ratio: arm / C  (> 1 → arm C is more precise about μ).
+# mu0 CrI width ratio: arm / C  (> 1 → arm C is more precise about μ).
+# Built via left_join to avoid pivot_wider column-existence issues.
+mu0_c     <- mu0_tbl |>
+  filter(as.character(arm) == "C") |>
+  select(pathogen, c_width = mu0_width)
+
 mu0_ratio <- mu0_tbl |>
-  select(pathogen, arm, mu0_width) |>
-  pivot_wider(names_from = arm, values_from = mu0_width,
-              names_prefix = "w_") |>
-  filter(!is.na(w_C)) |>
-  pivot_longer(cols = c(w_A, w_B), names_to = "arm_key", values_to = "ratio") |>
-  filter(!is.na(ratio)) |>
+  filter(as.character(arm) %in% c("A", "B")) |>
+  left_join(mu0_c, by = "pathogen") |>
+  filter(!is.na(mu0_width), !is.na(c_width)) |>
   mutate(
-    ratio      = ratio / w_C,
-    comparison = factor(arm_key,
-                        levels = c("w_A", "w_B"),
+    ratio      = mu0_width / c_width,
+    comparison = factor(as.character(arm),
+                        levels = c("A", "B"),
                         labels = c("Individual-level only",
                                    "Summary-statistics only"))
-  )
+  ) |>
+  select(pathogen, comparison, ratio)
 
 # ── 8e. Parse τ from comparison_tbl ──────────────────────────────────────────
 #
