@@ -520,7 +520,6 @@ fig_supp <- ggplot(gain_all_dists,
     colour   = "grey50",
     linetype = "dashed",
     linewidth = 0.35,
-    inherit.aes = FALSE
   ) +
   scale_colour_manual(
     values = c("vs A (individual-level)" = ARM_COLOURS[["A"]],
@@ -549,6 +548,184 @@ ggsave(file.path(OUTPUT_DIR, "fig_ablation_gain_all_dists.png"),
        height = max(5, n_pathogens * FIG_HEIGHT_ROW * 5 + 1.5),
        dpi = FIG_DPI)
 message("Supplementary gain figure (all distributions) saved.")
+
+
+# ── 8. Figure 4 (combined): Multi-panel federated gain summary ───────────────
+#
+# A single three-column figure suitable for the main paper body.
+#
+#   Panel A (wide) — Dumbbell forest plot (PRIMARY_DIST only)
+#     A grey segment connects the arm A and arm B point estimates; its length
+#     encodes how much the two single-format arms disagree.  Three
+#     point + CrI layers (A, B, C) are drawn on top.  Arm C is rendered more
+#     prominently (larger point, heavier error bar) because it is the focus.
+#     A log-scaled x-axis accommodates the range across pathogens.
+#
+#   Panel B (narrow) — Interval ratio  (arm_width / C_width)
+#     One dot per arm × pathogen pair (CA in blue, CB in orange).
+#     Reference line at 1: points to the right mean the single-format arm is
+#     wider (less precise) than the federated model.
+#
+#   Panel C (narrow) — Jensen-Shannon divergence  (bits)
+#     JS_CA and JS_CB on the same scale.  Larger values signal a bigger
+#     distributional shift between that arm and the federated result.
+#     Reference line at 0 (identical distributions).
+#
+#   Panels A/B/C share the pathogen y-axis via patchwork alignment.
+#   Panel labels A/B/C are added automatically by plot_annotation().
+#   The combined legend is collected at the bottom.
+#
+#   Output: results/figures/fig_ablation_combined.{pdf,png}
+
+# ── 8a. Wide data for PRIMARY_DIST ───────────────────────────────────────────
+
+wide_ln <- comparison_tbl |>
+  filter(dist == PRIMARY_DIST) |>
+  mutate(pathogen = factor(pathogen, levels = pathogen_order)) |>
+  rowwise() |>
+  mutate(
+    A_med = .parse_cri(A_pred_median)[["med"]],
+    A_lo  = .parse_cri(A_pred_median)[["lo"]],
+    A_hi  = .parse_cri(A_pred_median)[["hi"]],
+    B_med = .parse_cri(B_pred_median)[["med"]],
+    B_lo  = .parse_cri(B_pred_median)[["lo"]],
+    B_hi  = .parse_cri(B_pred_median)[["hi"]],
+    C_med = .parse_cri(C_pred_median)[["med"]],
+    C_lo  = .parse_cri(C_pred_median)[["lo"]],
+    C_hi  = .parse_cri(C_pred_median)[["hi"]]
+  ) |>
+  ungroup()
+
+# Long format for the point + CrI layers.
+forest_ln <- wide_ln |>
+  select(pathogen, A_med, A_lo, A_hi, B_med, B_lo, B_hi, C_med, C_lo, C_hi) |>
+  pivot_longer(
+    cols         = -pathogen,
+    names_to     = c("arm", ".value"),
+    names_pattern = "^(.)_(.*)"
+  ) |>
+  filter(!is.na(med)) |>
+  mutate(arm = factor(arm, levels = c("A", "B", "C")))
+
+# Segments connecting A to B point estimates (length = arm disagreement).
+dumbbell_segs <- wide_ln |>
+  filter(!is.na(A_med), !is.na(B_med))
+
+# Arm C rendered more prominently than A/B.
+ARM_SIZES_C <- c("A" = 1.8, "B" = 1.8, "C" = 2.8)
+ARM_EBW_C   <- c("A" = 0.35, "B" = 0.35, "C" = 0.75)
+
+# ── 8b. Panel A: dumbbell forest plot ────────────────────────────────────────
+
+pA <- ggplot(forest_ln,
+             aes(x = med, y = pathogen, colour = arm, shape = arm)) +
+  geom_segment(
+    data      = dumbbell_segs,
+    aes(x = A_med, xend = B_med, y = pathogen, yend = pathogen),
+    colour    = "grey78",
+    linewidth = 0.9,
+    lineend   = "round"
+  ) +
+  geom_errorbarh(
+    aes(xmin = lo, xmax = hi, linewidth = arm),
+    height = 0
+  ) +
+  geom_point(aes(size = arm)) +
+  scale_x_log10(
+    breaks = c(1, 2, 5, 10, 20, 50),
+    labels = c("1", "2", "5", "10", "20", "50")
+  ) +
+  scale_colour_manual(values = ARM_COLOURS,    labels = ARM_LABELS) +
+  scale_shape_manual( values = ARM_SHAPES,     labels = ARM_LABELS) +
+  scale_size_manual(  values = ARM_SIZES_C,    labels = ARM_LABELS) +
+  scale_linewidth_manual(values = ARM_EBW_C,   labels = ARM_LABELS) +
+  labs(x        = "Posterior predictive median (days, log scale)",
+       subtitle = PRIMARY_DIST) +
+  theme_ablation() +
+  guides(
+    colour    = guide_legend(override.aes = list(size = 2.5)),
+    size      = "none",
+    linewidth = "none",
+    shape     = "none"
+  )
+
+# ── 8c. Panels B and C: gain metrics ─────────────────────────────────────────
+
+# Shared data for the two metric panels.
+COMP_COLOURS <- c(
+  "vs A (individual-level)" = ARM_COLOURS[["A"]],
+  "vs B (summary-stats)"    = ARM_COLOURS[["B"]]
+)
+COMP_SHAPES  <- c("vs A (individual-level)" = 19, "vs B (summary-stats)" = 17)
+
+gain_ln <- comparison_tbl |>
+  filter(dist == PRIMARY_DIST) |>
+  mutate(pathogen = factor(pathogen, levels = pathogen_order)) |>
+  select(pathogen, ratio_CA, ratio_CB, JS_CA, JS_CB) |>
+  pivot_longer(
+    cols         = -pathogen,
+    names_to     = c("metric", "comparison"),
+    names_pattern = "^(.*)_(C[AB])$"
+  ) |>
+  filter(!is.na(value)) |>
+  mutate(
+    comparison = factor(
+      comparison,
+      levels = c("CA", "CB"),
+      labels = c("vs A (individual-level)", "vs B (summary-stats)")
+    )
+  )
+
+# Shared y scale for panels B and C — same factor, labels suppressed.
+y_shared <- list(
+  scale_y_discrete(drop = FALSE),
+  theme_ablation(),
+  theme(
+    axis.text.y  = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title.y = element_blank()
+  )
+)
+
+pB <- ggplot(
+    filter(gain_ln, metric == "ratio"),
+    aes(x = value, y = pathogen, colour = comparison, shape = comparison)
+  ) +
+  geom_vline(xintercept = 1, linetype = "dashed",
+             colour = "grey50", linewidth = 0.4) +
+  geom_point(size = 2.2) +
+  scale_colour_manual(values = COMP_COLOURS) +
+  scale_shape_manual( values = COMP_SHAPES) +
+  labs(x = "Interval ratio\n(arm width / C width)") +
+  y_shared
+
+pC <- ggplot(
+    filter(gain_ln, metric == "JS"),
+    aes(x = value, y = pathogen, colour = comparison, shape = comparison)
+  ) +
+  geom_vline(xintercept = 0, linetype = "dashed",
+             colour = "grey50", linewidth = 0.4) +
+  geom_point(size = 2.2) +
+  scale_colour_manual(values = COMP_COLOURS) +
+  scale_shape_manual( values = COMP_SHAPES) +
+  labs(x = "JS divergence (bits)") +
+  y_shared
+
+# ── 8d. Assemble and save ─────────────────────────────────────────────────────
+
+fig4 <- (pA | pB | pC) +
+  plot_layout(widths = c(3, 1, 1), guides = "collect") +
+  plot_annotation(tag_levels = "A") &
+  theme(legend.position = "bottom",
+        plot.tag        = element_text(face = "bold", size = 10))
+
+fig4_height <- max(4, n_pathogens * FIG_HEIGHT_ROW + 1.8)
+
+ggsave(file.path(OUTPUT_DIR, "fig_ablation_combined.pdf"),
+       fig4, width = FIG_WIDTH_WIDE, height = fig4_height, device = "pdf")
+ggsave(file.path(OUTPUT_DIR, "fig_ablation_combined.png"),
+       fig4, width = FIG_WIDTH_WIDE, height = fig4_height, dpi = FIG_DPI)
+message("Figure 4 (combined) saved.")
 
 
 message("\nAll figures written to: ", OUTPUT_DIR)
