@@ -175,15 +175,15 @@ fig1 <- ggplot(forest_long,
   geom_vline(data  = ref_lines,
              aes(xintercept = ref_med),
              colour = ARM_COLOURS[["C"]], linewidth = 0.25,
-             linetype = "dashed", inherit.aes = FALSE) +
+             linetype = "dashed") +
   # CrI bars
   geom_errorbarh(aes(xmin = lo, xmax = hi),
                  height   = 0,
                  linewidth = 0.5,
-                 position = position_dodge(height = dodge_height)) +
+                 position = position_dodge(width = dodge_height)) +
   # Point estimates
   geom_point(size     = 1.8,
-             position = position_dodge(height = dodge_height)) +
+             position = position_dodge(width = dodge_height)) +
   scale_x_log10(
     breaks = c(1, 2, 5, 10, 20, 50),
     labels = c("1", "2", "5", "10", "20", "50")
