@@ -740,3 +740,302 @@ generate_data_table <- function(
 
   paste(lines, collapse = "\n")
 }
+
+
+# ── Simulation study table helpers ────────────────────────────────────────────
+
+# Shared footnote for both simulation tables (no size command — the caller adds \footnotesize).
+.sim_footnote <- paste0(
+  "\\textit{Note:} ",
+  "Coverage: empirical proportion of replicates where the true value fell inside the 95\\% posterior ",
+  "credible interval (nominal target: 95\\%). ",
+  "Predictive bias: median signed error (posterior median $-$ true value) across replicates. ",
+  "IQD: integrated quadratic distance between true and estimated predictive CDFs. ",
+  "WIS: weighted interval score (lower is better for IQD and WIS). ",
+  "Gen.\\,Gamma scenarios with fewer than 10 identifiable replicates excluded prior to aggregation."
+)
+
+# Shared two-row column header builder.
+# n_id_cols: number of identifying columns before the metric block.
+# id_header: LaTeX for the id-column cells in the second header row.
+.sim_col_headers <- function(n_id_cols, id_header, total_cols) {
+  span <- function(n, label) sprintf("\\multicolumn{%d}{c}{%s}", n, label)
+
+  row1 <- paste0(
+    "\\rowcolor[HTML]{F0E68C}",
+    paste(rep("", n_id_cols), collapse = " & "), " & ",
+    span(3L, "Parameter coverage (\\%)"), " & ",
+    span(2L, "Predictive coverage (\\%)"), " & ",
+    span(2L, "Predictive bias (days)"), " & ",
+    span(2L, "Scoring rules"),
+    " \\\\"
+  )
+
+  m <- n_id_cols + 1L
+  cmidrule <- paste0(
+    sprintf("\\cmidrule(lr){%d-%d}", m,       m + 2L),
+    sprintf("\\cmidrule(lr){%d-%d}", m + 3L,  m + 4L),
+    sprintf("\\cmidrule(lr){%d-%d}", m + 5L,  m + 6L),
+    sprintf("\\cmidrule(lr){%d-%d}", m + 7L,  m + 8L)
+  )
+
+  row2 <- paste0(
+    "\\rowcolor[HTML]{F0E68C}",
+    id_header,
+    " & $\\mu_0$ & $\\tau$ & $\\phi$",
+    " & P50 & P95",
+    " & P50 & P95",
+    " & IQD & WIS",
+    " \\\\"
+  )
+
+  c(row1, cmidrule, row2)
+}
+
+# Format the metric portion of one data row (N + 9 metric cells).
+.sim_metric_cells <- function(n, cov_mu0, cov_tau, cov_phi,
+                              cov_p50, cov_p95, bias_p50, bias_p95, iqd, wis) {
+  paste(
+    as.character(n),
+    sprintf("%.1f", cov_mu0  * 100),
+    sprintf("%.1f", cov_tau  * 100),
+    sprintf("%.1f", cov_phi  * 100),
+    sprintf("%.1f", cov_p50  * 100),
+    sprintf("%.1f", cov_p95  * 100),
+    sprintf("%+.2f", bias_p50),
+    sprintf("%+.2f", bias_p95),
+    sprintf("%.3f", iqd),
+    sprintf("%.2f", wis),
+    sep = " & "
+  )
+}
+
+# Group-header row spanning all columns.
+.sim_group_header <- function(label, total_cols) {
+  paste0(
+    "\\rowcolor{gray!15}\\multicolumn{", total_cols,
+    "}{@{}l}{\\textbf{", label, "}} \\\\"
+  )
+}
+
+# Assemble the longtable from pre-built body lines and header components.
+# The footnote is placed as a paragraph AFTER \end{longtable} rather than
+# inside the table: a p{wide} multicolumn in \endlastfoot forces LaTeX to
+# expand the last column to meet the stated width, pushing WIS far to the right.
+.sim_longtable <- function(body_lines, col_spec, headers, caption, label,
+                           total_cols, fn_text) {
+  cont_head <- c(
+    sprintf("\\multicolumn{%d}{l}{\\small\\textit{continued from previous page}} \\\\",
+            total_cols),
+    "\\toprule",
+    headers,
+    "\\midrule",
+    "\\endhead"
+  )
+
+  c(
+    "% Requires \\usepackage{booktabs}, \\usepackage{longtable},",
+    "% \\usepackage[table]{xcolor}, \\usepackage{pdflscape} in preamble.",
+    "\\begin{landscape}",
+    "\\small",
+    paste0("\\begin{longtable}{", col_spec, "}"),
+    paste0("\\caption{", caption, "}\\label{", label, "} \\\\"),
+    "\\toprule",
+    headers,
+    "\\midrule",
+    "\\endfirsthead",
+    cont_head,
+    sprintf("\\multicolumn{%d}{r}{\\small\\textit{continued on next page}} \\\\",
+            total_cols),
+    "\\endfoot",
+    "\\bottomrule",
+    "\\endlastfoot",
+    "%",
+    body_lines,
+    "\\end{longtable}",
+    "% Note placed outside longtable to avoid forcing column-width expansion.",
+    paste0("\\par\\smallskip\\footnotesize ", fn_text),
+    "\\end{landscape}"
+  )
+}
+
+
+#' Generate a LaTeX simulation performance table by distribution and summary type
+#'
+#' Produces a landscape \pkg{longtable} summarising simulation study performance
+#' aggregated over numbers of datasets and within-study sample sizes, with one
+#' row per distribution-family/summary-type combination, grouped by distribution.
+#'
+#' @param summary_res Output of [create_results_summary()].
+#' @param caption LaTeX \code{\\caption\{\}} string.
+#' @param label LaTeX \code{\\label\{\}} string.
+#' @return A character string with the complete LaTeX \code{longtable} environment.
+#' @export
+generate_simulation_table1 <- function(
+  summary_res,
+  caption = paste0(
+    "Simulation study performance by distribution family and summary type. ",
+    "Coverage values are empirical 95\\% credible interval coverage (\\%; nominal target: 95\\%). ",
+    "Predictive bias is the median signed error (posterior median $-$ true value) across replicates. ",
+    "IQD: integrated quadratic distance; WIS: weighted interval score (lower is better). ",
+    "Metrics are averaged over numbers of datasets and within-study sample sizes."
+  ),
+  label = "tab:sim_dist_summary"
+) {
+  dist_levels <- c("lognormal", "gamma", "weibull", "burr12", "gengamma")
+  dist_labels <- c("Log-normal", "Gamma", "Weibull", "Burr XII", "Gen.~Gamma")
+  st_levels   <- 1:5
+  st_labels   <- c("Median + Range", "Median + IQR", "Mean + SD",
+                   "Freq.~table", "Mixed")
+
+  t1 <- summary_res %>%
+    mutate(
+      dist_label = factor(dist_type,    levels = dist_levels, labels = dist_labels),
+      st_label   = factor(summary_type, levels = st_levels,   labels = st_labels)
+    ) %>%
+    group_by(dist_label, st_label) %>%
+    summarise(
+      n_scen   = n(),
+      cov_mu0  = mean(coverage_mu0,         na.rm = TRUE),
+      cov_tau  = mean(coverage_tau,         na.rm = TRUE),
+      cov_phi  = mean(coverage_phi,         na.rm = TRUE),
+      cov_p50  = mean(coverage_pred_median, na.rm = TRUE),
+      cov_p95  = mean(coverage_pred_q95,    na.rm = TRUE),
+      bias_p50 = median(bias_pred_median,   na.rm = TRUE),
+      bias_p95 = median(bias_pred_q95,      na.rm = TRUE),
+      iqd      = mean(mean_iqd,             na.rm = TRUE),
+      wis      = mean(mean_wis,             na.rm = TRUE),
+      .groups  = "drop"
+    ) %>%
+    arrange(dist_label, st_label)
+
+  total_cols <- 11L
+  body_lines <- character(0L)
+
+  for (i in seq_along(dist_labels)) {
+    d    <- dist_labels[i]
+    rows <- t1[t1$dist_label == d, ]
+    if (nrow(rows) == 0L) next
+
+    if (i > 1L) body_lines <- c(body_lines, "\\midrule")
+    body_lines <- c(body_lines, .sim_group_header(d, total_cols))
+
+    for (j in seq_len(nrow(rows))) {
+      r <- rows[j, ]
+      cells <- paste(
+        as.character(r$st_label),
+        .sim_metric_cells(r$n_scen, r$cov_mu0, r$cov_tau, r$cov_phi,
+                          r$cov_p50, r$cov_p95, r$bias_p50, r$bias_p95,
+                          r$iqd, r$wis),
+        sep = " & "
+      )
+      body_lines <- c(body_lines, paste0("\\quad ", cells, " \\\\"))
+    }
+  }
+
+  headers  <- .sim_col_headers(2L, "Summary type & $N$", total_cols)
+  col_spec <- "@{} l r r r r r r r r r r @{}"
+
+  paste(.sim_longtable(body_lines, col_spec, headers, caption, label,
+                       total_cols, .sim_footnote),
+        collapse = "\n")
+}
+
+
+#' Generate a LaTeX simulation performance table by data availability
+#'
+#' Produces a landscape \pkg{longtable} summarising simulation study performance
+#' by summary type, number of datasets, and within-study sample size, pooled
+#' over distribution families, with rows grouped by summary type.
+#'
+#' @param summary_res Output of [create_results_summary()].
+#' @param caption LaTeX \code{\\caption\{\}} string.
+#' @param label LaTeX \code{\\label\{\}} string.
+#' @return A character string with the complete LaTeX \code{longtable} environment.
+#' @export
+generate_simulation_table2 <- function(
+  summary_res,
+  caption = paste0(
+    "Simulation study performance by summary type, number of datasets, and within-study sample size ",
+    "(pooled over distribution families). ",
+    "Coverage values are empirical 95\\% credible interval coverage (\\%; nominal target: 95\\%). ",
+    "Predictive bias is the median signed error (posterior median $-$ true value) across replicates. ",
+    "IQD: integrated quadratic distance; WIS: weighted interval score (lower is better)."
+  ),
+  label = "tab:sim_data_availability"
+) {
+  st_levels <- 1:5
+  st_labels <- c("Median + Range", "Median + IQR", "Mean + SD",
+                 "Freq.~table", "Mixed")
+
+  t2 <- summary_res %>%
+    mutate(
+      st_label = factor(summary_type, levels = st_levels, labels = st_labels),
+      n_datasets_bucket = factor(
+        case_when(
+          n_datasets < 10  ~ "$<$10",
+          n_datasets < 20  ~ "$<$20",
+          n_datasets < 30  ~ "$<$30",
+          n_datasets >= 30 ~ "$\\geq$30"
+        ),
+        levels = c("$<$10", "$<$20", "$<$30", "$\\geq$30")
+      ),
+      n_obs_bucket = factor(
+        case_when(
+          n_obs == 5  ~ "5",
+          n_obs == 10 ~ "10",
+          n_obs == 20 ~ "20",
+          n_obs > 25  ~ "$\\geq$25"
+        ),
+        levels = c("5", "10", "20", "$\\geq$25")
+      )
+    ) %>%
+    group_by(st_label, n_datasets_bucket, n_obs_bucket) %>%
+    summarise(
+      n_scen   = n(),
+      cov_mu0  = mean(coverage_mu0,         na.rm = TRUE),
+      cov_tau  = mean(coverage_tau,         na.rm = TRUE),
+      cov_phi  = mean(coverage_phi,         na.rm = TRUE),
+      cov_p50  = mean(coverage_pred_median, na.rm = TRUE),
+      cov_p95  = mean(coverage_pred_q95,    na.rm = TRUE),
+      bias_p50 = median(bias_pred_median,   na.rm = TRUE),
+      bias_p95 = median(bias_pred_q95,      na.rm = TRUE),
+      iqd      = mean(mean_iqd,             na.rm = TRUE),
+      wis      = mean(mean_wis,             na.rm = TRUE),
+      .groups  = "drop"
+    ) %>%
+    arrange(st_label, n_datasets_bucket, n_obs_bucket)
+
+  # summary type is a group header — data rows have 3 id cols (N datasets, n obs, N)
+  total_cols <- 12L
+  body_lines <- character(0L)
+
+  for (i in seq_along(st_labels)) {
+    st   <- st_labels[i]
+    rows <- t2[t2$st_label == st, ]
+    if (nrow(rows) == 0L) next
+
+    if (i > 1L) body_lines <- c(body_lines, "\\midrule")
+    body_lines <- c(body_lines, .sim_group_header(st, total_cols))
+
+    for (j in seq_len(nrow(rows))) {
+      r <- rows[j, ]
+      cells <- paste(
+        as.character(r$n_datasets_bucket),
+        as.character(r$n_obs_bucket),
+        .sim_metric_cells(r$n_scen, r$cov_mu0, r$cov_tau, r$cov_phi,
+                          r$cov_p50, r$cov_p95, r$bias_p50, r$bias_p95,
+                          r$iqd, r$wis),
+        sep = " & "
+      )
+      body_lines <- c(body_lines, paste0("\\quad ", cells, " \\\\"))
+    }
+  }
+
+  headers  <- .sim_col_headers(3L, "$N$ datasets & $n$ obs & $N$", total_cols)
+  col_spec <- "@{} l r r r r r r r r r r r @{}"
+
+  paste(.sim_longtable(body_lines, col_spec, headers, caption, label,
+                       total_cols, .sim_footnote),
+        collapse = "\n")
+}

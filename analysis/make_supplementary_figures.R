@@ -466,6 +466,13 @@ library(dplyr)
   df$included <- factor(ifelse(df$included, "Included", "Excluded"),
                         levels = c("Included", "Excluded"))
 
+  # Scale label font size down for crowded panels
+  n_rows       <- nrow(df)
+  y_text_scale <- if (n_rows > 30) 0.45
+                  else if (n_rows > 20) 0.55
+                  else if (n_rows > 12) 0.65
+                  else 0.78
+
   ggplot2::ggplot(df, ggplot2::aes(y = label, colour = type, alpha = included)) +
     ggplot2::geom_segment(
       ggplot2::aes(x = lower, xend = upper, yend = label, linetype = type),
@@ -502,7 +509,7 @@ library(dplyr)
     ggplot2::theme(
       panel.grid.minor   = ggplot2::element_blank(),
       panel.grid.major.y = ggplot2::element_blank(),
-      axis.text.y        = ggplot2::element_text(size = base_size * 0.75),
+      axis.text.y        = ggplot2::element_text(size = base_size * y_text_scale),
       legend.position    = "right",
       plot.title         = ggplot2::element_text(
         size = base_size, face = "bold",
@@ -813,13 +820,11 @@ build_supp_figure <- function(pathogen,
     error = function(e) { message("    [WARN] Panel F: ", conditionMessage(e)); NULL }
   )
 
-  # ── Assemble with patchwork ──────────────────────────────────────────────────
-  # Layout: [A | B] on the top row (B omitted if NULL → A takes full width)
-  #          [C]    full-width (omitted if NULL)
-  #          [D]    full-width (omitted if NULL)
-  #          [F]    full-width (omitted if NULL)
+  # ── Assemble: two separate figures ──────────────────────────────────────────
+  # Figure 1 (CDF): panels A, B, C — model comparison and subgroup CDFs
+  # Figure 2 (Data): panels D, F   — raw summary statistics and frequency tables
   #
-  # Heights are set relative to the number of datasets for D/F.
+  # Splitting keeps each PDF at a manageable height for \includegraphics in LaTeX.
 
   n_summary_ds <- sum(vapply(datasets_all,
                              function(d) .detect_type(d) %in% c("A","B","C"),
@@ -828,50 +833,100 @@ build_supp_figure <- function(pathogen,
                              function(d) .detect_type(d) %in% c("D","E"),
                              logical(1L)))
 
-  h_D <- if (!is.null(panel_D)) max(4, min(18, n_summary_ds * 0.70)) else 0
-  h_F <- if (!is.null(panel_F)) max(4, min(16, n_freq_ds   * 3.0))   else 0
-
-  # Row 1: Panel A (and optionally B)
-  if (!is.null(panel_A) && !is.null(panel_B)) {
-    row1 <- panel_A + panel_B + patchwork::plot_layout(ncol = 2L)
-  } else if (!is.null(panel_A)) {
-    row1 <- panel_A
+  # ── CDF figure ───────────────────────────────────────────────────────────────
+  row1 <- if (!is.null(panel_A) && !is.null(panel_B)) {
+    panel_A + panel_B + patchwork::plot_layout(ncol = 2L)
   } else {
-    row1 <- NULL
+    panel_A
   }
 
-  # Collect non-NULL rows in order
-  rows   <- Filter(Negate(is.null), list(row1, panel_C, panel_D, panel_F))
-  heights <- c(
+  cdf_rows    <- Filter(Negate(is.null), list(row1, panel_C))
+  cdf_heights <- c(
     if (!is.null(row1))    6   else NULL,
-    if (!is.null(panel_C)) 5.5 else NULL,
+    if (!is.null(panel_C)) 5.5 else NULL
+  )
+
+  fig_cdf <- if (length(cdf_rows) > 0L) {
+    patchwork::wrap_plots(cdf_rows, ncol = 1L, heights = cdf_heights)
+  } else NULL
+
+  # ── Data figure ──────────────────────────────────────────────────────────────
+  # Height scales with dataset count; no hard cap so crowded panels are legible.
+  h_D <- if (!is.null(panel_D)) max(4, n_summary_ds * 0.65) else 0
+  h_F <- if (!is.null(panel_F)) max(4, n_freq_ds   * 3.0)   else 0
+
+  data_rows    <- Filter(Negate(is.null), list(panel_D, panel_F))
+  data_heights <- c(
     if (!is.null(panel_D)) h_D else NULL,
     if (!is.null(panel_F)) h_F else NULL
   )
 
-  if (length(rows) == 0L) return(NULL)
+  fig_data <- if (length(data_rows) > 0L) {
+    patchwork::wrap_plots(data_rows, ncol = 1L, heights = data_heights)
+  } else NULL
 
-  fig <- patchwork::wrap_plots(rows, ncol = 1L,
-                               heights = heights) +
-    patchwork::plot_annotation(
-      title = label,
-      theme = ggplot2::theme(
-        plot.title = ggplot2::element_text(
-          face  = "bold",
-          size  = base_size + 4L,
-          hjust = 0.5,
-          margin = ggplot2::margin(b = 6)
-        )
-      )
-    )
-
-  fig
+  list(
+    cdf          = fig_cdf,
+    data         = fig_data,
+    has_B        = !is.null(panel_B),
+    has_C        = !is.null(panel_C),
+    n_summary_ds = n_summary_ds,
+    n_freq_ds    = n_freq_ds
+  )
 }
 
 
 # =============================================================================
-# Main loop — generate and save one PDF per pathogen
+# Main loop — generate and save two PDFs per pathogen
 # =============================================================================
+#
+# Output files:
+#   <pathogen>_supplementary_cdf.pdf  — panels A, B, C (model fits / CDFs)
+#   <pathogen>_supplementary_data.pdf — panels D, F   (raw data)
+#
+# LaTeX inclusion (use two figure environments per pathogen):
+#
+#   \begin{figure}[htbp]
+#     \centering
+#     \includegraphics[width=\linewidth]{figures/SI/<Pathogen>_supplementary_cdf.pdf}
+#     \caption{
+#       \textbf{Supplementary Figure~SX. Incubation period model fits for
+#       [PATHOGEN].}
+#       (\textbf{A})~Posterior predictive cumulative distribution functions
+#       (CDFs) for all converged parametric distributions fitted to the
+#       filtered dataset.  Ribbons indicate 95\% credible intervals; the
+#       best-fitting distribution is annotated.
+#       (\textbf{B})~Comparison of CDFs fitted to all data vs.\ the filtered
+#       dataset for the best-fitting distribution; shown only when filtering
+#       removed at least one dataset.
+#       (\textbf{C})~Subgroup CDFs for the best-fitting distribution; the
+#       overall estimate (shaded ribbon) is shown alongside subgroup-specific
+#       estimates; shown only when subgroup analyses were performed.
+#     }
+#     \label{fig:<pathogen>_cdf}
+#   \end{figure}
+#
+#   \begin{figure}[htbp]
+#     \centering
+#     \includegraphics[width=\linewidth]{figures/SI/<Pathogen>_supplementary_data.pdf}
+#     \caption{
+#       \textbf{Supplementary Figure~SX (continued). Raw incubation period
+#       data for [PATHOGEN].}
+#       (\textbf{D})~Raw summary statistics reported in source datasets.
+#       Points indicate the central estimate (circle: median; square: mean)
+#       and lines the reported uncertainty interval (solid: range;
+#       dashed: IQR; dotted: SD).  Faded entries were excluded by the
+#       data-quality filter.
+#       (\textbf{F})~Empirical CDFs for datasets reporting frequency tables
+#       or interval-censored observations, overlaid with the posterior
+#       predictive CDF for the best-fitting distribution (coloured ribbon
+#       and line).  For interval-censored data, the solid step line is the
+#       conservative ECDF at interval upper bounds; the dashed step line is
+#       the ECDF at interval lower bounds; the shaded band represents the
+#       uncertainty region.
+#     }
+#     \label{fig:<pathogen>_data}
+#   \end{figure}
 
 message("Loading main results (this may take a moment for large files)...")
 all_results <- readRDS(here::here("results", "main_results.rds"))
@@ -895,7 +950,7 @@ for (pathogen in names(all_results)) {
   message("\n", strrep("-", 60))
   message("Pathogen: ", pathogen)
 
-  fig <- tryCatch(
+  figs <- tryCatch(
     build_supp_figure(
       pathogen         = pathogen,
       pathogen_results = all_results[[pathogen]],
@@ -905,63 +960,47 @@ for (pathogen in names(all_results)) {
     ),
     error = function(e) {
       message("  [ERROR] ", conditionMessage(e))
-      NULL
+      list(cdf = NULL, data = NULL, has_B = FALSE, has_C = FALSE,
+           n_summary_ds = 0L, n_freq_ds = 0L)
     }
   )
 
-  if (is.null(fig)) {
-    message("  No figure produced — skipping.")
-    next
+  # ── CDF figure (panels A, B, C) ────────────────────────────────────────────
+  if (!is.null(figs$cdf)) {
+    cdf_h <- 6.0 + (if (isTRUE(figs$has_C)) 5.5 else 0)
+    cdf_w <- if (isTRUE(figs$has_B)) 22 else 14
+    cdf_path <- file.path(output_dir, paste0(pathogen, "_supplementary_cdf.pdf"))
+    ggplot2::ggsave(
+      filename = cdf_path,
+      plot     = figs$cdf,
+      width    = cdf_w,
+      height   = max(cdf_h, 7),
+      units    = "cm",
+      device   = "pdf"
+    )
+    message("  Saved: ", cdf_path)
   }
 
-  # Determine appropriate figure height from the assembled patchwork
-  # (each panel's height was set in cm; total ≈ sum of heights + title margin)
-  pdf_path <- file.path(output_dir, paste0(pathogen, "_supplementary.pdf"))
+  # ── Data figure (panels D, F) ───────────────────────────────────────────────
+  if (!is.null(figs$data)) {
+    h_D    <- if (figs$n_summary_ds > 0L) max(4, figs$n_summary_ds * 0.65) else 0
+    h_F    <- if (figs$n_freq_ds    > 0L) max(4, figs$n_freq_ds    * 3.0)  else 0
+    data_h <- max(h_D + h_F, 6)
+    data_path <- file.path(output_dir, paste0(pathogen, "_supplementary_data.pdf"))
+    ggplot2::ggsave(
+      filename = data_path,
+      plot     = figs$data,
+      width    = 18,
+      height   = data_h,
+      units    = "cm",
+      device   = "pdf"
+    )
+    message("  Saved: ", data_path)
+  }
 
-  # Collect panel info for this pathogen to set PDF dimensions
-  datasets_all  <- tryCatch(
-    .get_datasets(all_results[[pathogen]][["all"]]),
-    error = function(e) list()
-  )
-  if (is.null(datasets_all)) datasets_all <- list()
-
-  # Width: wider when A and B are shown side-by-side (filtering removed data)
-  datasets_filt_names <- names(tryCatch(
-    .get_datasets(all_results[[pathogen]][["filtered"]]),
-    error = function(e) list()
-  ))
-  datasets_all_names <- names(datasets_all)
-  fig_width_cm <- if (!setequal(datasets_all_names, datasets_filt_names)) 22 else 18
-
-  has_C <- length(setdiff(names(all_results[[pathogen]]),
-                          c("all", "filtered"))) > 0L
-  has_D <- any(vapply(datasets_all,
-                      function(d) .detect_type(d) %in% c("A","B","C"), logical(1L)))
-  has_F <- any(vapply(datasets_all,
-                      function(d) .detect_type(d) %in% c("D","E"), logical(1L)))
-
-  n_summary_ds <- sum(vapply(datasets_all,
-                             function(d) .detect_type(d) %in% c("A","B","C"), logical(1L)))
-  n_freq_ds    <- sum(vapply(datasets_all,
-                             function(d) .detect_type(d) %in% c("D","E"), logical(1L)))
-
-  fig_height_cm <- 1.5 +   # title margin
-    6.0 +                   # row1 (A ± B)
-    (if (has_C) 5.5  else 0) +
-    (if (has_D) max(4, min(18, n_summary_ds * 0.70)) else 0) +
-    (if (has_F) max(4, min(16, n_freq_ds    * 3.0))  else 0)
-
-  fig_height_cm <- max(fig_height_cm, 10)
-
-  ggplot2::ggsave(
-    filename = pdf_path,
-    plot     = fig,
-    width    = fig_width_cm,
-    height   = fig_height_cm,
-    units    = "cm",
-    device   = "pdf"
-  )
-  message("  Saved: ", pdf_path)
+  if (is.null(figs$cdf) && is.null(figs$data)) {
+    message("  No figures produced — skipping.")
+  }
 }
 
 message("\n", strrep("=", 60))

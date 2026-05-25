@@ -1609,6 +1609,284 @@ plot_simulation_study_figure <- function(summary_res, base_size = 9) {
   fig & scale_shape_manual(values = c("5" = 4, "10" = 3, "20" = 8, "25+" = 5))
 }
 
+#' Publication-ready simulation study figure (Figure 2)
+#'
+#' Two-panel figure (A: coverage, B: bias) showing predictive performance
+#' across distribution families, summary types, and number of contributing
+#' datasets.  Colour is mapped to summary type via the AAAS palette, matching
+#' the scheme used elsewhere in the package.
+#'
+#' @param summary_res A data frame returned by \code{create_results_summary()}.
+#' @param base_size   Base font size (default 9.5).
+#' @return A \code{patchwork} object.
+#' @export
+plot_simulation_study_figure2 <- function(summary_res, base_size = 9.5) {
+
+  dist_labels <- c(
+    burr12   = "Burr Type XII", gamma    = "Gamma",
+    gengamma = "Gen. Gamma",    lognormal = "Log-normal",
+    weibull  = "Weibull"
+  )
+  summary_labels <- c("1" = "Median+Range", "2" = "Median+IQR",
+                      "3" = "Mean+SD",      "5" = "Mixed")
+
+  by_nd <- summary_res %>%
+    filter(summary_type != 4) %>%
+    mutate(
+      dist_label    = factor(dist_labels[dist_type],
+                             levels = c("Burr Type XII", "Gamma", "Gen. Gamma",
+                                        "Log-normal", "Weibull")),
+      summary_label = factor(summary_labels[as.character(summary_type)],
+                             levels = c("Median+Range", "Median+IQR",
+                                        "Mean+SD", "Mixed"))
+    ) %>%
+    group_by(dist_label, summary_label, n_datasets) %>%
+    summarise(
+      coverage_p50 = mean(coverage_pred_median, na.rm = TRUE),
+      coverage_p95 = mean(coverage_pred_q95,    na.rm = TRUE),
+      bias_p50     = median(bias_pred_median,   na.rm = TRUE),
+      bias_p95     = median(bias_pred_q95,      na.rm = TRUE),
+      mean_wis     = mean(mean_wis,             na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  fig_theme <- theme_minimal(base_size = base_size, base_family = "Helvetica") +
+    theme(
+      panel.grid.minor     = element_blank(),
+      panel.grid.major.x   = element_blank(),
+      panel.grid.major.y   = element_line(colour = "grey90", linewidth = 0.2),
+      panel.background     = element_rect(fill = "white", colour = NA),
+      panel.border         = element_rect(colour = "grey40", fill = NA, linewidth = 0.45),
+      panel.spacing.x      = unit(5, "pt"),
+      panel.spacing.y      = unit(6, "pt"),
+      strip.text           = element_text(size = 8.5, face = "bold",
+                                          colour = "grey15",
+                                          margin = margin(b = 3, t = 3)),
+      strip.background     = element_rect(fill = "grey96", colour = NA),
+      axis.text            = element_text(size = 7,  colour = "grey25"),
+      axis.title           = element_text(size = 9,  colour = "grey10"),
+      axis.ticks           = element_line(colour = "grey40", linewidth = 0.25),
+      axis.ticks.length    = unit(2, "pt"),
+      legend.title         = element_text(size = 8.5, face = "bold"),
+      legend.text          = element_text(size = 7.5),
+      legend.key.size      = unit(12, "pt"),
+      legend.key.spacing.x = unit(2, "pt"),
+      plot.tag             = element_text(face = "bold", size = 12),
+      plot.margin          = margin(4, 6, 4, 4)
+    )
+
+  # ── Panel A: Coverage ──────────────────────────────────────────────────────
+  cov_long <- dplyr::bind_rows(
+    by_nd %>% transmute(dist_label, summary_label, n_datasets,
+                        quantile = "Predictive median", value = coverage_p50),
+    by_nd %>% transmute(dist_label, summary_label, n_datasets,
+                        quantile = "95th percentile",   value = coverage_p95)
+  ) %>%
+    mutate(quantile = factor(quantile,
+                             levels = c("Predictive median", "95th percentile")))
+
+  pA <- ggplot(cov_long) +
+    annotate("rect", xmin = -Inf, xmax = Inf, ymin = 0.90, ymax = 1.0,
+             fill = "#4CAF50", alpha = 0.12) +
+    geom_hline(yintercept = 0.95, linewidth = 0.4, colour = "grey40",
+               linetype = "dotted") +
+    geom_line(aes(x = n_datasets, y = value, colour = summary_label,
+                  group = summary_label),
+              linewidth = 0.65, alpha = 0.85) +
+    geom_point(aes(x = n_datasets, y = value, colour = summary_label),
+               size = 1.5, alpha = 0.9) +
+    facet_grid(quantile ~ dist_label) +
+    ggsci::scale_colour_aaas(name = "Summary type") +
+    scale_x_continuous(breaks = c(3, 5, 10, 20, 30), limits = c(NA, 33)) +
+    scale_y_continuous(limits = c(NA, 1.02)) +
+    xlab(NULL) + ylab("Coverage") +
+    fig_theme +
+    theme(legend.position = "none") +
+    labs(tag = "A")
+
+  # ── Panel B: Bias ──────────────────────────────────────────────────────────
+  bias_long <- dplyr::bind_rows(
+    by_nd %>% transmute(dist_label, summary_label, n_datasets,
+                        quantile = "Predictive median", value = bias_p50),
+    by_nd %>% transmute(dist_label, summary_label, n_datasets,
+                        quantile = "95th percentile",   value = bias_p95)
+  ) %>%
+    mutate(quantile = factor(quantile,
+                             levels = c("Predictive median", "95th percentile")))
+
+  pB <- ggplot(bias_long) +
+    annotate("rect", xmin = -Inf, xmax = Inf, ymin = -0.5, ymax = 0.5,
+             fill = "#4CAF50", alpha = 0.12) +
+    geom_hline(yintercept = 0, linewidth = 0.4, colour = "grey40",
+               linetype = "dotted") +
+    geom_line(aes(x = n_datasets, y = value, colour = summary_label,
+                  group = summary_label),
+              linewidth = 0.65, alpha = 0.85) +
+    geom_point(aes(x = n_datasets, y = value, colour = summary_label),
+               size = 1.5, alpha = 0.9) +
+    facet_grid(quantile ~ dist_label, scales = "free_y") +
+    ggsci::scale_colour_aaas(name = "Summary type") +
+    scale_x_continuous(breaks = c(3, 5, 10, 20, 30), limits = c(NA, 33)) +
+    xlab("Number of contributing datasets") + ylab("Bias (days)") +
+    fig_theme +
+    theme(strip.text.x = element_blank()) +
+    labs(tag = "B")
+
+  # ── Assemble ───────────────────────────────────────────────────────────────
+  patchwork::wrap_plots(pA, pB, ncol = 1) +
+    patchwork::plot_layout(heights = c(1, 1), guides = "collect") &
+    theme(legend.position = "bottom",
+          legend.box      = "horizontal",
+          legend.margin   = margin(t = 3))
+}
+
+
+#' Supplementary information simulation study figure
+#'
+#' Three-panel figure (A: coverage, B: bias, C: mean WIS) using jittered points
+#' coloured by number of datasets and shaped by observations per study.  All
+#' summary types (including Freq Table) are shown on the x-axis.
+#'
+#' @param summary_res A data frame returned by \code{create_results_summary()}.
+#' @param base_size   Base font size (default 10).
+#' @return A \code{patchwork} object.
+#' @export
+plot_simulation_study_si_figure <- function(summary_res, base_size = 10) {
+
+  dist_labels <- c(
+    burr12    = "Burr Type XII", gamma     = "Gamma",
+    gengamma  = "Gen. Gamma",    lognormal = "Log-normal",
+    weibull   = "Weibull"
+  )
+  summary_labels <- c(
+    "1" = "Median+Range", "2" = "Median+IQR", "3" = "Mean+SD",
+    "4" = "Freq Table",   "5" = "Mixed"
+  )
+
+  ndataset_colours <- c("<10" = "#2ca02c", "<20" = "#ff7f0e",
+                        "<30" = "#1f77b4", "30+" = "#d62728")
+  nobs_shapes      <- c("5" = 4, "10" = 3, "20" = 8, "25+" = 5)
+
+  # Keep one row per scenario (preserves sub-scenario spread, e.g. Burr XII κ clusters).
+  # Sensitivity scenarios (TauSens/Mu0Sens) are excluded — they belong to the
+  # sensitivity figure and would dilute the κ clusters and stretch the y-axis.
+  ss <- summary_res %>%
+    filter(!grepl("TauSens|Mu0Sens", scenario_name)) %>%
+    mutate(
+      dist_label    = factor(dist_labels[dist_type],
+                             levels = c("Burr Type XII", "Gamma", "Gen. Gamma",
+                                        "Log-normal", "Weibull")),
+      summary_label = factor(summary_labels[as.character(summary_type)],
+                             levels = c("Median+Range", "Median+IQR", "Mean+SD",
+                                        "Freq Table", "Mixed")),
+      n_datasets_bin = cut(n_datasets, breaks = c(0, 9, 19, 29, Inf),
+                           labels = c("<10", "<20", "<30", "30+")),
+      n_obs_bin      = cut(n_obs_mean, breaks = c(0, 7.5, 15, 22.5, Inf),
+                           labels = c("5", "10", "20", "25+"))
+    ) %>%
+    rename(
+      coverage_p50 = coverage_pred_median,
+      coverage_p95 = coverage_pred_q95,
+      bias_p50     = bias_pred_median,
+      bias_p95     = bias_pred_q95
+    )
+
+  fig_theme <- theme_minimal(base_size = base_size, base_family = "Helvetica") +
+    theme(
+      panel.grid.minor   = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.major.y = element_line(colour = "grey90", linewidth = 0.2),
+      panel.background   = element_rect(fill = "white", colour = NA),
+      panel.border       = element_rect(colour = "grey50", fill = NA, linewidth = 0.4),
+      panel.spacing.x    = unit(6, "pt"),
+      panel.spacing.y    = unit(6, "pt"),
+      strip.text         = element_text(size = 9, face = "bold", colour = "grey15"),
+      strip.background   = element_rect(fill = "grey96", colour = NA),
+      axis.text.x        = element_text(size = 7, colour = "grey25",
+                                        angle = 45, hjust = 1),
+      axis.text.y        = element_text(size = 7, colour = "grey25"),
+      axis.title         = element_text(size = 9.5),
+      axis.ticks         = element_line(colour = "grey50", linewidth = 0.25),
+      axis.ticks.length  = unit(2, "pt"),
+      legend.title       = element_text(size = 9, face = "bold"),
+      legend.text        = element_text(size = 8),
+      legend.key.size    = unit(12, "pt"),
+      plot.tag           = element_text(face = "bold", size = 13),
+      plot.margin        = margin(4, 6, 4, 4)
+    )
+
+  # ── Panel A: Coverage ──────────────────────────────────────────────────────
+  cov_long <- dplyr::bind_rows(
+    ss %>% transmute(dist_label, summary_label, n_datasets_bin, n_obs_bin,
+                     quantile = "Median (P50)",          value = coverage_p50),
+    ss %>% transmute(dist_label, summary_label, n_datasets_bin, n_obs_bin,
+                     quantile = "95th percentile (P95)", value = coverage_p95)
+  ) %>%
+    mutate(quantile = factor(quantile,
+                             levels = c("Median (P50)", "95th percentile (P95)")))
+
+  pA <- ggplot(cov_long, aes(x = summary_label, y = value)) +
+    geom_hline(yintercept = 0.95, linetype = "dashed",
+               colour = "#d62728", linewidth = 0.4) +
+    geom_point(aes(colour = n_datasets_bin, shape = n_obs_bin),
+               size = 2.2, alpha = 0.8,
+               position = position_jitter(width = 0.25, height = 0, seed = 42)) +
+    facet_grid(quantile ~ dist_label) +
+    scale_colour_manual("N datasets",      values = ndataset_colours) +
+    scale_shape_manual( "N obs per study", values = nobs_shapes) +
+    scale_y_continuous(limits = c(0, 1.05)) +
+    xlab(NULL) + ylab("Coverage") +
+    fig_theme +
+    theme(legend.position = "none") +
+    labs(tag = "A")
+
+  # ── Panel B: Bias ──────────────────────────────────────────────────────────
+  bias_long <- dplyr::bind_rows(
+    ss %>% transmute(dist_label, summary_label, n_datasets_bin, n_obs_bin,
+                     quantile = "Median (P50)",          value = bias_p50),
+    ss %>% transmute(dist_label, summary_label, n_datasets_bin, n_obs_bin,
+                     quantile = "95th percentile (P95)", value = bias_p95)
+  ) %>%
+    mutate(quantile = factor(quantile,
+                             levels = c("Median (P50)", "95th percentile (P95)")))
+
+  pB <- ggplot(bias_long, aes(x = summary_label, y = value)) +
+    geom_hline(yintercept = 0, linetype = "dashed",
+               colour = "#d62728", linewidth = 0.4) +
+    geom_point(aes(colour = n_datasets_bin, shape = n_obs_bin),
+               size = 2.2, alpha = 0.8,
+               position = position_jitter(width = 0.25, height = 0, seed = 42)) +
+    facet_grid(quantile ~ dist_label, scales = "free_y") +
+    scale_colour_manual("N datasets",      values = ndataset_colours) +
+    scale_shape_manual( "N obs per study", values = nobs_shapes) +
+    xlab(NULL) + ylab("Bias (days)") +
+    fig_theme +
+    theme(legend.position = "none",
+          strip.text.x = element_blank()) +
+    labs(tag = "B")
+
+  # ── Panel C: Mean WIS ──────────────────────────────────────────────────────
+  pC <- ggplot(ss, aes(x = summary_label, y = mean_wis)) +
+    geom_point(aes(colour = n_datasets_bin, shape = n_obs_bin),
+               size = 2.2, alpha = 0.8,
+               position = position_jitter(width = 0.25, height = 0, seed = 42)) +
+    facet_wrap(~ dist_label, nrow = 1) +
+    scale_colour_manual("N datasets",      values = ndataset_colours) +
+    scale_shape_manual( "N obs per study", values = nobs_shapes) +
+    xlab(NULL) + ylab("Mean WIS") +
+    fig_theme +
+    theme(strip.text = element_blank()) +
+    labs(tag = "C")
+
+  # ── Assemble ───────────────────────────────────────────────────────────────
+  patchwork::wrap_plots(pA, pB, pC, ncol = 1) +
+    patchwork::plot_layout(heights = c(1, 1, 0.55), guides = "collect") &
+    theme(legend.position = "bottom",
+          legend.box      = "horizontal",
+          legend.margin   = margin(t = 4))
+}
+
+
 #' Supplementary simulation study figure — sensitivity scenarios
 #'
 #' Same layout as \code{plot_simulation_study_figure()} but restricted to
