@@ -530,7 +530,7 @@ fig_supp <- ggplot(gain_all_dists,
     aes(xintercept = ref_val),
     colour   = "grey50",
     linetype = "dashed",
-    linewidth = 0.35,
+    linewidth = 0.35
   ) +
   scale_colour_aaas() +
   scale_shape_manual(

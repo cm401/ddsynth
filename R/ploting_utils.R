@@ -1733,7 +1733,7 @@ plot_simulation_study_figure2 <- function(summary_res, base_size = 9.5) {
     labs(tag = "B")
 
   # ── Assemble ───────────────────────────────────────────────────────────────
-  (pA / pB) +
+  patchwork::wrap_plots(pA, pB, ncol = 1) +
     patchwork::plot_layout(heights = c(1, 1), guides = "collect") &
     theme(legend.position = "bottom",
           legend.box      = "horizontal",
@@ -1879,7 +1879,7 @@ plot_simulation_study_si_figure <- function(summary_res, base_size = 10) {
     labs(tag = "C")
 
   # ── Assemble ───────────────────────────────────────────────────────────────
-  (pA / pB / pC) +
+  patchwork::wrap_plots(pA, pB, pC, ncol = 1) +
     patchwork::plot_layout(heights = c(1, 1, 0.55), guides = "collect") &
     theme(legend.position = "bottom",
           legend.box      = "horizontal",
