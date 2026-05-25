@@ -705,7 +705,7 @@ dumbbell_segs <- bind_rows(
 
 # Dodging width and size scales (used by panels A and C).
 COMB_DODGE  <- 0.5
-ARM_SIZES_C <- c("I" = 1.8, "S" = 1.8, "F" = 2.8)
+ARM_SIZES_C <- c("I" = 3.0, "S" = 3.0, "F" = 4.2)
 ARM_EBW_C   <- c("I" = 0.35, "S" = 0.35, "F" = 0.75)
 
 # ── 8d. Extract mu0 CrI widths from Stan fits ─────────────────────────────────
@@ -821,6 +821,7 @@ forest_p95    <- .restrict_pathogens(forest_p95)
 dumbbell_segs <- .restrict_pathogens(dumbbell_segs)
 tau_long      <- .restrict_pathogens(tau_long)
 mu0_ratio_all <- mu0_ratio   # unrestricted — used for the top-panel overview
+wide_best_all <- wide_best   # unrestricted — used for P95 ratio top panel
 mu0_ratio     <- .restrict_pathogens(mu0_ratio)
 wide_best     <- .restrict_pathogens(wide_best)   # feeds pred_ratio in 8g
 
@@ -893,20 +894,6 @@ pA <- ggplot(forest_both,
          linewidth = "none",
          shape     = "none")
 
-# Panel B: μ₀ CrI width ratio — pure information gain.
-# Values > 1 indicate arm F has tighter posterior for the population mean.
-pB <- ggplot(mu0_ratio,
-             aes(x = ratio, y = pathogen,
-                 colour = comparison, shape = comparison)) +
-  geom_vline(xintercept = 1, linetype = "dashed",
-             colour = "grey50", linewidth = 0.4) +
-  geom_point(size = 2.2) +
-  scale_colour_aaas() +
-  scale_shape_manual( values = COMP_SHAPES) +
-  labs(x = expression(mu[0]~"CrI ratio (arm / F)"),
-       subtitle = "Information gain") +
-  y_shared
-
 # Panel C: τ per arm — between-study heterogeneity.
 # Arm F may detect larger τ when cross-data-type contrast reveals more
 # between-study variation; its τ posterior is also better estimated
@@ -916,7 +903,7 @@ pC <- ggplot(tau_long,
   geom_errorbarh(aes(xmin = lo, xmax = hi),
                  height    = 0, linewidth = 0.35,
                  position  = position_dodge(width = COMB_DODGE)) +
-  geom_point(size = 2.0, position = position_dodge(width = COMB_DODGE)) +
+  geom_point(size = 3.5, position = position_dodge(width = COMB_DODGE)) +
   scale_colour_aaas() +
   scale_shape_manual( values = ARM_SHAPES_FULL) +
   labs(x        = expression(tau~"(heterogeneity SD)"),
@@ -934,35 +921,88 @@ pred_ratio <- wide_best |>
                               levels = c("ratio_FI", "ratio_FS"),
                               labels = ARM_LABELS[c("I", "S")]))
 
+# Helper: predictive P95 CrI width ratio from a wide data frame that contains
+# the parsed I/S/F q95 lo/hi columns.
+.make_q95_ratio <- function(df) {
+  df |>
+    mutate(
+      ratio_FI = (I_q95_hi - I_q95_lo) / (F_q95_hi - F_q95_lo),
+      ratio_FS = (S_q95_hi - S_q95_lo) / (F_q95_hi - F_q95_lo)
+    ) |>
+    select(pathogen, ratio_FI, ratio_FS) |>
+    pivot_longer(cols      = c(ratio_FI, ratio_FS),
+                 names_to  = "comparison",
+                 values_to = "ratio") |>
+    filter(!is.na(ratio)) |>
+    mutate(comparison = factor(comparison,
+                               levels = c("ratio_FI", "ratio_FS"),
+                               labels = ARM_LABELS[c("I", "S")]))
+}
+
+pred_q95_ratio_all <- .make_q95_ratio(wide_best_all)   # all pathogens
+pred_q95_ratio     <- .make_q95_ratio(wide_best)        # tau-complete pathogens
+
 pD <- ggplot(pred_ratio,
              aes(x = ratio, y = pathogen,
                  colour = comparison, shape = comparison)) +
   geom_vline(xintercept = 1, linetype = "dashed",
              colour = "grey50", linewidth = 0.4) +
-  geom_point(size = 2.2) +
+  geom_point(size = 3.5) +
   scale_colour_aaas() +
   scale_shape_manual( values = COMP_SHAPES) +
-  labs(x        = "Predictive CrI ratio (arm / F)",
-       subtitle = "Combined effect") +
+  labs(x        = "Predictive P50 CrI ratio (arm / F)",
+       subtitle = "Combined effect (P50)") +
   y_shared
 
-# ── 8h. Top panel: information gain across all pathogens ─────────────────────
+pE2 <- ggplot(pred_q95_ratio,
+              aes(x = ratio, y = pathogen,
+                  colour = comparison, shape = comparison)) +
+  geom_vline(xintercept = 1, linetype = "dashed",
+             colour = "grey50", linewidth = 0.4) +
+  geom_point(size = 3.5) +
+  scale_colour_aaas() +
+  scale_shape_manual(values = COMP_SHAPES) +
+  labs(x        = "Predictive P95 CrI ratio (arm / F)",
+       subtitle = "Combined effect (P95)") +
+  y_shared
+
+# ── 8h. Top panels: information gain across all pathogens ────────────────────
 #
-# Pathogens on the x-axis (ordered by federated pred_median), mu0 CrI width
-# ratio on the y-axis.  Each pathogen has two points: arm I vs F and arm S vs F.
-# A horizontal reference line at 1 marks equal precision.
+# Two full-width panels stacked vertically.  Pathogens on the x-axis (ordered
+# by federated pred_median), ratio on the y-axis.
+# pTop  — μ₀ CrI width ratio: pure information gain in the population mean.
+# pTop2 — predictive P95 CrI width ratio: precision gain for the 95th %ile.
 
 pTop <- ggplot(mu0_ratio_all,
                aes(x = pathogen, y = ratio,
                    colour = comparison, shape = comparison)) +
   geom_hline(yintercept = 1, linetype = "dashed",
              colour = "grey50", linewidth = 0.4) +
-  geom_point(size = 2.2) +
+  geom_point(size = 3.5) +
   scale_x_discrete(drop = FALSE) +
   scale_colour_aaas() +
   scale_shape_manual(values = COMP_SHAPES) +
   labs(y        = expression(mu[0]~"CrI ratio (arm / F)"),
-       subtitle = "Information gain (values > 1 indicate federated arm is more precise about population mean)") +
+       subtitle = expression("Information gain: population mean "~mu[0]~
+                             " (all pathogens; values > 1 indicate federated arm is more precise)")) +
+  theme_ablation() +
+  theme(
+    axis.title.y = element_text(),
+    axis.title.x = element_blank(),
+    axis.text.x  = element_text(angle = 45, hjust = 1, size = 8)
+  )
+
+pTop2 <- ggplot(pred_q95_ratio_all,
+                aes(x = pathogen, y = ratio,
+                    colour = comparison, shape = comparison)) +
+  geom_hline(yintercept = 1, linetype = "dashed",
+             colour = "grey50", linewidth = 0.4) +
+  geom_point(size = 3.5) +
+  scale_x_discrete(drop = FALSE) +
+  scale_colour_aaas() +
+  scale_shape_manual(values = COMP_SHAPES) +
+  labs(y        = "Predictive P95 CrI ratio (arm / F)",
+       subtitle = "Precision gain for 95th percentile (all pathogens; values > 1 indicate federated arm is more precise)") +
   theme_ablation() +
   theme(
     axis.title.y = element_text(),
@@ -972,16 +1012,16 @@ pTop <- ggplot(mu0_ratio_all,
 
 # ── 8i. Assemble and save ─────────────────────────────────────────────────────
 
-bottom_row <- (pA | pB | pC | pD) +
+bottom_row <- (pA | pC | pD | pE2) +
   plot_layout(widths = c(2, 1, 1, 1))
 
-fig4 <- (pTop / bottom_row) +
-  plot_layout(heights = c(1, 2), guides = "collect") +
+fig4 <- (pTop / pTop2 / bottom_row) +
+  plot_layout(heights = c(2, 2, 5), guides = "collect") +
   plot_annotation(tag_levels = "A") &
   theme(legend.position = "bottom",
         plot.tag        = element_text(face = "bold", size = 10))
 
-fig4_height <- max(7, n_tau_pathogens * FIG_HEIGHT_ROW + 5)
+fig4_height <- max(12, n_tau_pathogens * FIG_HEIGHT_ROW + 9)
 
 ggsave(file.path(OUTPUT_DIR, "fig_ablation_combined.pdf"),
        fig4, width = FIG_WIDTH_WIDE * 1.35, height = fig4_height, device = "pdf")

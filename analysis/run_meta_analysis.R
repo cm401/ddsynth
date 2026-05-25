@@ -196,17 +196,9 @@ dir.create(OUTDIR, showWarnings = FALSE, recursive = TRUE)
 }
 
 # Save a forest plot for one metamean result.
+# meta 8.x uses grid graphics and auto-calculates the correct figure height
+# when file= is supplied, so we let it open and close the PDF device itself.
 .save_forest <- function(m, df, label, path) {
-  n_studies  <- nrow(df)
-  n_subgroups <- if (!is.null(m$subgroup))
-    length(unique(na.omit(m$subgroup))) else 0L
-  # Allow extra lines for subgroup headers + within-subgroup pooled rows
-  n_rows  <- n_studies + n_subgroups * 3L + 5L
-  fig_h   <- max(7, 0.22 * n_rows + 3)
-
-  pdf(path, width = 16, height = fig_h)
-  on.exit(dev.off(), add = TRUE)
-
   forest(
     m,
     sortvar             = TE,
@@ -222,10 +214,13 @@ dir.create(OUTDIR, showWarnings = FALSE, recursive = TRUE)
     leftlabs            = c("Study [dataset]", "N"),
     rightcols           = c("effect", "ci"),
     rightlabs           = c("Mean", "95% CI"),
-    print.subgroup.name = FALSE,
-    header.line         = "both",
-    spacing             = 0.8,
-    main                = paste0(label, ": random-effects meta-analysis (MLN)")
+    print.subgroup.name           = FALSE,
+    header.line                   = "both",
+    addrows.below.overall         = 2L,
+    fontsize                      = 11,
+    colgap.forest.left            = "4cm",
+    file                          = path,
+    width                         = 16
   )
 }
 
