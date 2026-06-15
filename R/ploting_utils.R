@@ -1112,54 +1112,21 @@ generate_matched_moments_plot <- function(burr_kappas = 2,
       colour = NULL
     ) +
 
-    # Distribution label + parameters — bottom-right, colour-coded, italic.
-    # Built as a plotmath expression (parse = TRUE) so Greek letters (phi, kappa)
-    # render correctly in every PDF device, not just cairo_pdf.
+    # Distribution name — bottom-right, colour-coded, italic.
+    # Parameters (phi, kappa, mean) are omitted here; see the parameter table.
     {
-      sims <- tryCatch(rstan::extract(result_filtered$fit), error = function(e) NULL)
-
       # Sanitise the distribution label: replace non-breaking spaces (\u00a0)
       # with ordinary spaces so the plotmath parser accepts them inside quotes.
       dl_safe <- gsub("\u00a0", " ", dist_label)
-
-      if (!is.null(sims)) {
-        # Line 1: distribution name (quoted plain text in plotmath)
-        l1 <- sprintf("'%s'", dl_safe)
-
-        # Line 2: mean (optional; quoted plain text)
-        l2 <- if (!is.null(sims$pred_mean))
-          sprintf("'Mean %.1f d'", stats::median(sims$pred_mean))
-        else NULL
-
-        # Line 3: shape parameters using plotmath Greek symbols.
-        #   phi   → φ  (all distributions)
-        #   kappa → κ  (Burr XII and GG only)
-        has_phi   <- !is.null(sims$phi)
-        has_kappa <- best_dist %in% c("burr", "gengamma") && !is.null(sims$kappa)
-        l3 <- if (has_phi && has_kappa)
-          sprintf("phi==%.2f~','~kappa==%.2f",
-                  stats::median(sims$phi), stats::median(sims$kappa))
-        else if (has_phi)
-          sprintf("phi==%.2f", stats::median(sims$phi))
-        else NULL
-
-        # Stack non-NULL lines using nested atop(), then wrap in italic().
-        # Reduce builds: atop(atop(l1, l2), l3) for 3 lines, atop(l1, l2) for 2, etc.
-        active <- Filter(Negate(is.null), list(l1, l2, l3))
-        stacked <- Reduce(function(acc, x) sprintf("atop(%s, %s)", acc, x), active)
-        annot_label <- sprintf("italic(%s)", stacked)
-      } else {
-        annot_label <- sprintf("italic('%s')", dl_safe)
-      }
+      annot_label <- sprintf("italic('%s')", dl_safe)
 
       ggplot2::annotate(
         "text",
         x = x_max * 0.97, y = 0.02,
         label  = annot_label,
         colour = dist_col,
-        size   = 2.1,
+        size   = 3.5,
         hjust  = 1, vjust = 0,
-        lineheight = 1.1,
         parse  = TRUE
       )
     }
