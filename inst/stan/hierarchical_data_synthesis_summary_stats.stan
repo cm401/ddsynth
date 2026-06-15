@@ -149,12 +149,70 @@ functions {
       return shape * scale * (1 + z / sqrt(shape));   // Fallback for small shape
     }
   }
+
+  // Double-censored log-likelihood for one observation (summary type 6).
+  //
+  // Computes log P(E in [ex_l, ex_r], O in [ev_l, ev_r]) proportional to theta,
+  // where D = O - E ~ f_D(d; theta), assuming E uniform on [ex_l, ex_r] and
+  // O uniform on [ev_l, ev_r].
+  //
+  // The normalising constant (ex_r - ex_l)(ev_r - ev_l) is constant in theta
+  // and is dropped, consistent with how type 5 drops 1/(ex_r - ex_l).
+  //
+  // Four cases:
+  //   Both endpoints point-observed          -> log f_D(ev_l - ex_l)
+  //   Point exposure, interval event         -> log[F(ev_r - ex_l) - F(ev_l - ex_l)]
+  //   Interval exposure, point event (= type 5) -> log[F(ev_l - ex_l) - F(ev_l - ex_r)]
+  //   Both interval-censored (general)       -> 7-point Gauss-Legendre quadrature
+  real dc_log_lik(real ex_l, real ex_r, real ev_l, real ev_r,
+                  int dist_type, real loc, real phi, real kappa) {
+    // Case 1: both endpoints point-observed
+    if (ex_l == ex_r && ev_l == ev_r) {
+      return dist_logpdf_fun(ev_l - ex_l, dist_type, loc, phi, kappa);
+    }
+    // Case 2: point exposure, interval event
+    if (ex_l == ex_r) {
+      return log_diff_exp(
+        dist_log_cdf_fun(ev_r - ex_l, dist_type, loc, phi, kappa),
+        dist_log_cdf_fun(ev_l - ex_l, dist_type, loc, phi, kappa)
+      );
+    }
+    // Case 3: interval exposure, point event — reduces to type 5
+    if (ev_l == ev_r) {
+      return log_diff_exp(
+        dist_log_cdf_fun(ev_l - ex_l, dist_type, loc, phi, kappa),
+        dist_log_cdf_fun(ev_l - ex_r, dist_type, loc, phi, kappa)
+      );
+    }
+    // Case 4: both interval-censored — 7-point Gauss-Legendre quadrature on [ex_l, ex_r].
+    // Nodes and weights on [-1, 1] (Abramowitz & Stegun table 25.4).
+    // The Jacobian factor (ex_r - ex_l)/2 is constant in theta and is dropped.
+    array[7] real t = {-0.9491079123427585, -0.7415311855993945,
+                       -0.4058451513773832,  0.0,
+                        0.4058451513773832,  0.7415311855993945,
+                        0.9491079123427585};
+    array[7] real w = { 0.1294849661688697,  0.2797053914892767,
+                        0.3818300505051189,  0.4179591836734694,
+                        0.3818300505051189,  0.2797053914892767,
+                        0.1294849661688697};
+    real mid  = 0.5 * (ex_r + ex_l);
+    real half = 0.5 * (ex_r - ex_l);
+    array[7] real log_terms;
+    for (k in 1:7) {
+      real e_k = mid + half * t[k];
+      log_terms[k] = log(w[k]) + log_diff_exp(
+        dist_log_cdf_fun(ev_r - e_k, dist_type, loc, phi, kappa),
+        dist_log_cdf_fun(ev_l - e_k, dist_type, loc, phi, kappa)
+      );
+    }
+    return log_sum_exp(log_terms);
+  }
 }
 
 data {
   int<lower=1> n_datasets;              // Number of datasets
   array[n_datasets] int<lower=1> n_obs; // Sample sizes for each dataset
-  array[n_datasets] int<lower=1,upper=5> summary_type; // 1=median+range, 2=median+IQR, 3=mean+sd, 4=raw freq table, 5=interval-censored freq table
+  array[n_datasets] int<lower=1,upper=6> summary_type; // 1=median+range, 2=median+IQR, 3=mean+sd, 4=raw freq table, 5=interval-censored freq table, 6=double interval-censored freq table
   int<lower=1,upper=5> dist_type;       // 1=lognormal, 2=gamma, 3=weibull, 4=burr XII, 5=gen. gamma
 
   // Observed summaries - organized by dataset (used for summary_type 1, 2, 3)
@@ -176,6 +234,12 @@ data {
   // When freq_lower[i] == freq_upper[i] the contribution falls back to the log-PDF.
   array[n_freq_total] real<lower=0> freq_lower;    // lower bound of censoring interval
   array[n_freq_total] real<lower=0> freq_upper;    // upper bound of censoring interval
+
+  // Event window bounds for summary_type == 6 (double interval-censored).
+  // For all other summary types these arrays are populated with zeros.
+  // For type 6, freq_lower / freq_upper carry the exposure window (expo_lower, expo_upper).
+  array[n_freq_total] real<lower=0> event_lower;   // lower bound of event window
+  array[n_freq_total] real<lower=0> event_upper;   // upper bound of event window
 
   // Prior hyperparameters for mu0 ~ normal(mu0_mean, mu0_sd)
   real mu0_mean;
@@ -220,6 +284,10 @@ transformed data {
     } else if (summary_type[d] == 5) {
       if (freq_len[d] == 0) {
         reject("For summary_type=5, freq_len must be > 0");
+      }
+    } else if (summary_type[d] == 6) {
+      if (freq_len[d] == 0) {
+        reject("For summary_type=6, freq_len must be > 0");
       }
     }
   }
@@ -373,6 +441,22 @@ model {
           real log_cdf_l = dist_log_cdf_fun(freq_lower[i], dist_type, loc, phi, kappa);
           target += freq_count[i] * log_diff_exp(log_cdf_u, log_cdf_l);
         }
+      }
+    }
+
+    else if (summary_type[d] == 6) {  // double interval-censored frequency table
+      // Likelihood: count * dc_log_lik(expo_lower, expo_upper, event_lower, event_upper).
+      // freq_lower / freq_upper carry the exposure window bounds for type 6.
+      // Uses 7-point GL quadrature; degenerates correctly to type 5 when
+      // event_lower[i] == event_upper[i] (point event observation).
+      int s = freq_start[d];
+      int len = freq_len[d];
+      for (i in s:(s + len - 1)) {
+        target += freq_count[i] * dc_log_lik(
+          freq_lower[i], freq_upper[i],
+          event_lower[i], event_upper[i],
+          dist_type, loc, phi, kappa
+        );
       }
     }
   }
@@ -675,6 +759,21 @@ generated quantities {
           }
         }
         log_lik[idx]     = ll_type5;
+        log_lik[idx + 1] = 0;  // unused
+        log_lik[idx + 2] = 0;  // unused
+
+      } else if (summary_type[d] == 6) {  // double interval-censored frequency table
+        real ll_type6 = 0;
+        int s = freq_start[d];
+        int len = freq_len[d];
+        for (i in s:(s + len - 1)) {
+          ll_type6 += freq_count[i] * dc_log_lik(
+            freq_lower[i], freq_upper[i],
+            event_lower[i], event_upper[i],
+            dist_type, loc, phi, kappa
+          );
+        }
+        log_lik[idx]     = ll_type6;
         log_lik[idx + 1] = 0;  // unused
         log_lik[idx + 2] = 0;  // unused
       }
