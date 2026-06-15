@@ -116,7 +116,7 @@ names(comparison_tbl) <- .rename_arm_cols(names(comparison_tbl))
 }
 
 # Consistent theme for all figures.
-theme_ablation <- function(base_size = 10) {
+theme_ablation <- function(base_size = 18) {
   theme_minimal(base_size = base_size) +
     theme(
       panel.grid.major.y = element_blank(),
@@ -447,7 +447,7 @@ if (length(top_pathogens) == 0L) {
       geom_text(data  = js_labels,
                 aes(x = x_pos, y = y_pos, label = label),
                 inherit.aes = FALSE,
-                size  = 2.6, hjust = 0, parse = TRUE, colour = "grey30") +
+                size  = 4.6, hjust = 0, parse = TRUE, colour = "grey30") +
       scale_fill_aaas(labels = ARM_LABELS) +
       scale_colour_aaas(labels = ARM_LABELS) +
       scale_linewidth_manual(values = line_lwd,  labels = ARM_LABELS) +
@@ -887,7 +887,7 @@ pA <- ggplot(forest_both,
   scale_size_manual(  values = ARM_SIZES_C_FULL) +
   scale_linewidth_manual(values = ARM_EBW_C_FULL) +
   labs(x        = "Days (log scale)",
-       subtitle = "Best-fitting distribution per pathogen (main analysis model weights)") +
+       subtitle = "Best-fitting distribution per pathogen\n(main analysis)") +
   theme_ablation() +
   guides(colour    = guide_legend(override.aes = list(size = 2.5)),
          size      = "none",
@@ -906,8 +906,8 @@ pC <- ggplot(tau_long,
   geom_point(size = 3.5, position = position_dodge(width = COMB_DODGE)) +
   scale_colour_aaas() +
   scale_shape_manual( values = ARM_SHAPES_FULL) +
-  labs(x        = expression(tau~"(heterogeneity SD)"),
-       subtitle = "Between-study heterogeneity") +
+  labs(x        = expression(atop(tau, "(heterogeneity SD)")),
+       subtitle = "Between-study\nheterogeneity") +
   y_shared
 
 # Panel D: predictive CrI ratio — the combined (confounded) signal.
@@ -950,7 +950,7 @@ pD <- ggplot(pred_ratio,
   geom_point(size = 3.5) +
   scale_colour_aaas() +
   scale_shape_manual( values = COMP_SHAPES) +
-  labs(x        = "Predictive P50 CrI ratio (arm / F)",
+  labs(x        = "Predictive P50 CrI\nratio (arm / F)",
        subtitle = "Combined effect (P50)") +
   y_shared
 
@@ -962,7 +962,7 @@ pE2 <- ggplot(pred_q95_ratio,
   geom_point(size = 3.5) +
   scale_colour_aaas() +
   scale_shape_manual(values = COMP_SHAPES) +
-  labs(x        = "Predictive P95 CrI ratio (arm / F)",
+  labs(x        = "Predictive P95 CrI\nratio (arm / F)",
        subtitle = "Combined effect (P95)") +
   y_shared
 
@@ -989,7 +989,7 @@ pTop <- ggplot(mu0_ratio_all,
   theme(
     axis.title.y = element_text(),
     axis.title.x = element_blank(),
-    axis.text.x  = element_text(angle = 45, hjust = 1, size = 8)
+    axis.text.x  = element_text(angle = 45, hjust = 1, size = 14)
   )
 
 pTop2 <- ggplot(pred_q95_ratio_all,
@@ -1007,7 +1007,7 @@ pTop2 <- ggplot(pred_q95_ratio_all,
   theme(
     axis.title.y = element_text(),
     axis.title.x = element_blank(),
-    axis.text.x  = element_text(angle = 45, hjust = 1, size = 8)
+    axis.text.x  = element_text(angle = 45, hjust = 1, size = 14)
   )
 
 # ── 8i. Assemble and save ─────────────────────────────────────────────────────
@@ -1019,7 +1019,7 @@ fig4 <- (pTop / pTop2 / bottom_row) +
   plot_layout(heights = c(2, 2, 5), guides = "collect") +
   plot_annotation(tag_levels = "A") &
   theme(legend.position = "bottom",
-        plot.tag        = element_text(face = "bold", size = 10))
+        plot.tag        = element_text(face = "bold", size = 18))
 
 fig4_height <- max(12, n_tau_pathogens * FIG_HEIGHT_ROW + 9)
 
