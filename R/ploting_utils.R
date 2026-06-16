@@ -1896,3 +1896,215 @@ plot_simulation_study_sens_figure <- function(summary_res, base_size = 9) {
   fig & guides(color = guide_legend(nrow = 2, byrow = FALSE),
                shape = guide_legend(nrow = 2, byrow = FALSE))
 }
+
+
+# ── Temporal trend diagnostics for type-7 line list fits ──────────────────────
+
+#' Extract posterior draws of distribution parameters from a stanfit object
+#'
+#' Returns a list with elements \code{loc}, \code{phi}, and \code{kappa}
+#' (each a vector of posterior draws), plus \code{dist_type} (integer).
+#' Designed for use with the type-7 temporal diagnostic functions below.
+#'
+#' @param fit       A \code{stanfit} object returned by \code{rstan::sampling()}.
+#' @param stan_data The Stan data list passed to fit (needed for \code{dist_type}).
+#' @return A list with draws of loc (mu0), phi, kappa, and the dist_type integer.
+#' @export
+extract_posterior_draws <- function(fit, stan_data) {
+  draws <- rstan::extract(fit)
+  list(
+    loc       = as.numeric(draws[["mu0"]]),
+    phi       = as.numeric(draws[["phi"]]),
+    kappa     = as.numeric(draws[["kappa"]]),
+    dist_type = stan_data$dist_type
+  )
+}
+
+# Internal: CDF of the fitted distribution evaluated at scalar x
+.dist_cdf <- function(x, dist_type, loc, phi, kappa) {
+  if (x <= 0) return(0)
+  if (dist_type == 1L) return(plnorm(x, meanlog = loc, sdlog = phi))
+  if (dist_type == 2L) { rate <- phi / exp(loc); return(pgamma(x, shape = phi, rate = rate)) }
+  if (dist_type == 3L) return(pweibull(x, shape = phi, scale = exp(loc)))
+  stop("dist_type ", dist_type, " not supported in temporal diagnostics")
+}
+
+# Internal: quantile of the delay distribution *truncated* at max_delay.
+# Returns the p-th quantile of F_D(d) / F_D(max_delay).
+.trunc_quantile <- function(p, max_delay, dist_type, loc, phi, kappa) {
+  F_max <- .dist_cdf(max_delay, dist_type, loc, phi, kappa)
+  if (F_max <= 0) return(NA_real_)
+  target_p <- p * F_max
+  if (dist_type == 1L) return(qlnorm(target_p, meanlog = loc, sdlog = phi))
+  if (dist_type == 2L) { rate <- phi / exp(loc); return(qgamma(target_p, shape = phi, rate = rate)) }
+  if (dist_type == 3L) return(qweibull(target_p, shape = phi, scale = exp(loc)))
+  stop("dist_type ", dist_type, " not supported in temporal diagnostics")
+}
+
+# Internal: PIT value = F_D(delay) / F_D(max_delay) for one observation.
+.pit_value <- function(delay, max_delay, dist_type, loc, phi, kappa) {
+  F_max <- .dist_cdf(max_delay, dist_type, loc, phi, kappa)
+  if (!is.finite(F_max) || F_max <= 0) return(NA_real_)
+  .dist_cdf(delay, dist_type, loc, phi, kappa) / F_max
+}
+
+#' Temporal trend diagnostics for a type-7 line list fit
+#'
+#' Produces a two-panel diagnostic plot:
+#'
+#' \describe{
+#'   \item{Panel A -- Truncation envelope}{Individual observed delays vs onset
+#'     date, overlaid with posterior median quantile curves (50th, 75th, 95th
+#'     percentile) of the delay distribution *truncated* at each individual's
+#'     maximum observable delay (\code{T - expo_mid}).  If points track the
+#'     envelope, truncation accounts for the apparent shortening of delays
+#'     over time.  If points fall systematically below the envelope, delays
+#'     are genuinely shrinking faster than truncation predicts.}
+#'   \item{Panel B -- PIT over time}{Probability integral transform values
+#'     \eqn{F_D(d_i) / F_D(T - x_i)} for each observed case plotted against
+#'     onset date.  Under the null (truncation only, no trend) PIT values are
+#'     approximately Uniform(0, 1) with no temporal pattern.  A downward loess
+#'     trend indicates a genuine reduction in delays over time.}
+#' }
+#'
+#' @param dataset     A single type-7 dataset list (the element passed to
+#'   \code{prepare_stan_data_from_datasets()}).
+#' @param posterior   A list returned by \code{extract_posterior_draws()}.
+#' @param reference_date A \code{Date} giving day 0 of the calendar axis.
+#'   If \code{NULL}, the x-axis is labelled in days from reference.
+#' @param probs       Numeric vector of quantile levels for Panel A.
+#'   Default: \code{c(0.5, 0.75, 0.95)}.
+#' @param n_draws     Number of posterior draws to use for envelope uncertainty.
+#'   Default: 200.
+#' @return A patchwork of two ggplot objects.
+#' @export
+plot_temporal_trend <- function(dataset, posterior,
+                                reference_date = NULL,
+                                probs          = c(0.5, 0.75, 0.95),
+                                n_draws        = 200L) {
+
+  if (!requireNamespace("patchwork", quietly = TRUE))
+    stop("Package 'patchwork' is required for plot_temporal_trend().")
+
+  # ── extract observed rows only ─────────────────────────────────────────────
+  obs_mask   <- !is.na(dataset$event_lower)
+  expo_lower <- dataset$expo_lower[obs_mask]
+  expo_upper <- dataset$expo_upper[obs_mask]
+  evl        <- dataset$event_lower[obs_mask]
+  evu        <- dataset$event_upper[obs_mask]
+  counts     <- dataset$freq_count[obs_mask]
+  T_val      <- dataset$truncation_time
+
+  if (sum(obs_mask) == 0L)
+    stop("No observed (non-censored) rows found in dataset.")
+
+  expo_mid   <- (expo_lower + expo_upper) / 2
+  event_mid  <- (evl + evu) / 2
+  delay_obs  <- event_mid - expo_mid
+  max_delay  <- T_val - expo_mid
+
+  # Expand counts to individual rows
+  idx <- rep(seq_along(delay_obs), times = counts)
+  df  <- data.frame(
+    expo_mid  = expo_mid[idx],
+    event_mid = event_mid[idx],
+    delay_obs = delay_obs[idx],
+    max_delay = max_delay[idx]
+  )
+
+  # Convert to dates if reference_date is provided
+  if (!is.null(reference_date)) {
+    df$onset_date <- reference_date + df$event_mid
+    x_lab <- "Onset date"
+  } else {
+    df$onset_date <- df$event_mid
+    x_lab <- "Days from reference"
+  }
+
+  # ── sample posterior draws ─────────────────────────────────────────────────
+  n_post     <- length(posterior$loc)
+  draw_idx   <- sample.int(n_post, min(n_draws, n_post))
+  dist_type  <- posterior$dist_type
+
+  # ── Panel A: truncation envelope ──────────────────────────────────────────
+  # For a grid of onset dates, compute posterior-median truncated quantiles.
+  onset_grid <- seq(min(df$onset_date), max(df$onset_date), length.out = 60)
+
+  if (!is.null(reference_date)) {
+    max_del_grid <- T_val - as.numeric(onset_grid - reference_date)
+  } else {
+    max_del_grid <- T_val - onset_grid
+  }
+
+  env_list <- lapply(seq_along(probs), function(pi) {
+    p <- probs[pi]
+    draws_mat <- vapply(draw_idx, function(j) {
+      vapply(seq_along(onset_grid), function(g) {
+        .trunc_quantile(p, max_del_grid[g],
+                        dist_type, posterior$loc[j],
+                        posterior$phi[j], posterior$kappa[j])
+      }, numeric(1))
+    }, numeric(length(onset_grid)))
+    data.frame(
+      onset_date = onset_grid,
+      q_med      = apply(draws_mat, 1, median, na.rm = TRUE),
+      q_lo       = apply(draws_mat, 1, quantile, 0.1, na.rm = TRUE),
+      q_hi       = apply(draws_mat, 1, quantile, 0.9, na.rm = TRUE),
+      prob_label = paste0(round(p * 100), "th percentile")
+    )
+  })
+  env_df <- do.call(rbind, env_list)
+
+  pA <- ggplot2::ggplot(df, ggplot2::aes(x = onset_date, y = delay_obs)) +
+    ggplot2::geom_point(alpha = 0.4, size = 1.5, colour = "steelblue") +
+    ggplot2::geom_ribbon(
+      data = env_df,
+      ggplot2::aes(x = onset_date, ymin = q_lo, ymax = q_hi,
+                   fill = prob_label, y = NULL),
+      alpha = 0.15, inherit.aes = FALSE
+    ) +
+    ggplot2::geom_line(
+      data = env_df,
+      ggplot2::aes(x = onset_date, y = q_med, colour = prob_label),
+      linewidth = 0.8, inherit.aes = FALSE
+    ) +
+    ggplot2::scale_colour_brewer(palette = "Dark2", name = "Truncation envelope") +
+    ggplot2::scale_fill_brewer(palette = "Dark2", name = "Truncation envelope") +
+    ggplot2::labs(x = x_lab, y = "Observed delay (days)",
+                  title = "A: Truncation envelope") +
+    ggplot2::theme_bw(base_size = 11)
+
+  # ── Panel B: PIT over time ─────────────────────────────────────────────────
+  # Compute posterior-median PIT per individual.
+  pit_vals <- vapply(seq_len(nrow(df)), function(i) {
+    pit_draws <- vapply(draw_idx, function(j) {
+      .pit_value(df$delay_obs[i], df$max_delay[i],
+                 dist_type, posterior$loc[j],
+                 posterior$phi[j], posterior$kappa[j])
+    }, numeric(1))
+    median(pit_draws, na.rm = TRUE)
+  }, numeric(1))
+
+  df$pit <- pit_vals
+
+  pB <- ggplot2::ggplot(df, ggplot2::aes(x = onset_date, y = pit)) +
+    ggplot2::geom_jitter(alpha = 0.4, size = 1.5, colour = "steelblue",
+                         height = 0.01, width = 0) +
+    ggplot2::geom_smooth(method = "loess", formula = y ~ x,
+                         se = TRUE, colour = "firebrick",
+                         fill = "firebrick", alpha = 0.15, linewidth = 0.8) +
+    ggplot2::geom_hline(yintercept = 0.5, linetype = "dashed",
+                        colour = "grey40", linewidth = 0.5) +
+    ggplot2::scale_y_continuous(limits = c(0, 1),
+                                labels = scales::label_number(accuracy = 0.1)) +
+    ggplot2::labs(x = x_lab,
+                  y = expression(F[D](d[i]) / F[D](T - x[i])),
+                  title = "B: PIT over time",
+                  caption = paste0(
+                    "Dashed line = 0.5 (expected under no trend).\n",
+                    "Downward loess trend indicates genuine delay reduction."
+                  )) +
+    ggplot2::theme_bw(base_size = 11)
+
+  patchwork::wrap_plots(pA, pB, ncol = 1)
+}
