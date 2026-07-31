@@ -221,12 +221,105 @@ functions {
       return shape * scale * (1 + z / sqrt(shape));
     }
   }
+
+  // Log of integral_{ex_l}^{ex_r} F_D(T - e) de — truncation denominator
+  // for type 7 (right-truncated, doubly censored).  Uses 7-point GL quadrature.
+  // Degenerates to log F_D(T - ex_l) when ex_l == ex_r (point exposure).
+  real trunc_denom_log(real ex_l, real ex_r, real T,
+                       int dist_type, real loc, real phi, real kappa) {
+    if (ex_l == ex_r) {
+      return dist_log_cdf_fun(T - ex_l, dist_type, loc, phi, kappa);
+    }
+    array[7] real t = {-0.9491079123427585, -0.7415311855993945,
+                       -0.4058451513773832,  0.0,
+                        0.4058451513773832,  0.7415311855993945,
+                        0.9491079123427585};
+    array[7] real w = { 0.1294849661688697,  0.2797053914892767,
+                        0.3818300505051189,  0.4179591836734694,
+                        0.3818300505051189,  0.2797053914892767,
+                        0.1294849661688697};
+    real mid  = 0.5 * (ex_r + ex_l);
+    real half = 0.5 * (ex_r - ex_l);
+    array[7] real log_terms;
+    for (k in 1:7) {
+      real e_k      = mid + half * t[k];
+      real max_del  = T - e_k;
+      log_terms[k]  = log(w[k]) + dist_log_cdf_fun(max_del, dist_type, loc, phi, kappa);
+    }
+    return log_sum_exp(log_terms);
+  }
+
+  // Log of integral_{ex_l}^{ex_r} [1 - F_D(T - e)] de — right-censored contribution
+  // for type 7 (onset not yet observed by T).  Uses 7-point GL quadrature.
+  real right_censor_log_lik(real ex_l, real ex_r, real T,
+                             int dist_type, real loc, real phi, real kappa) {
+    if (ex_l == ex_r) {
+      return log1m_exp(dist_log_cdf_fun(T - ex_l, dist_type, loc, phi, kappa));
+    }
+    array[7] real t = {-0.9491079123427585, -0.7415311855993945,
+                       -0.4058451513773832,  0.0,
+                        0.4058451513773832,  0.7415311855993945,
+                        0.9491079123427585};
+    array[7] real w = { 0.1294849661688697,  0.2797053914892767,
+                        0.3818300505051189,  0.4179591836734694,
+                        0.3818300505051189,  0.2797053914892767,
+                        0.1294849661688697};
+    real mid  = 0.5 * (ex_r + ex_l);
+    real half = 0.5 * (ex_r - ex_l);
+    array[7] real log_terms;
+    for (k in 1:7) {
+      real e_k     = mid + half * t[k];
+      real max_del = T - e_k;
+      log_terms[k] = log(w[k]) + log1m_exp(dist_log_cdf_fun(max_del, dist_type, loc, phi, kappa));
+    }
+    return log_sum_exp(log_terms);
+  }
+
+  // Double-censored log-likelihood for one observation (summary type 6).
+  // Identical to the version in hierarchical_data_synthesis_summary_stats.stan.
+  real dc_log_lik(real ex_l, real ex_r, real ev_l, real ev_r,
+                  int dist_type, real loc, real phi, real kappa) {
+    if (ex_l == ex_r && ev_l == ev_r) {
+      return dist_logpdf_fun(ev_l - ex_l, dist_type, loc, phi, kappa);
+    }
+    if (ex_l == ex_r) {
+      return log_diff_exp(
+        dist_log_cdf_fun(ev_r - ex_l, dist_type, loc, phi, kappa),
+        dist_log_cdf_fun(ev_l - ex_l, dist_type, loc, phi, kappa)
+      );
+    }
+    if (ev_l == ev_r) {
+      return log_diff_exp(
+        dist_log_cdf_fun(ev_l - ex_l, dist_type, loc, phi, kappa),
+        dist_log_cdf_fun(ev_l - ex_r, dist_type, loc, phi, kappa)
+      );
+    }
+    array[7] real t = {-0.9491079123427585, -0.7415311855993945,
+                       -0.4058451513773832,  0.0,
+                        0.4058451513773832,  0.7415311855993945,
+                        0.9491079123427585};
+    array[7] real w = { 0.1294849661688697,  0.2797053914892767,
+                        0.3818300505051189,  0.4179591836734694,
+                        0.3818300505051189,  0.2797053914892767,
+                        0.1294849661688697};
+    real mid  = 0.5 * (ex_r + ex_l);
+    real half = 0.5 * (ex_r - ex_l);
+    array[7] real log_terms;
+    for (k in 1:7) {
+      real e_k = mid + half * t[k];
+      log_terms[k] = log(w[k]) + log_diff_exp(
+        dist_log_cdf_fun(ev_r - e_k, dist_type, loc, phi, kappa),
+        dist_log_cdf_fun(ev_l - e_k, dist_type, loc, phi, kappa)
+      );
+    }
+    return log_sum_exp(log_terms);
+  }
 }
 
 data {
   int<lower=1> n_datasets;
   array[n_datasets] int<lower=1> n_obs;
-  array[n_datasets] int<lower=1,upper=5> summary_type;
+  array[n_datasets] int<lower=1,upper=7> summary_type; // 1=median+range, 2=median+IQR, 3=mean+sd, 4=raw freq table, 5=interval-censored freq table, 6=double interval-censored freq table, 7=double interval-censored with right truncation/censoring
   int<lower=1,upper=5> dist_type;
 
   array[n_datasets] real<lower=0> obs_stat1;
@@ -241,6 +334,18 @@ data {
 
   array[n_freq_total] real<lower=0> freq_lower;
   array[n_freq_total] real<lower=0> freq_upper;
+
+  // Event window bounds for summary_type == 6 and 7 (double interval-censored).
+  // For all other summary types these arrays are populated with zeros.
+  // For types 6 and 7, freq_lower / freq_upper carry the exposure window (expo_lower, expo_upper).
+  array[n_freq_total] real<lower=0> event_lower;   // lower bound of event window; 0 for right-censored (type 7)
+  array[n_freq_total] real<lower=0> event_upper;   // upper bound of event window; 0 for right-censored (type 7)
+
+  // Type 7: right truncation / right censoring.
+  // event_observed[i] = 1 if onset was recorded, 0 if right-censored (onset not yet seen).
+  // truncation_time[d] = analysis date T in days from the reference date; ignored for other types.
+  array[n_freq_total] int<lower=0, upper=1> event_observed;  // 1=onset seen, 0=right-censored
+  array[n_datasets]   real<lower=0>         truncation_time; // analysis date T per dataset
 
   real mu0_mean;
   real<lower=0> mu0_sd;
@@ -277,6 +382,17 @@ transformed data {
     } else if (summary_type[d] == 5) {
       if (freq_len[d] == 0) {
         reject("For summary_type=5, freq_len must be > 0");
+      }
+    } else if (summary_type[d] == 6) {
+      if (freq_len[d] == 0) {
+        reject("For summary_type=6, freq_len must be > 0");
+      }
+    } else if (summary_type[d] == 7) {
+      if (freq_len[d] == 0) {
+        reject("For summary_type=7, freq_len must be > 0");
+      }
+      if (truncation_time[d] <= 0) {
+        reject("For summary_type=7, truncation_time must be > 0");
       }
     }
   }
@@ -413,6 +529,40 @@ model {
           real log_cdf_u = dist_log_cdf_fun(freq_upper[i], dist_type, loc, phi, kappa);
           real log_cdf_l = dist_log_cdf_fun(freq_lower[i], dist_type, loc, phi, kappa);
           target += freq_count[i] * log_diff_exp(log_cdf_u, log_cdf_l);
+        }
+      }
+    }
+
+    else if (summary_type[d] == 6) {  // double interval-censored frequency table
+      int s = freq_start[d];
+      int len = freq_len[d];
+      for (i in s:(s + len - 1)) {
+        target += freq_count[i] * dc_log_lik(
+          freq_lower[i], freq_upper[i],
+          event_lower[i], event_upper[i],
+          dist_type, loc, phi, kappa
+        );
+      }
+    }
+
+    else if (summary_type[d] == 7) {  // double interval-censored + right truncation/censoring
+      int s = freq_start[d];
+      int len = freq_len[d];
+      real T = truncation_time[d];
+      for (i in s:(s + len - 1)) {
+        if (event_observed[i] == 1) {
+          target += freq_count[i] * (
+            dc_log_lik(freq_lower[i], freq_upper[i],
+                       event_lower[i], event_upper[i],
+                       dist_type, loc, phi, kappa)
+            - trunc_denom_log(freq_lower[i], freq_upper[i], T,
+                              dist_type, loc, phi, kappa)
+          );
+        } else {
+          target += freq_count[i] * right_censor_log_lik(
+            freq_lower[i], freq_upper[i], T,
+            dist_type, loc, phi, kappa
+          );
         }
       }
     }
@@ -704,6 +854,46 @@ generated quantities {
         log_lik[idx]     = ll_type5;
         log_lik[idx + 1] = 0;
         log_lik[idx + 2] = 0;
+
+      } else if (summary_type[d] == 6) {  // double interval-censored frequency table
+        real ll_type6 = 0;
+        int s = freq_start[d];
+        int len = freq_len[d];
+        for (i in s:(s + len - 1)) {
+          ll_type6 += freq_count[i] * dc_log_lik(
+            freq_lower[i], freq_upper[i],
+            event_lower[i], event_upper[i],
+            dist_type, loc, phi, kappa
+          );
+        }
+        log_lik[idx]     = ll_type6;
+        log_lik[idx + 1] = 0;
+        log_lik[idx + 2] = 0;
+
+      } else if (summary_type[d] == 7) {  // double interval-censored + right truncation/censoring
+        real ll_type7 = 0;
+        int s = freq_start[d];
+        int len = freq_len[d];
+        real T = truncation_time[d];
+        for (i in s:(s + len - 1)) {
+          if (event_observed[i] == 1) {
+            ll_type7 += freq_count[i] * (
+              dc_log_lik(freq_lower[i], freq_upper[i],
+                         event_lower[i], event_upper[i],
+                         dist_type, loc, phi, kappa)
+              - trunc_denom_log(freq_lower[i], freq_upper[i], T,
+                                dist_type, loc, phi, kappa)
+            );
+          } else {
+            ll_type7 += freq_count[i] * right_censor_log_lik(
+              freq_lower[i], freq_upper[i], T,
+              dist_type, loc, phi, kappa
+            );
+          }
+        }
+        log_lik[idx]     = ll_type7;
+        log_lik[idx + 1] = 0;  // unused
+        log_lik[idx + 2] = 0;  // unused
       }
 
       idx += 3;

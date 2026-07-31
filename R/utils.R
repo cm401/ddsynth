@@ -256,6 +256,13 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95), cdf_mat = NULL)
 #'       in that interval. When `freq_lower[i] == freq_upper[i]` the
 #'       observation is treated as exact. `n` is optional and defaults to
 #'       `sum(freq_count)`.}
+#'     \item{`expo_lower`, `expo_upper`, `event_lower`, `event_upper`,
+#'       `freq_count`}{Double interval-censored frequency table (summary
+#'       type 6). Both the exposure window (`expo_lower`, `expo_upper`) and
+#'       the event window (`event_lower`, `event_upper`) are interval-censored.
+#'       All five vectors must have the same length. Requires
+#'       `expo_upper[i] <= event_lower[i]` for all i (positive delays). `n`
+#'       is optional and defaults to `sum(freq_count)`.}
 #'   }
 #'   Each element may also contain an optional `source` field — a free-text
 #'   character string recording the bibliographic reference for that dataset
@@ -292,14 +299,16 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95), cdf_mat = NULL)
 #'   fields (populated with zeros for non-type-5 datasets), as these are
 #'   required by the Stan model regardless of which summary types are present.
 #'
-#' @note **Backward compatibility:** The Stan model requires `freq_lower` and
-#'   `freq_upper` to be present in the data list for all runs, including those
-#'   that contain only type 1--4 datasets. This is handled automatically when
-#'   using this function. If you construct the Stan data list manually (rather
-#'   than via this function), you must include these fields explicitly, e.g.:
+#' @note **Backward compatibility:** The Stan model requires `freq_lower`,
+#'   `freq_upper`, `event_lower`, and `event_upper` to be present in the data
+#'   list for all runs. These are populated automatically by this function.
+#'   If constructing the Stan data list manually, fill all four arrays with
+#'   zeros for non-applicable datasets, e.g.:
 #'   ```r
-#'   stan_data$freq_lower <- rep(0, stan_data$n_freq_total)
-#'   stan_data$freq_upper <- rep(0, stan_data$n_freq_total)
+#'   stan_data$freq_lower  <- rep(0, stan_data$n_freq_total)
+#'   stan_data$freq_upper  <- rep(0, stan_data$n_freq_total)
+#'   stan_data$event_lower <- rep(0, stan_data$n_freq_total)
+#'   stan_data$event_upper <- rep(0, stan_data$n_freq_total)
 #'   ```
 #' @importFrom utils modifyList
 #' @export
@@ -369,13 +378,17 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
   obs_stat1      <- numeric(n_datasets)
   obs_stat2      <- numeric(n_datasets)
   obs_stat3      <- numeric(n_datasets)
-  # Frequency table flat arrays (for summary_type == 4 and 5)
-  freq_value_all <- numeric(0)
-  freq_lower_all <- numeric(0)
-  freq_upper_all <- numeric(0)
-  freq_count_all <- integer(0)
-  freq_start_vec <- integer(n_datasets)
-  freq_len_vec   <- integer(n_datasets)
+  # Frequency table flat arrays (for summary_type == 4, 5, 6, and 7)
+  freq_value_all      <- numeric(0)
+  freq_lower_all      <- numeric(0)
+  freq_upper_all      <- numeric(0)
+  event_lower_all     <- numeric(0)   # event window lower bounds for types 6/7; 0 elsewhere
+  event_upper_all     <- numeric(0)   # event window upper bounds for types 6/7; 0 elsewhere
+  event_observed_all  <- integer(0)   # 1=onset seen, 0=right-censored; type 7 only (1 elsewhere)
+  freq_count_all      <- integer(0)
+  freq_start_vec      <- integer(n_datasets)
+  freq_len_vec        <- integer(n_datasets)
+  truncation_time_vec <- numeric(n_datasets)  # analysis date T for type 7; 0 elsewhere
   running_start  <- 1L
 
   # Process each dataset
@@ -416,11 +429,14 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
       obs_stat3[i]      <- 0  # placeholder
       freq_start_vec[i] <- running_start
       freq_len_vec[i]   <- length(d$freq_value)
-      freq_value_all    <- c(freq_value_all, as.numeric(d$freq_value))
-      freq_lower_all    <- c(freq_lower_all, rep(0, length(d$freq_value)))  # unused for type 4
-      freq_upper_all    <- c(freq_upper_all, rep(0, length(d$freq_value)))  # unused for type 4
-      freq_count_all    <- c(freq_count_all, as.integer(d$freq_count))
-      running_start     <- running_start + freq_len_vec[i]
+      freq_value_all       <- c(freq_value_all,      as.numeric(d$freq_value))
+      freq_lower_all       <- c(freq_lower_all,      rep(0, length(d$freq_value)))  # unused for type 4
+      freq_upper_all       <- c(freq_upper_all,      rep(0, length(d$freq_value)))  # unused for type 4
+      event_lower_all      <- c(event_lower_all,     rep(0, length(d$freq_value)))  # unused for type 4
+      event_upper_all      <- c(event_upper_all,     rep(0, length(d$freq_value)))  # unused for type 4
+      event_observed_all   <- c(event_observed_all,  rep(1L, length(d$freq_value))) # unused for type 4
+      freq_count_all       <- c(freq_count_all,      as.integer(d$freq_count))
+      running_start        <- running_start + freq_len_vec[i]
 
     } else if (!is.null(d$freq_lower) && !is.null(d$freq_upper) && !is.null(d$freq_count)) {
       # Type 5: interval-censored frequency table
@@ -438,11 +454,113 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
       obs_stat3[i]      <- 0  # placeholder
       freq_start_vec[i] <- running_start
       freq_len_vec[i]   <- length(d$freq_lower)
-      freq_value_all    <- c(freq_value_all, rep(0, length(d$freq_lower)))  # unused for type 5
-      freq_lower_all    <- c(freq_lower_all, as.numeric(d$freq_lower))
-      freq_upper_all    <- c(freq_upper_all, as.numeric(d$freq_upper))
-      freq_count_all    <- c(freq_count_all, as.integer(d$freq_count))
+      freq_value_all      <- c(freq_value_all,     rep(0, length(d$freq_lower)))  # unused for type 5
+      freq_lower_all      <- c(freq_lower_all,     as.numeric(d$freq_lower))
+      freq_upper_all      <- c(freq_upper_all,     as.numeric(d$freq_upper))
+      event_lower_all     <- c(event_lower_all,    rep(0, length(d$freq_lower)))  # unused for type 5
+      event_upper_all     <- c(event_upper_all,    rep(0, length(d$freq_lower)))  # unused for type 5
+      event_observed_all  <- c(event_observed_all, rep(1L, length(d$freq_lower))) # unused for type 5
+      freq_count_all      <- c(freq_count_all,     as.integer(d$freq_count))
       running_start     <- running_start + freq_len_vec[i]
+
+    } else if (!is.null(d$expo_lower) && !is.null(d$expo_upper) &&
+               !is.null(d$event_lower) && !is.null(d$event_upper) &&
+               !is.null(d$freq_count) && is.null(d$truncation_time)) {
+      # Type 6: double interval-censored frequency table.
+      # expo_lower / expo_upper: exposure window bounds.
+      # event_lower / event_upper: event window bounds.
+      # In Stan, freq_lower / freq_upper carry the exposure bounds; the new
+      # event_lower / event_upper arrays carry the event bounds.
+      n_len <- length(d$expo_lower)
+      if (length(d$expo_upper)  != n_len || length(d$event_lower) != n_len ||
+          length(d$event_upper) != n_len || length(d$freq_count)  != n_len) {
+        stop(paste("Dataset", i,
+                   ": expo_lower, expo_upper, event_lower, event_upper and freq_count",
+                   "must all have the same length"))
+      }
+      if (any(d$expo_lower > d$expo_upper)) {
+        stop(paste("Dataset", i,
+                   ": all expo_lower values must be <= their corresponding expo_upper values"))
+      }
+      if (any(d$event_lower > d$event_upper)) {
+        stop(paste("Dataset", i,
+                   ": all event_lower values must be <= their corresponding event_upper values"))
+      }
+      if (any(d$expo_upper > d$event_lower)) {
+        stop(paste("Dataset", i,
+                   ": all expo_upper values must be <= their corresponding event_lower values",
+                   "(delays must be non-negative)"))
+      }
+      n_obs_vec[i]      <- if (!is.null(d$n)) d$n else sum(d$freq_count)
+      summary_type[i]   <- 6L
+      obs_stat1[i]      <- 0  # placeholder
+      obs_stat2[i]      <- 0  # placeholder
+      obs_stat3[i]      <- 0  # placeholder
+      freq_start_vec[i] <- running_start
+      freq_len_vec[i]   <- n_len
+      freq_value_all      <- c(freq_value_all,     rep(0, n_len))               # unused for type 6
+      freq_lower_all      <- c(freq_lower_all,     as.numeric(d$expo_lower))    # exposure lower bound
+      freq_upper_all      <- c(freq_upper_all,     as.numeric(d$expo_upper))    # exposure upper bound
+      event_lower_all     <- c(event_lower_all,    as.numeric(d$event_lower))   # event lower bound
+      event_upper_all     <- c(event_upper_all,    as.numeric(d$event_upper))   # event upper bound
+      event_observed_all  <- c(event_observed_all, rep(1L, n_len))              # unused for type 6
+      freq_count_all      <- c(freq_count_all,     as.integer(d$freq_count))
+      running_start       <- running_start + n_len
+
+    } else if (!is.null(d$expo_lower) && !is.null(d$expo_upper) &&
+               !is.null(d$freq_count) && !is.null(d$truncation_time)) {
+      # Type 7: doubly interval-censored with right truncation/censoring.
+      # event_lower / event_upper may contain NAs for right-censored individuals
+      # (onset not yet observed by the analysis date T).
+      n_len <- length(d$expo_lower)
+      evl_raw <- if (!is.null(d$event_lower)) d$event_lower else rep(NA_real_, n_len)
+      evu_raw <- if (!is.null(d$event_upper)) d$event_upper else rep(NA_real_, n_len)
+
+      if (length(d$expo_upper) != n_len || length(d$freq_count) != n_len ||
+          length(evl_raw) != n_len || length(evu_raw) != n_len) {
+        stop(paste("Dataset", i,
+                   ": expo_lower, expo_upper, event_lower, event_upper, and freq_count",
+                   "must all have the same length"))
+      }
+      if (any(d$expo_lower > d$expo_upper)) {
+        stop(paste("Dataset", i,
+                   ": all expo_lower values must be <= their corresponding expo_upper values"))
+      }
+      obs_mask <- !is.na(evl_raw)
+      if (any(obs_mask & (evl_raw > evu_raw), na.rm = TRUE)) {
+        stop(paste("Dataset", i,
+                   ": all event_lower values must be <= their corresponding event_upper values"))
+      }
+      if (any(obs_mask & (d$expo_upper > evl_raw), na.rm = TRUE)) {
+        stop(paste("Dataset", i,
+                   ": all expo_upper values must be <= their corresponding event_lower values",
+                   "(delays must be non-negative)"))
+      }
+      if (any(d$expo_upper >= d$truncation_time)) {
+        stop(paste("Dataset", i,
+                   ": all expo_upper values must be < truncation_time"))
+      }
+      if (any(obs_mask & (evu_raw > d$truncation_time), na.rm = TRUE)) {
+        stop(paste("Dataset", i,
+                   ": all event_upper values must be <= truncation_time"))
+      }
+      n_obs_vec[i]          <- if (!is.null(d$n)) d$n else sum(d$freq_count)
+      summary_type[i]       <- 7L
+      truncation_time_vec[i] <- d$truncation_time
+      obs_stat1[i]          <- 0
+      obs_stat2[i]          <- 0
+      obs_stat3[i]          <- 0
+      freq_start_vec[i]     <- running_start
+      freq_len_vec[i]       <- n_len
+      freq_value_all        <- c(freq_value_all,     rep(0, n_len))
+      freq_lower_all        <- c(freq_lower_all,     as.numeric(d$expo_lower))
+      freq_upper_all        <- c(freq_upper_all,     as.numeric(d$expo_upper))
+      # Replace NA event bounds with 0 for right-censored rows (ignored in Stan)
+      event_lower_all       <- c(event_lower_all,    as.numeric(ifelse(obs_mask, evl_raw, 0)))
+      event_upper_all       <- c(event_upper_all,    as.numeric(ifelse(obs_mask, evu_raw, 0)))
+      event_observed_all    <- c(event_observed_all, as.integer(obs_mask))
+      freq_count_all        <- c(freq_count_all,     as.integer(d$freq_count))
+      running_start         <- running_start + n_len
 
     } else {
       stop(paste("Dataset", i, "does not have recognized summary statistics"))
@@ -468,6 +586,31 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
       fc  <- freq_count_all[s:(s + ln - 1)]
       mid <- (fl + fu) / 2
       central_estimates[i] <- sum(mid * fc) / sum(fc)
+    } else if (summary_type[i] == 6L && freq_len_vec[i] > 0) {
+      s   <- freq_start_vec[i]
+      ln  <- freq_len_vec[i]
+      el  <- freq_lower_all[s:(s + ln - 1)]    # expo_lower
+      er  <- freq_upper_all[s:(s + ln - 1)]    # expo_upper
+      evl <- event_lower_all[s:(s + ln - 1)]   # event_lower
+      evu <- event_upper_all[s:(s + ln - 1)]   # event_upper
+      fc  <- freq_count_all[s:(s + ln - 1)]
+      delay_mid <- ((evl + evu) / 2) - ((el + er) / 2)
+      central_estimates[i] <- sum(delay_mid * fc) / sum(fc)
+    } else if (summary_type[i] == 7L && freq_len_vec[i] > 0) {
+      s    <- freq_start_vec[i]
+      ln   <- freq_len_vec[i]
+      el   <- freq_lower_all[s:(s + ln - 1)]
+      er   <- freq_upper_all[s:(s + ln - 1)]
+      evl  <- event_lower_all[s:(s + ln - 1)]
+      evu  <- event_upper_all[s:(s + ln - 1)]
+      fc   <- freq_count_all[s:(s + ln - 1)]
+      eobs <- event_observed_all[s:(s + ln - 1)]
+      # Use only fully observed rows for the central estimate
+      obs_idx <- eobs == 1L
+      if (any(obs_idx)) {
+        delay_mid <- ((evl[obs_idx] + evu[obs_idx]) / 2) - ((el[obs_idx] + er[obs_idx]) / 2)
+        central_estimates[i] <- sum(delay_mid * fc[obs_idx]) / sum(fc[obs_idx])
+      }
     }
   }
   valid_centrals <- central_estimates[central_estimates > 0]
@@ -481,13 +624,17 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
     obs_stat1    = as.array(obs_stat1),
     obs_stat2    = as.array(obs_stat2),
     obs_stat3    = as.array(obs_stat3),
-    n_freq_total = length(freq_value_all),
-    freq_value   = freq_value_all,
-    freq_lower   = freq_lower_all,
-    freq_upper   = freq_upper_all,
-    freq_count   = freq_count_all,
-    freq_start   = as.array(freq_start_vec),
-    freq_len     = as.array(freq_len_vec)
+    n_freq_total     = length(freq_value_all),
+    freq_value       = freq_value_all,
+    freq_lower       = freq_lower_all,
+    freq_upper       = freq_upper_all,
+    event_lower      = event_lower_all,
+    event_upper      = event_upper_all,
+    event_observed   = event_observed_all,
+    freq_count       = freq_count_all,
+    freq_start       = as.array(freq_start_vec),
+    freq_len         = as.array(freq_len_vec),
+    truncation_time  = as.array(truncation_time_vec)
   )
 
   stan_data$mu0_mean      <- if (length(valid_centrals) > 0) log(mean(valid_centrals)) else 0
@@ -593,6 +740,14 @@ update_phi_prior <- function(stan_data, datasets) {
       w        <- d$freq_count / sum(d$freq_count)
       mean_est <- sum(mid * w)
       sd_est   <- sqrt(sum(w * (mid - mean_est)^2))
+    } else if (!is.null(d$expo_lower) && !is.null(d$expo_upper) &&
+               !is.null(d$event_lower) && !is.null(d$event_upper) &&
+               !is.null(d$freq_count)) {
+      delay_mid <- ((d$event_lower + d$event_upper) / 2) -
+                   ((d$expo_lower  + d$expo_upper)  / 2)
+      w         <- d$freq_count / sum(d$freq_count)
+      mean_est  <- sum(delay_mid * w)
+      sd_est    <- sqrt(sum(w * (delay_mid - mean_est)^2))
     }
 
     if (is.na(mean_est) || is.na(sd_est) || sd_est <= 0) return(NA_real_)
@@ -777,6 +932,14 @@ should_attempt_gg <- function(datasets,
       w        <- d$freq_count / sum(d$freq_count)
       mean_est <- sum(mid * w)
       sd_est   <- sqrt(sum(w * (mid - mean_est)^2))
+    } else if (!is.null(d$expo_lower) && !is.null(d$expo_upper) &&
+               !is.null(d$event_lower) && !is.null(d$event_upper) &&
+               !is.null(d$freq_count)) {
+      delay_mid <- ((d$event_lower + d$event_upper) / 2) -
+                   ((d$expo_lower  + d$expo_upper)  / 2)
+      w         <- d$freq_count / sum(d$freq_count)
+      mean_est  <- sum(delay_mid * w)
+      sd_est    <- sqrt(sum(w * (delay_mid - mean_est)^2))
     }
 
     if (is.na(mean_est) || is.na(sd_est) || mean_est <= 0 || sd_est <= 0)
@@ -800,7 +963,9 @@ should_attempt_gg <- function(datasets,
 
   # ── Check 2: information richness ──────────────────────────────────────────
   is_rich <- vapply(datasets, function(d) {
-    !is.null(d$freq_value) || (!is.null(d$freq_lower) && !is.null(d$freq_upper))
+    !is.null(d$freq_value) ||
+    (!is.null(d$freq_lower) && !is.null(d$freq_upper)) ||
+    (!is.null(d$expo_lower) && !is.null(d$event_lower))
   }, logical(1))
 
   rich_frac <- mean(is_rich)

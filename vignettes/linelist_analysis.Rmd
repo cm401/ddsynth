@@ -1,0 +1,333 @@
+---
+title: "Real-Time Line List Analysis with Right Truncation Correction"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Real-Time Line List Analysis with Right Truncation Correction}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r chunk-opts, include=FALSE, purl=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment  = "#>",
+  eval     = TRUE,
+  purl     = FALSE
+)
+```
+
+## Overview
+
+During an active outbreak, a line list collects cases as they are reported.
+Cases with long delays between exposure and symptom onset are less likely to
+have been reported by the analysis date -- they appear to be absent, not
+because they don't exist but because they haven't happened yet or haven't been
+recorded. This is **right truncation**: the observed sample is a biased subset
+of all cases, enriched for short delays.
+
+A second complication is **double interval censoring**: both the exposure date
+(e.g. start of a contact window) and the onset date are often known only to the
+day, not the exact hour.
+
+The **type 7** data format in `ddsynth` handles both simultaneously:
+
+- Doubly interval-censored delays (both exposure and onset known to the day).
+- Right truncation correction: only cases with onset before the analysis date
+  $T$ are observed; the denominator of the likelihood accounts for this.
+- Right-censored cases: individuals with a known exposure window but no onset
+  recorded yet contribute the survival function $1 - F_D(T - x_i)$.
+
+## The likelihood
+
+Let $e_i \sim \text{Uniform}(E^L_i, E^R_i)$ be the latent exposure time and
+$s_i \sim \text{Uniform}(S^L_i, S^R_i)$ the latent onset time. Marginalising
+over both latent times gives:
+
+**Observed cases** (onset recorded, $s_i < T$):
+
+$$
+L_i \;\propto\; \frac{
+  \int_{E^L_i}^{E^R_i} \bigl[F_D(S^R_i - e) - F_D(S^L_i - e)\bigr]\, de
+}{
+  \int_{E^L_i}^{E^R_i} F_D(T - e)\, de
+}
+$$
+
+**Right-censored cases** (exposure known, onset not yet seen):
+
+$$
+L_i \;\propto\; \int_{E^L_i}^{E^R_i} \bigl[1 - F_D(T - e)\bigr]\, de
+$$
+
+Both integrals are evaluated via 7-point Gauss-Legendre quadrature, requiring
+only repeated CDF evaluations and adding negligible overhead over type 6.
+
+## Setup
+
+```{r setup, purl=FALSE}
+library(ddsynth)
+library(rstan)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+```
+
+## Simulating a line list
+
+We simulate an outbreak of 300 cases. The true incubation period is
+log-normal with $\mu_0 = \log(6)$ and $\phi = 0.45$ (mean $\approx$ 7 days).
+The analysis date is day 40 from outbreak start. Cases with exposures close to
+day 40 may not yet have developed symptoms -- these become right-censored
+observations.
+
+```{r simulate, purl=FALSE}
+set.seed(42)
+
+reference_date <- as.Date("2024-01-01")
+T_cal          <- as.Date("2024-02-10")   # analysis date
+T_num          <- as.numeric(T_cal - reference_date)  # calendar day 40
+
+n_cases  <- 300
+true_mu0 <- log(6)
+true_phi <- 0.45
+
+# Exposure start uniform over outbreak period; 1-day window
+expo_start_num <- runif(n_cases, 0, 35)
+expo_end_num   <- expo_start_num + 1
+
+# True latent exposure and incubation delay
+expo_true  <- runif(n_cases, expo_start_num, expo_end_num)
+delay_true <- rlnorm(n_cases, meanlog = true_mu0, sdlog = true_phi)
+onset_true <- expo_true + delay_true
+
+# Only cases with onset before T are observed
+observed_mask <- onset_true < T_num
+
+# For observed cases: onset known to the day (floor to 1-day window)
+onset_lower <- floor(onset_true)
+onset_upper <- onset_lower + 1
+
+# Build line list
+linelist <- data.frame(
+  exposure_start = reference_date + floor(expo_start_num),
+  exposure_end   = reference_date + floor(expo_start_num) + 1,
+  onset_lower    = ifelse(observed_mask, reference_date + onset_lower, NA),
+  onset_upper    = ifelse(observed_mask, reference_date + onset_lower + 1, NA)
+)
+linelist$onset_lower <- as.Date(linelist$onset_lower, origin = "1970-01-01")
+linelist$onset_upper <- as.Date(linelist$onset_upper, origin = "1970-01-01")
+
+cat("Total cases in line list:", nrow(linelist), "\n")
+cat("Observed (onset recorded):", sum(observed_mask), "\n")
+cat("Right-censored (no onset yet):", sum(!observed_mask), "\n")
+```
+
+## Preparing the dataset
+
+Convert dates to numeric (days from `reference_date`). All bounds in a type 7
+dataset must share the same calendar origin.
+
+```{r prepare-data, purl=FALSE}
+to_num <- function(d) as.numeric(d - reference_date)
+
+dataset_ll <- list(
+  expo_lower      = to_num(linelist$exposure_start),
+  expo_upper      = to_num(linelist$exposure_end),
+  event_lower     = ifelse(!is.na(linelist$onset_lower),
+                           to_num(linelist$onset_lower), NA_real_),
+  event_upper     = ifelse(!is.na(linelist$onset_upper),
+                           to_num(linelist$onset_upper), NA_real_),
+  freq_count      = rep(1L, nrow(linelist)),
+  truncation_time = T_num
+)
+
+# Sanity checks
+stopifnot(all(dataset_ll$event_upper[!is.na(dataset_ll$event_upper)] <= T_num))
+stopifnot(all(dataset_ll$expo_upper < T_num))
+```
+
+The table below summarises the fields:
+
+| Field | Description |
+|---|---|
+| `expo_lower`, `expo_upper` | Exposure window (calendar days from reference) |
+| `event_lower`, `event_upper` | Onset window; `NA` for right-censored rows |
+| `freq_count` | Number of cases with this combination |
+| `truncation_time` | Analysis date $T$ (calendar days from reference) |
+
+## Compiling the model and preparing Stan data
+
+```{r compile, purl=FALSE}
+stan_model_code <- compile_stan_model(model = "factorised")
+```
+
+```{r stan-data, purl=FALSE}
+stan_data_ll <- prepare_stan_data_from_datasets(
+  datasets  = list(linelist = dataset_ll),
+  dist_type = 1,   # log-normal
+  custom_priors = list(
+    mu0_mean     = log(5),
+    mu0_sd       = 1.0,
+    log_tau_mean = 0.0,
+    log_tau_sd   = 0.5,
+    log_phi_mean = -0.7,
+    log_phi_sd   = 0.5
+  )
+)
+```
+
+## Fitting the model
+
+```{r fit, purl=FALSE}
+fit_ll <- rstan::sampling(
+  stan_model_code,
+  data    = stan_data_ll,
+  chains  = 4,
+  iter    = 4000,
+  warmup  = 1000,
+  control = list(adapt_delta = 0.9, max_treedepth = 10),
+  seed    = 42
+)
+
+print(fit_ll, pars = c("mu0", "phi"))
+```
+
+## Summarising the posterior
+
+```{r posterior-summary, purl=FALSE}
+draws <- rstan::extract(fit_ll)
+
+mean_delay <- exp(draws$mu0 + draws$phi^2 / 2)
+
+cat(sprintf(
+  "Mean incubation period: %.1f days (95%% CI: %.1f -- %.1f)\n",
+  median(mean_delay),
+  quantile(mean_delay, 0.025),
+  quantile(mean_delay, 0.975)
+))
+cat("True mean:", round(exp(true_mu0 + true_phi^2 / 2), 1), "days\n")
+```
+
+## Temporal trend diagnostics
+
+Even with truncation correction, it is important to verify that the apparent
+shortening of delays near the analysis date is fully accounted for by the
+model. Two diagnostics address this.
+
+**Panel A -- Truncation envelope**: Individual observed delays are plotted
+against onset date. The coloured curves show model-predicted quantiles of the
+delay distribution *truncated* at the maximum observable delay for that onset
+date ($T - \text{exposure midpoint}$). If the observed delays track the
+envelope, truncation alone explains the pattern. If delays fall systematically
+below the envelope, there is genuine shortening beyond what truncation predicts.
+
+**Panel B -- PIT over time**: The probability integral transform value
+$F_D(d_i) / F_D(T - x_i)$ should be approximately Uniform(0, 1) with no
+temporal trend if truncation is the only source of apparent delay shortening.
+A downward loess trend reveals a genuine delay reduction over time.
+
+```{r temporal-diagnostics, purl=FALSE}
+posterior <- extract_posterior_draws(fit_ll, stan_data_ll)
+
+plot_temporal_trend(
+  dataset        = dataset_ll,
+  posterior      = posterior,
+  reference_date = reference_date,
+  probs          = c(0.5, 0.75, 0.95),
+  n_draws        = 200L
+)
+```
+
+### Interpreting the plots
+
+| Pattern | Interpretation |
+|---|---|
+| Points track envelope; PIT flat and centred | Truncation fully explains apparent shortening |
+| Points below envelope; PIT trends downward | Genuine delay reduction -- consider a time-varying model |
+| Points above envelope; PIT trends upward | Delays genuinely increasing or reporting lag |
+| PIT multimodal or U-shaped | Parametric family mis-specified |
+
+## Combining with historic data
+
+A major advantage of the `ddsynth` framework is the ability to pool line list
+estimates with estimates from earlier studies that used different data formats.
+Six hypothetical historic studies are defined below, mixing three summary types:
+
+- **Type 1** (median + range): Studies C and F
+- **Type 2** (median + IQR): Studies A, B, and E
+- **Type 3** (mean + SD): Study D
+
+All values are consistent with a log-normal distribution with phi (log-SD)
+around 0.45 but slightly varying population means, reflecting genuine
+between-study heterogeneity. This is important: `phi` is a **shared**
+parameter across all datasets, so summary statistics must be compatible with
+the same distributional shape.
+
+With 7 datasets total (6 historic + 1 line list), the between-study
+heterogeneity parameter `tau` becomes identifiable from data, and the
+predicted quantities are averaged over the full predictive distribution.
+
+```{r combine-historic, purl=FALSE}
+# --- Type 2: median + IQR ---
+# Study A: log-normal(log(5.5), 0.45)
+dataset_A <- list(n = 60L, median = 5.50, Q1 = 4.06, Q3 = 7.45)
+
+# Study B: log-normal(log(6.5), 0.45)
+dataset_B <- list(n = 80L, median = 6.50, Q1 = 4.80, Q3 = 8.81)
+
+# Study E: log-normal(log(6.2), 0.45)
+dataset_E <- list(n = 120L, median = 6.20, Q1 = 4.58, Q3 = 8.40)
+
+# --- Type 1: median + range (min/max as 1st and nth order statistics) ---
+# Study C: log-normal(log(7.0), 0.45), n=45
+dataset_C <- list(n = 45L, median = 7.00, min = 2.82, max = 17.37)
+
+# Study F: log-normal(log(5.8), 0.45), n=35
+dataset_F <- list(n = 35L, median = 5.80, min = 2.45, max = 13.73)
+
+# --- Type 3: mean + SD ---
+# Study D: log-normal(log(6.0), 0.45) -> mean = 6.64, SD = 3.15
+dataset_D <- list(n = 100L, mean = 6.64, sd = 3.15)
+
+stan_data_joint <- prepare_stan_data_from_datasets(
+  datasets = list(
+    study_A  = dataset_A,
+    study_B  = dataset_B,
+    study_C  = dataset_C,
+    study_D  = dataset_D,
+    study_E  = dataset_E,
+    study_F  = dataset_F,
+    linelist = dataset_ll
+  ),
+  dist_type = 1,
+  custom_priors = list(
+    mu0_mean     = log(6),
+    mu0_sd       = 1.0,
+    log_tau_mean = -1.0,   # prior centred on tau ~ 0.37; realistic between-study SD
+    log_tau_sd   = 0.5,
+    log_phi_mean = -0.7,
+    log_phi_sd   = 0.5
+  )
+)
+
+fit_joint <- rstan::sampling(
+  stan_model_code,
+  data    = stan_data_joint,
+  chains  = 4,
+  iter    = 4000,
+  warmup  = 1000,
+  control = list(adapt_delta = 0.95, max_treedepth = 12),
+  seed    = 42
+)
+
+print(fit_joint, pars = c("mu0", "phi", "tau"))
+```
+
+With more than 5 datasets, `tau` is identifiable from data and the reported
+`pred_mean`, `pred_median` etc. are averaged over the predictive distribution
+for a new study, incorporating both within-study uncertainty and
+between-study heterogeneity. The type 7 likelihood for the line list
+automatically corrects for truncation and right-censoring.

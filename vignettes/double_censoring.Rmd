@@ -1,0 +1,447 @@
+---
+title: "Double Interval Censoring for General Delays"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Double Interval Censoring for General Delays}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r chunk-opts, include=FALSE, purl=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment  = "#>",
+  eval     = FALSE,  # Stan models are too heavy to run in CI; code is shown for reference
+  purl     = FALSE
+)
+```
+
+## Overview
+
+The package's existing **type 5** data format handles delays where the
+**exposure** time is interval-censored (known only within a window) but the
+**event** time is observed exactly. This is the typical setting for incubation
+period estimation: the date of symptom onset is known but the precise moment of
+infection is not.
+
+For delays other than the incubation period -- such as the **serial interval**
+(symptom onset to symptom onset), **generation time** (infection to infection),
+or **time from onset to hospitalisation** -- *both* endpoints may be
+interval-censored. This vignette demonstrates the **type 6** data format, which
+handles this general double-censoring case correctly.
+
+## The problem with the naive approach
+
+A tempting shortcut is to form the outer delay bounds
+$[\,O_L - E_R,\; O_R - E_L\,]$ and treat the result as a standard
+interval-censored delay (type 5). This is equivalent to assigning uniform
+probability to all delays in that outer interval. However, the correct
+weight function is **trapezoidal**: delays near the centre of the outer
+interval are more consistent with the observed windows than delays near the
+edges. Using outer bounds therefore over-disperses the likelihood and biases
+parameter estimates, with bias growing as censoring windows widen relative to
+the mean delay.
+
+The type 6 likelihood evaluates the correct 1-D integral
+
+$$
+L \;\propto\; \int_{E_L}^{E_R}
+  \bigl[F_D(O_R - e) - F_D(O_L - e)\bigr]\, de
+$$
+
+via Gauss-Legendre quadrature, which requires only CDF evaluations and adds
+negligible computational cost.
+
+## Setup
+
+```{r setup, purl=FALSE}
+library(ddsynth)
+library(rstan)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggsci)
+library(patchwork)
+
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+```
+
+## Simulating doubly-censored delay data
+
+We simulate a hypothetical study of the **serial interval** -- the time between
+symptom onset in a primary case and symptom onset in a secondary case. The true
+distribution is log-normal with population mean $\mu_0 = \log(6)$ and
+log-standard-deviation $\phi = 0.45$ (mean serial interval approximately 7
+days).
+
+Censoring structure:
+
+- **Exposure window** (`expo_lower`, `expo_upper`): symptom onset of the
+  primary case is known only to within a 1-3 day window (e.g. recalled
+  approximately).
+- **Event window** (`event_lower`, `event_upper`): symptom onset of the
+  secondary case is recorded to the nearest day, yielding a 1-day interval.
+
+```{r simulate, purl=FALSE}
+simulate_double_censored <- function(n,
+                                     mu    = log(6),
+                                     sigma = 0.45,
+                                     seed  = 101) {
+  set.seed(seed)
+
+  # True serial intervals
+  D_true <- rlnorm(n, meanlog = mu, sdlog = sigma)
+
+  # Exposure window: onset of primary case known within 1-3 days
+  expo_width  <- sample(1:3, n, replace = TRUE)
+  expo_lower  <- floor(runif(n, 0, 20))            # arbitrary calendar anchor
+  expo_upper  <- expo_lower + expo_width
+
+  # True exposure time: uniform within window
+  E_true <- runif(n, expo_lower, expo_upper)
+
+  # True event time and daily-rounded event window
+  O_true      <- E_true + D_true
+  event_lower <- floor(O_true)
+  event_upper <- event_lower + 1L
+
+  # Ensure positive delay bounds (drop any negative outer-bound rows)
+  naive_lower <- event_lower - expo_upper
+  naive_upper <- event_upper - expo_lower
+  keep        <- naive_lower > 0
+
+  data.frame(
+    expo_lower  = expo_lower[keep],
+    expo_upper  = expo_upper[keep],
+    event_lower = event_lower[keep],
+    event_upper = event_upper[keep],
+    naive_lower = naive_lower[keep],
+    naive_upper = naive_upper[keep],
+    D_true      = D_true[keep]
+  )
+}
+
+dat <- simulate_double_censored(n = 200)
+
+cat("Simulated", nrow(dat), "observations\n")
+cat("True delay summary (days):\n")
+print(summary(dat$D_true))
+```
+
+## Formatting data for the model
+
+### Type 6: correct double-censored likelihood
+
+Each observation contributes one row with its four bounds. Identical window
+combinations are collapsed into a frequency table to reduce the size of the
+Stan data object.
+
+```{r format-type6, purl=FALSE}
+dat_freq6 <- dat |>
+  group_by(expo_lower, expo_upper, event_lower, event_upper) |>
+  summarise(freq_count = n(), .groups = "drop")
+
+dataset_dc <- list(
+  expo_lower  = dat_freq6$expo_lower,
+  expo_upper  = dat_freq6$expo_upper,
+  event_lower = dat_freq6$event_lower,
+  event_upper = dat_freq6$event_upper,
+  freq_count  = as.integer(dat_freq6$freq_count)
+)
+
+cat("Type 6 frequency table: ", nrow(dat_freq6), "distinct interval combinations\n")
+```
+
+### Type 5 (naive): outer-bounds approximation
+
+For comparison, we also prepare the same data using the naive approach: each
+observation's outer delay bounds $[O_L - E_R,\; O_R - E_L]$ are passed as a
+type 5 interval-censored dataset.
+
+```{r format-type5, purl=FALSE}
+dat_freq5 <- dat |>
+  group_by(naive_lower, naive_upper) |>
+  summarise(freq_count = n(), .groups = "drop")
+
+dataset_naive <- list(
+  freq_lower = dat_freq5$naive_lower,
+  freq_upper = dat_freq5$naive_upper,
+  freq_count = as.integer(dat_freq5$freq_count)
+)
+
+cat("Type 5 (naive) frequency table:", nrow(dat_freq5), "distinct intervals\n")
+```
+
+## Preparing Stan data and compiling the model
+
+```{r compile, purl=FALSE}
+stan_model_code <- compile_stan_model(model = "factorised")
+```
+
+```{r stan-data, purl=FALSE}
+# True parameter values for reference
+true_mu    <- log(6)
+true_sigma <- 0.45
+
+# --- Type 6 (correct) ---
+stan_data_dc <- prepare_stan_data_from_datasets(
+  datasets   = list(serial_interval = dataset_dc),
+  dist_type  = 1,   # log-normal
+  custom_priors = list(
+    mu0_sd       = 1.0,
+    log_tau_mean = 0.0,
+    log_tau_sd   = 0.5,
+    log_phi_mean = -0.7,
+    log_phi_sd   = 0.5
+  )
+)
+
+# --- Type 5 naive ---
+stan_data_naive <- prepare_stan_data_from_datasets(
+  datasets   = list(serial_interval = dataset_naive),
+  dist_type  = 1,
+  custom_priors = list(
+    mu0_sd       = 1.0,
+    log_tau_mean = 0.0,
+    log_tau_sd   = 0.5,
+    log_phi_mean = -0.7,
+    log_phi_sd   = 0.5
+  )
+)
+```
+
+## Fitting both models
+
+```{r fit, purl=FALSE}
+sampling_args <- list(
+  chains  = 4,
+  iter    = 4000,
+  warmup  = 1000,
+  thin    = 1,
+  control = list(adapt_delta = 0.9, max_treedepth = 10),
+  seed    = 42
+)
+
+cat("Fitting type 6 (double-censored) model...\n")
+fit_dc <- do.call(
+  rstan::sampling,
+  c(list(object = stan_model_code, data = stan_data_dc), sampling_args)
+)
+
+cat("Fitting type 5 (naive outer-bounds) model...\n")
+fit_naive <- do.call(
+  rstan::sampling,
+  c(list(object = stan_model_code, data = stan_data_naive), sampling_args)
+)
+```
+
+## Convergence diagnostics
+
+```{r diagnostics, purl=FALSE}
+check_convergence <- function(fit, label) {
+  s     <- summary(fit)$summary
+  rhat  <- s[, "Rhat"]
+  n_eff <- s[, "n_eff"]
+  cat(sprintf(
+    "[%s] Max Rhat: %.3f | Min n_eff: %.0f | Rhat > 1.05: %d\n",
+    label,
+    max(rhat,  na.rm = TRUE),
+    min(n_eff, na.rm = TRUE),
+    sum(rhat > 1.05, na.rm = TRUE)
+  ))
+}
+
+check_convergence(fit_dc,    "Type 6 (correct)")
+check_convergence(fit_naive, "Type 5 (naive)  ")
+```
+
+## Parameter recovery
+
+We compare posterior estimates of $\mu_0$ (population log-mean) and
+$\phi$ (log-standard-deviation) against the true simulation values.
+
+```{r recovery, purl=FALSE}
+extract_summary <- function(fit, label) {
+  sims <- rstan::extract(fit)
+  data.frame(
+    model     = label,
+    parameter = c("mu0 (log-mean)", "phi (log-SD)"),
+    true_val  = c(true_mu, true_sigma),
+    post_mean = c(mean(sims$mu0),       mean(sims$phi)),
+    post_med  = c(median(sims$mu0),     median(sims$phi)),
+    ci_low    = c(quantile(sims$mu0, 0.025), quantile(sims$phi, 0.025)),
+    ci_high   = c(quantile(sims$mu0, 0.975), quantile(sims$phi, 0.975))
+  )
+}
+
+recovery_df <- bind_rows(
+  extract_summary(fit_dc,    "Type 6 (correct)"),
+  extract_summary(fit_naive, "Type 5 (naive)")
+)
+
+print(recovery_df, digits = 3)
+```
+
+The type 6 model should recover both parameters well. The naive type 5 model
+will tend to over-estimate $\phi$ (attributing the extra dispersion introduced
+by the wide outer bounds to the delay distribution itself) and may show a small
+bias in $\mu_0$.
+
+## Visualisation
+
+### Posterior distributions for key parameters
+
+```{r plot-posteriors, fig.width=9, fig.height=4, purl=FALSE}
+draws_dc    <- rstan::extract(fit_dc)
+draws_naive <- rstan::extract(fit_naive)
+
+posterior_df <- bind_rows(
+  data.frame(model = "Type 6 (correct)", mu0 = draws_dc$mu0,    phi = draws_dc$phi),
+  data.frame(model = "Type 5 (naive)",   mu0 = draws_naive$mu0, phi = draws_naive$phi)
+)
+
+p_mu0 <- ggplot(posterior_df, aes(x = mu0, fill = model, colour = model)) +
+  geom_density(alpha = 0.35, linewidth = 0.8) +
+  geom_vline(xintercept = true_mu, linetype = "dashed", linewidth = 0.8) +
+  scale_fill_npg()   +
+  scale_colour_npg() +
+  labs(title    = expression(paste("Posterior: ", mu[0], " (log-mean)")),
+       subtitle = "Dashed line = true value",
+       x        = expression(mu[0]),
+       y        = "Density",
+       fill     = NULL, colour = NULL) +
+  theme_bw(base_size = 12) +
+  theme(legend.position = "bottom")
+
+p_phi <- ggplot(posterior_df, aes(x = phi, fill = model, colour = model)) +
+  geom_density(alpha = 0.35, linewidth = 0.8) +
+  geom_vline(xintercept = true_sigma, linetype = "dashed", linewidth = 0.8) +
+  scale_fill_npg()   +
+  scale_colour_npg() +
+  labs(title    = expression(paste("Posterior: ", phi, " (log-SD)")),
+       subtitle = "Dashed line = true value",
+       x        = expression(phi),
+       y        = "Density",
+       fill     = NULL, colour = NULL) +
+  theme_bw(base_size = 12) +
+  theme(legend.position = "bottom")
+
+p_mu0 + p_phi + plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+```
+
+### Posterior predictive CDFs
+
+```{r plot-cdfs, fig.width=8, fig.height=5, purl=FALSE}
+x_seq <- seq(0.1, 25, length.out = 400)
+
+cdf_dc    <- compute_predictive_cdf(fit_dc,    "lognormal", x_seq = x_seq, n_draws = 500)
+cdf_naive <- compute_predictive_cdf(fit_naive, "lognormal", x_seq = x_seq, n_draws = 500)
+
+# True CDF for comparison
+true_cdf_df <- data.frame(
+  x   = x_seq,
+  cdf = plnorm(x_seq, meanlog = true_mu, sdlog = true_sigma)
+)
+
+cdf_plot_df <- bind_rows(
+  cdf_dc$summary    |> mutate(model = "Type 6 (correct)"),
+  cdf_naive$summary |> mutate(model = "Type 5 (naive)")
+)
+
+model_colours <- c("Type 6 (correct)" = "#0072B5", "Type 5 (naive)" = "#BC3C29")
+
+ggplot() +
+  geom_ribbon(
+    data = cdf_plot_df,
+    aes(x = x, ymin = low, ymax = high, fill = model),
+    alpha = 0.20
+  ) +
+  geom_line(
+    data = cdf_plot_df,
+    aes(x = x, y = median, colour = model),
+    linewidth = 1.0
+  ) +
+  geom_line(
+    data = true_cdf_df,
+    aes(x = x, y = cdf),
+    colour = "black", linetype = "dashed", linewidth = 0.9
+  ) +
+  scale_fill_manual(values   = model_colours) +
+  scale_colour_manual(values = model_colours) +
+  scale_y_continuous(breaks = seq(0, 1, 0.2), limits = c(0, 1)) +
+  labs(
+    title    = "Posterior predictive CDFs: type 6 vs naive type 5",
+    subtitle = "Dashed black line = true log-normal CDF | Shaded bands = 95% credible intervals",
+    x        = "Delay (days)",
+    y        = "Cumulative probability",
+    fill     = NULL, colour   = NULL
+  ) +
+  theme_bw(base_size = 13) +
+  theme(legend.position = "bottom")
+```
+
+### Illustrating the naive over-dispersion
+
+The plot below shows the distribution of observed delay intervals under the two
+approaches for a random sample of 50 observations. The outer-bounds approach
+produces wider, overlapping intervals that inflate apparent delay uncertainty.
+
+```{r plot-intervals, fig.width=8, fig.height=5, purl=FALSE}
+set.seed(7)
+idx <- sample(nrow(dat), 50)
+samp <- dat[idx, ] |>
+  arrange(D_true) |>
+  mutate(obs = row_number())
+
+interval_df <- bind_rows(
+  samp |> transmute(obs, approach = "Type 6 (correct)",
+                    lower = event_lower - expo_upper,
+                    upper = event_upper - expo_lower,
+                    mid   = (lower + upper) / 2),
+  samp |> transmute(obs, approach = "Type 5 (naive)",
+                    lower = naive_lower, upper = naive_upper,
+                    mid   = (lower + upper) / 2)
+)
+
+ggplot(interval_df, aes(y = obs, colour = approach)) +
+  geom_segment(aes(x = lower, xend = upper, yend = obs),
+               linewidth = 0.6, alpha = 0.7) +
+  geom_point(data = samp |> mutate(obs = row_number()),
+             aes(x = D_true, y = obs),
+             colour = "black", shape = 4, size = 1.5, inherit.aes = FALSE) +
+  scale_colour_manual(values = model_colours) +
+  labs(
+    title    = "Observed delay intervals for 50 sampled cases",
+    subtitle = "Crosses mark the true simulated delay",
+    x        = "Delay (days)",
+    y        = "Observation (sorted by true delay)",
+    colour   = NULL
+  ) +
+  theme_bw(base_size = 12) +
+  theme(legend.position = "bottom",
+        axis.text.y  = element_blank(),
+        axis.ticks.y = element_blank())
+```
+
+## When to use type 6 vs type 5
+
+| Situation | Recommended format |
+|---|---|
+| Event time is recorded to the exact day, exposure window is 0-1 days wide | Type 5 (or type 4) |
+| Event time is exact; exposure window spans several days | Type 5 |
+| Both endpoints interval-censored; windows narrow relative to the mean delay | Type 5 with outer bounds is acceptable |
+| Both endpoints interval-censored; windows wide (e.g. > 30% of mean delay) | **Type 6** |
+| Serial interval, generation time, or time-to-event with uncertain start | **Type 6** |
+
+As a rule of thumb, if the sum of the exposure and event window widths
+exceeds roughly a third of the expected delay, the naive outer-bounds
+approximation will produce a meaningfully biased estimate of $\phi$ and
+should be replaced by type 6.
+
+## Session Info
+
+```{r session-info, eval=TRUE, purl=FALSE}
+sessionInfo()
+```
