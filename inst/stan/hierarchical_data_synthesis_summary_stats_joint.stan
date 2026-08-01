@@ -337,26 +337,18 @@ functions {
   // Identical to the version in hierarchical_data_synthesis_summary_stats.stan.
   real dc_log_lik(real ex_l, real ex_r, real ev_l, real ev_r,
                   int dist_type, real loc, real phi, real kappa, real resolution) {
-    // Both endpoints point-observed: the implied delay ev_l - ex_l is itself
-    // a rounded reported value, not an exact continuous observation, and is
-    // treated the same way via rounded_freq_loglik_fun as summary_type 4/5's
-    // degenerate case, rather than the raw point density dist_logpdf_fun
-    // (singular/undefined at a delay of exactly 0 for several families).
-    if (ex_l == ex_r && ev_l == ev_r) {
-      return rounded_freq_loglik_fun(ev_l - ex_l, dist_type, loc, phi, kappa, resolution);
-    }
-    if (ex_l == ex_r) {
-      return log_diff_exp(
-        dist_log_cdf_fun(ev_r - ex_l, dist_type, loc, phi, kappa),
-        dist_log_cdf_fun(ev_l - ex_l, dist_type, loc, phi, kappa)
-      );
-    }
-    if (ev_l == ev_r) {
-      return log_diff_exp(
-        dist_log_cdf_fun(ev_l - ex_l, dist_type, loc, phi, kappa),
-        dist_log_cdf_fun(ev_l - ex_r, dist_type, loc, phi, kappa)
-      );
-    }
+    // 7-point Gauss-Legendre nodes/weights on [-1, 1] (Abramowitz & Stegun
+    // table 25.4), shared by every case below. Every case quadratures over
+    // the exposure side (its genuinely reported window in Cases 2-4, or a
+    // resolution-wide window standing in for a point report in Cases 1/3),
+    // treating the event side as a closed-form probability at each exposure
+    // node: dist_log_cdf_fun's CDF-difference when event is a genuine
+    // window (Cases 2, 4), or rounded_freq_loglik_fun's resolution-wide
+    // probability when event is itself a point report (Cases 1, 3). This
+    // keeps every case's Jacobian-dropping convention identical to Case 4's
+    // pre-existing one: calling this function with a point widened to its
+    // own resolution window gives the exact same result, node for node, as
+    // calling Case 4 directly with that window as an explicit interval.
     array[7] real t = {-0.9491079123427585, -0.7415311855993945,
                        -0.4058451513773832,  0.0,
                         0.4058451513773832,  0.7415311855993945,
@@ -365,6 +357,58 @@ functions {
                         0.3818300505051189,  0.4179591836734694,
                         0.3818300505051189,  0.2797053914892767,
                         0.1294849661688697};
+    real half_res = resolution / 2;
+
+    // Case 1: both endpoints point-observed. Exposure and event are each
+    // independently day-rounded, so the delay's implied distribution is the
+    // convolution of two independent Uniform(-resolution/2, resolution/2)
+    // rounding errors: a triangular kernel of half-width `resolution`, not
+    // the single rounded_freq_loglik_fun evaluation used before. Integrating
+    // out the exposure side analytically collapses the general double
+    // integral to this 1D quadrature over rounded_freq_loglik_fun exactly,
+    // no approximation in that reduction step.
+    if (ex_l == ex_r && ev_l == ev_r) {
+      real d = ev_l - ex_l;
+      array[7] real log_terms;
+      for (k in 1:7) {
+        real v_k = half_res * t[k];
+        log_terms[k] = log(w[k]) + rounded_freq_loglik_fun(d - v_k, dist_type, loc, phi, kappa, resolution);
+      }
+      return log_sum_exp(log_terms);
+    }
+    // Case 2: point exposure, interval event. Exposure is day-rounded; event
+    // stays exactly as reported (a genuine censoring window, not itself
+    // rounded further). Quadrature averages the point-exposure formula over
+    // exposure's own rounding window instead of evaluating it once at the
+    // exact reported value.
+    if (ex_l == ex_r) {
+      array[7] real log_terms;
+      for (k in 1:7) {
+        real e_k = ex_l + half_res * t[k];
+        log_terms[k] = log(w[k]) + log_diff_exp(
+          dist_log_cdf_fun(ev_r - e_k, dist_type, loc, phi, kappa),
+          dist_log_cdf_fun(ev_l - e_k, dist_type, loc, phi, kappa)
+        );
+      }
+      return log_sum_exp(log_terms);
+    }
+    // Case 3: interval exposure, point event. Quadrature over the genuinely
+    // reported exposure window, exactly like Case 4, but with the event
+    // side's closed-form CDF-difference replaced by rounded_freq_loglik_fun
+    // (event is itself a point report, standing in for its own resolution
+    // window) instead of the exact reported event window Case 4 uses.
+    if (ev_l == ev_r) {
+      real mid = 0.5 * (ex_r + ex_l);
+      real half = 0.5 * (ex_r - ex_l);
+      array[7] real log_terms;
+      for (k in 1:7) {
+        real e_k = mid + half * t[k];
+        log_terms[k] = log(w[k]) + rounded_freq_loglik_fun(ev_l - e_k, dist_type, loc, phi, kappa, resolution);
+      }
+      return log_sum_exp(log_terms);
+    }
+    // Case 4: both interval-censored (quadrature on [ex_l, ex_r]).
+    // The Jacobian factor (ex_r - ex_l)/2 is constant in theta and is dropped.
     real mid  = 0.5 * (ex_r + ex_l);
     real half = 0.5 * (ex_r - ex_l);
     array[7] real log_terms;
@@ -392,8 +436,8 @@ data {
   // Day-fraction rounding resolution (e.g. 1 = whole day, 1/24 = hourly); see
   // detect_resolution() in R/utils.R. Used by summary_type 1/2 (reported
   // order statistics), summary_type 4/5 (raw/degenerate frequency-table
-  // counts), and summary_type 6/7's own degenerate (both-endpoints-point-
-  // observed) case in dc_log_lik, all treated as rounded point values.
+  // counts), and summary_type 6/7's dc_log_lik whenever exposure and/or
+  // event is point-observed (Cases 1-3), all treated as rounded values.
   // Ignored for summary_type 3 (populate with 1, unused).
   array[n_datasets] real<lower=0> resolution;
 
@@ -415,6 +459,10 @@ data {
   // Type 7: right truncation / right censoring.
   // event_observed[i] = 1 if onset was recorded, 0 if right-censored (onset not yet seen).
   // truncation_time[d] = analysis date T in days from the reference date; ignored for other types.
+  // T is a study-design cutoff, not a rounded observation of a random event
+  // time, so it is never treated as day-rounded the way exposure/event
+  // windows are (see resolution, above). Set it using the same
+  // time-encoding convention as that dataset's own windows.
   array[n_freq_total] int<lower=0, upper=1> event_observed;  // 1=onset seen, 0=right-censored
   array[n_datasets]   real<lower=0>         truncation_time; // analysis date T per dataset
 
