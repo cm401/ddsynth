@@ -232,6 +232,116 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95), cdf_mat = NULL)
 }
 
 
+#' Detect the day-fraction reporting resolution of an order-statistic dataset
+#'
+#' Infers how finely a study's reported order statistics were rounded, so the
+#' day-rounded order-statistic likelihood (Reviewer 2, point 1(iii)) can use a
+#' window narrower than a full day where the data supports it, rather than
+#' assuming every dataset was rounded to the nearest whole day.
+#'
+#' `exact_vals` (the sample min and max for a median+range dataset) are
+#' always true order statistics: an actual individual observation, under any
+#' convention, at any sample size. `risky_vals` (the median, and for a
+#' median+IQR dataset the reported quartiles) are not: for an even sample
+#' size the standard median is the *average* of the two middle order
+#' statistics, and quartile conventions vary and routinely interpolate
+#' between adjacent order statistics. A day-integer dataset can therefore
+#' report a median or quartile with a spurious fractional part (most often an
+#' exact half, from averaging two integers) that reflects the interpolation
+#' arithmetic, not the study's real measurement precision. Checked against
+#' the curated corpus: several real median+range datasets (e.g. n=28, n=8,
+#' n=10, n=22) show exactly this pattern, a half-integer median next to
+#' integer min/max, for both even and odd n.
+#'
+#' Because of this, `exact_vals` are checked against the full set of "nice"
+#' divisors of a day (whole day, half-day, ..., hourly), coarsest first,
+#' since an integer is trivially consistent with every finer grid too (e.g.
+#' `5` is a multiple of `1/24` as well as of `1`) and the coarsest match is
+#' the meaningful one. `risky_vals` are trusted only for signals that a
+#' generic linear interpolation between two integers is unlikely to produce
+#' by chance: an hour-based grid (hourly, 2-hourly, 3-hourly) or a decimal
+#' precision of two or more places (a simple interpolation weight reproduces
+#' at most one non-trivial decimal digit from two integers, e.g. an eighth
+#' gives `x.125`, a genuine 3-decimal case, which is why the 2dp threshold is
+#' conservative rather than exact). Otherwise `risky_vals` are ignored and
+#' the result defaults to a whole day. This means the function will
+#' sometimes underestimate a median+IQR dataset's true resolution (there is
+#' no min/max to anchor it), but underestimating resolution only means
+#' falling back to the wider, already-accepted day window, not repeating the
+#' overconfidence problem this exists to fix.
+#'
+#' @param exact_vals Numeric vector of statistics that are always true order
+#'   statistics (min and max, for a median+range dataset). `NA`s are
+#'   dropped. Pass `numeric(0)` if none apply (e.g. a median+IQR dataset).
+#' @param risky_vals Numeric vector of statistics that may be interpolated
+#'   rather than raw order statistics (the median; and, for a median+IQR
+#'   dataset, the quartiles too). `NA`s are dropped. Default `numeric(0)`.
+#' @param tol Numerical tolerance for judging a value to be a multiple of a
+#'   candidate grid. Default `1e-6`.
+#' @return A single number: the detected resolution in days (`1` = whole day,
+#'   `1/24` = hourly, etc.). Defaults to `1` if both arguments are empty
+#'   after dropping `NA`s.
+#' @export
+detect_resolution <- function(exact_vals, risky_vals = numeric(0), tol = 1e-6) {
+  exact_vals <- exact_vals[!is.na(exact_vals)]
+  risky_vals <- risky_vals[!is.na(risky_vals)]
+
+  grid_match <- function(vals, denoms) {
+    for (den in denoms) {
+      if (all(abs(vals * den - round(vals * den)) < tol)) return(1 / den)
+    }
+    NA_real_
+  }
+  decimals_of <- function(x) {
+    s <- sub("0+$", "", formatC(x, digits = 6, format = "f"))
+    s <- sub("\\.$", "", s)  # a bare trailing "." remains when x is a whole number
+    if (!grepl(".", s, fixed = TRUE)) return(0L)
+    nchar(strsplit(s, ".", fixed = TRUE)[[1]][2])
+  }
+  decimal_precision <- function(vals) {
+    if (length(vals) == 0) return(NA_real_)
+    max_dec <- min(max(vapply(vals, decimals_of, integer(1))), 3L)
+    if (max_dec == 0L) NA_real_ else 10^(-max_dec)
+  }
+
+  nice_denoms <- c(1, 2, 3, 4, 6, 8, 12, 24)
+
+  # Exact order statistics: trust the full grid search, then the general
+  # decimal-precision fallback (a study reporting min/max to N decimal
+  # places really did measure to that precision).
+  if (length(exact_vals) > 0) {
+    res <- grid_match(exact_vals, nice_denoms)
+    if (is.na(res)) res <- decimal_precision(exact_vals)
+    if (!is.na(res)) return(res)
+  }
+
+  # No exact anchor, or it was all whole days: only accept risky_vals'
+  # evidence of finer resolution if it is not plausibly a simple
+  # interpolation artifact (an hour-based grid, or >=2dp decimal precision).
+  #
+  # Finding the COARSEST grid risky_vals fit (not just checking membership of
+  # {8,12,24} directly) matters here: a half-day value like 6.5 is *also*
+  # trivially a multiple of 1/8, 1/12 and 1/24 (0.5 = 4/8 = 6/12 = 12/24), so
+  # checking those denominators on their own would wrongly "confirm" an
+  # hour-based grid for a dataset that is really just half-day. Only the
+  # coarsest grid that fits is a genuine claim about the resolution.
+  if (length(risky_vals) > 0) {
+    coarsest_den <- NA_real_
+    for (den in nice_denoms) {
+      if (all(abs(risky_vals * den - round(risky_vals * den)) < tol)) { coarsest_den <- den; break }
+    }
+    hour_res <- if (!is.na(coarsest_den) && coarsest_den %in% c(8, 12, 24)) 1 / coarsest_den else NA_real_
+    dec_res  <- decimal_precision(risky_vals)
+    if (!is.na(dec_res) && dec_res > 0.01) dec_res <- NA_real_  # 1dp: too easily a simple-fraction artifact
+    candidates <- c(hour_res, dec_res)
+    candidates <- candidates[!is.na(candidates)]
+    if (length(candidates) > 0) return(min(candidates))
+  }
+
+  1
+}
+
+
 #' Prepare Stan data from a list of dataset summaries
 #'
 #' Converts a list of dataset descriptors (each providing summary statistics
@@ -378,6 +488,9 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
   obs_stat1      <- numeric(n_datasets)
   obs_stat2      <- numeric(n_datasets)
   obs_stat3      <- numeric(n_datasets)
+  # Day-fraction rounding resolution for summary_type 1/2 (see
+  # detect_resolution()); irrelevant for other types, left at the default 1.
+  resolution_vec <- rep(1, n_datasets)
   # Frequency table flat arrays (for summary_type == 4, 5, 6, and 7)
   freq_value_all      <- numeric(0)
   freq_lower_all      <- numeric(0)
@@ -403,6 +516,9 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
       obs_stat1[i]    <- d$median
       obs_stat2[i]    <- d$min
       obs_stat3[i]    <- d$max
+      # min/max are always true order statistics; median may be an
+      # interpolated average for even n, so it is only a "risky" signal.
+      resolution_vec[i] <- detect_resolution(c(d$min, d$max), d$median)
 
     } else if (!is.null(d$median) && !is.null(d$Q1) && !is.null(d$Q3)) {
       # Type 2: median + IQR (Q1, Q3)
@@ -411,6 +527,9 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
       obs_stat1[i]    <- d$median
       obs_stat2[i]    <- d$Q1
       obs_stat3[i]    <- d$Q3
+      # No min/max anchor here; median and quartiles can all be interpolated,
+      # so all three are "risky" (see detect_resolution()).
+      resolution_vec[i] <- detect_resolution(numeric(0), c(d$median, d$Q1, d$Q3))
 
     } else if (!is.null(d$mean) && !is.null(d$sd)) {
       # Type 3: mean + sd
@@ -427,6 +546,10 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
       obs_stat1[i]      <- 0  # placeholder
       obs_stat2[i]      <- 0  # placeholder
       obs_stat3[i]      <- 0  # placeholder
+      # freq_value entries are true recorded values, not interpolated
+      # statistics, so (unlike median/Q1/Q3) they can all be trusted with the
+      # full "exact" grid search, the same way min/max are for type 1.
+      resolution_vec[i] <- detect_resolution(d$freq_value)
       freq_start_vec[i] <- running_start
       freq_len_vec[i]   <- length(d$freq_value)
       freq_value_all       <- c(freq_value_all,      as.numeric(d$freq_value))
@@ -452,6 +575,12 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
       obs_stat1[i]      <- 0  # placeholder
       obs_stat2[i]      <- 0  # placeholder
       obs_stat3[i]      <- 0  # placeholder
+      # Only entries with no reported range (freq_lower == freq_upper) are
+      # treated as rounded point values in Stan; resolution is inferred from
+      # just those (true recorded values, so the "exact" grid search
+      # applies). detect_resolution() defaults to 1 (unused) if a dataset has
+      # no such entries.
+      resolution_vec[i] <- detect_resolution(d$freq_lower[d$freq_lower == d$freq_upper])
       freq_start_vec[i] <- running_start
       freq_len_vec[i]   <- length(d$freq_lower)
       freq_value_all      <- c(freq_value_all,     rep(0, length(d$freq_lower)))  # unused for type 5
@@ -624,6 +753,7 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
     obs_stat1    = as.array(obs_stat1),
     obs_stat2    = as.array(obs_stat2),
     obs_stat3    = as.array(obs_stat3),
+    resolution   = as.array(resolution_vec),
     n_freq_total     = length(freq_value_all),
     freq_value       = freq_value_all,
     freq_lower       = freq_lower_all,
@@ -2912,6 +3042,15 @@ run_simulation_study_generalized_non_parallel <- function(n_sim,
 #'   (sample from types 1-3 with those probabilities), or a length-4 probability
 #'   vector (sample from types 1-4 with those probabilities). Type 4 produces a
 #'   frequency table of observations rounded to the nearest whole day.
+#' @param round_order_stats If `TRUE`, the median/min/max/Q1/Q3 reported for
+#'   summary types 1 and 2 are rounded to the nearest multiple of
+#'   `resolution` before being returned, matching how these statistics are
+#'   actually reported in the literature.
+#' @param resolution Rounding grid in days, used only when
+#'   `round_order_stats = TRUE`. Default `1` (nearest whole day); pass e.g.
+#'   `1/24` to simulate hour-resolution reporting. Recorded in the returned
+#'   `obs_data$resolution` field so the Stan model integrates over the same
+#'   window that was used to round the data.
 #' @return List containing true parameters and observed summary statistics
 generate_hierarchical_data_mixed <- function(n_datasets,
                                              n_obs,
@@ -2921,7 +3060,9 @@ generate_hierarchical_data_mixed <- function(n_datasets,
                                              tau,
                                              phi,
                                              kappa = 1.0,
-                                             summary_type = NULL) {
+                                             summary_type = NULL,
+                                             round_order_stats = FALSE,
+                                             resolution = 1) {
 
   dist_type <- match.arg(dist_type)
   
@@ -2956,10 +3097,11 @@ generate_hierarchical_data_mixed <- function(n_datasets,
   loc_d <- rnorm(n_datasets, mean = mu0, sd = tau)
   
   # Initialize storage
-  obs_stat1   <- numeric(n_datasets)
-  obs_stat2   <- numeric(n_datasets)
-  obs_stat3   <- numeric(n_datasets)
-  freq_tables <- vector("list", n_datasets)
+  obs_stat1      <- numeric(n_datasets)
+  obs_stat2      <- numeric(n_datasets)
+  obs_stat3      <- numeric(n_datasets)
+  resolution_vec <- rep(1, n_datasets)  # unused (placeholder) for non-type-1/2 datasets
+  freq_tables    <- vector("list", n_datasets)
   
   # Generate data for each dataset
   for (d in 1:n_datasets) {
@@ -3002,12 +3144,24 @@ generate_hierarchical_data_mixed <- function(n_datasets,
       obs_stat1[d] <- median(data_d)
       obs_stat2[d] <- min(data_d)
       obs_stat3[d] <- max(data_d)
-      
+      if (round_order_stats) {
+        obs_stat1[d] <- round(obs_stat1[d] / resolution) * resolution
+        obs_stat2[d] <- round(obs_stat2[d] / resolution) * resolution
+        obs_stat3[d] <- round(obs_stat3[d] / resolution) * resolution
+        resolution_vec[d] <- resolution
+      }
+
     } else if (st == 2) {  # median + IQR
       obs_stat1[d] <- median(data_d)
       obs_stat2[d] <- quantile(data_d, 0.25)
       obs_stat3[d] <- quantile(data_d, 0.75)
-      
+      if (round_order_stats) {
+        obs_stat1[d] <- round(obs_stat1[d] / resolution) * resolution
+        obs_stat2[d] <- round(obs_stat2[d] / resolution) * resolution
+        obs_stat3[d] <- round(obs_stat3[d] / resolution) * resolution
+        resolution_vec[d] <- resolution
+      }
+
     } else if (st == 3) {  # mean + sd
       obs_stat1[d] <- mean(data_d)
       obs_stat2[d] <- sd(data_d)
@@ -3065,6 +3219,7 @@ generate_hierarchical_data_mixed <- function(n_datasets,
       obs_stat1    = as.array(obs_stat1),
       obs_stat2    = as.array(obs_stat2),
       obs_stat3    = as.array(obs_stat3),
+      resolution   = as.array(resolution_vec),
       # Frequency table fields (populated only when summary_type == 4)
       n_freq_total = length(freq_value_flat),
       freq_value   = freq_value_flat,
