@@ -72,6 +72,16 @@ functions {
 
   // Log-scale CDF for each distribution.
   real dist_log_cdf_fun(real x, int dist_type, real loc, real phi, real kappa) {
+    // F_D(0) = 0 for every family here (support starts at 0), handled as an
+    // exact special case rather than the general per-family formula below.
+    // For Burr XII/generalised gamma (and empirically, Weibull's own
+    // weibull_lcdf), that formula involves u = exp(shape * log(x/scale));
+    // differentiating w.r.t. shape gives a factor of log(x/scale), which at
+    // x=0 is -Inf * 0 = NaN even though the true limit is 0 (a removable
+    // singularity). Verified this bypass leaves log-likelihood values
+    // unchanged on non-zero x, while giving finite gradients at x=0 for all
+    // 5 families.
+    if (x <= 0) return negative_infinity();
     if (dist_type == 1) {  // lognormal
       return lognormal_lcdf(x | loc, phi);
     } else if (dist_type == 2) {  // gamma
@@ -94,6 +104,9 @@ functions {
 
   // Log-scale CCDF (log survivor function) for each distribution.
   real dist_log_ccdf_fun(real x, int dist_type, real loc, real phi, real kappa) {
+    // 1 - F_D(0) = 1 for every family here; see dist_log_cdf_fun for why this
+    // must be special-cased rather than left to the general formula.
+    if (x <= 0) return 0;
     if (dist_type == 1) {  // lognormal
       return lognormal_lccdf(x | loc, phi);
     } else if (dist_type == 2) {  // gamma
@@ -112,57 +125,6 @@ functions {
       return gamma_lccdf(gamma_shape * exp(kappa * w) | gamma_shape, 1);
     }
     return negative_infinity();
-  }
-
-  // Log likelihood for order statistic:
-  // k-th order statistic out of n observations.
-  real order_stat_logpdf_fun(real x, int n, int k, int dist_type, real loc, real phi, real kappa) {
-    real log_f;
-    real log_F   = 0.0;
-    real log_1mF = 0.0;
-
-    if (dist_type == 1) {  // lognormal
-      log_f   = lognormal_lpdf(x  | loc, phi);
-      log_F   = lognormal_lcdf(x  | loc, phi);
-      log_1mF = lognormal_lccdf(x | loc, phi);
-
-    } else if (dist_type == 2) {  // gamma
-      real mean_d = exp(loc);
-      real rate   = phi / mean_d;
-      log_f   = gamma_lpdf(x  | phi, rate);
-      log_F   = gamma_lcdf(x  | phi, rate);
-      log_1mF = gamma_lccdf(x | phi, rate);
-
-    } else if (dist_type == 3) {  // weibull
-      real scale = exp(loc);
-      log_f   = weibull_lpdf(x  | phi, scale);
-      log_F   = weibull_lcdf(x  | phi, scale);
-      log_1mF = weibull_lccdf(x | phi, scale);
-
-    } else if (dist_type == 4) {  // burr XII: lambda=exp(loc), c=phi, k=kappa
-      real u        = log(x) - loc;
-      real log_term = log1p_exp(phi * u);
-      log_f   = log(phi) + log(kappa) + (phi - 1) * u - loc - (kappa + 1) * log_term;
-      log_1mF = -kappa * log_term;
-      log_F   = log1m_exp(log_1mF);
-
-    } else if (dist_type == 5) {  // generalised gamma (Prentice)
-      real gamma_shape = 1.0 / (kappa * kappa);
-      real w    = (log(x) - loc) / phi;
-      real arg  = gamma_shape * exp(kappa * w);
-      log_f   = log(kappa) - log(phi) - log(x)
-                + gamma_shape * log(gamma_shape)
-                + gamma_shape * kappa * w
-                - arg
-                - lgamma(gamma_shape);
-      if (k > 1) log_F   = gamma_lcdf(arg  | gamma_shape, 1);
-      if (k < n) log_1mF = gamma_lccdf(arg | gamma_shape, 1);
-    }
-
-    real log_dens = lchoose(n, k) + log_f;
-    if (k > 1) log_dens += (k - 1) * log_F;
-    if (k < n) log_dens += (n - k) * log_1mF;
-    return log_dens;
   }
 
   // Joint log density of three order statistics x1 < x2 < x3 with ranks
@@ -212,6 +174,102 @@ functions {
     return lp;
   }
 
+  // Rounded log-likelihood for the joint density of 3 order statistics:
+  // integrates joint_3_order_stat_logpdf over a box of width `resolution`
+  // around each reported (rounded) value, via 5-point-per-dimension tensor
+  // Gauss-Legendre quadrature (125 nodes). Validated in R against a nested
+  // adaptive-quadrature reference (Burr XII, n=15, resolution=1): relative
+  // error ~5e-8, versus ~1e-4 at 3 points/dimension: 5 points gives a
+  // comfortable safety margin at a still-modest node count. Lower bounds are
+  // clamped just above 0 since delays are non-negative (only relevant for
+  // the smallest of the three statistics, e.g. the reported min).
+  //
+  // Loses accuracy (~9% error in a case checked in the code review) when two
+  // of the three reported statistics are within `resolution` of each other,
+  // since joint_3_order_stat_logpdf's ordering constraint (x1<x2<x3) puts a
+  // hard zero inside the integration box. Known limitation of this secondary
+  // sensitivity model; see REVISION_TODO.md.
+  real joint_3_order_stat_rounded_loglik(
+      real v1, real v2, real v3,
+      int i1, int i2, int i3,
+      int n, int dist_type, real loc, real phi, real kappa, real resolution
+  ) {
+    array[5] real t = {-0.9061798459386640, -0.5384693101056831, 0.0,
+                         0.5384693101056831,  0.9061798459386640};
+    array[5] real w = { 0.2369268850561891,  0.4786286704993665,
+                         0.5688888888888889,
+                         0.4786286704993665,  0.2369268850561891};
+
+    real half_res = resolution / 2;
+    real v1_lo = fmax(v1 - half_res, 1e-6); real v1_hi = v1 + half_res;
+    real v2_lo = fmax(v2 - half_res, 1e-6); real v2_hi = v2 + half_res;
+    real v3_lo = fmax(v3 - half_res, 1e-6); real v3_hi = v3 + half_res;
+    real mid1 = 0.5 * (v1_hi + v1_lo); real half1 = 0.5 * (v1_hi - v1_lo);
+    real mid2 = 0.5 * (v2_hi + v2_lo); real half2 = 0.5 * (v2_hi - v2_lo);
+    real mid3 = 0.5 * (v3_hi + v3_lo); real half3 = 0.5 * (v3_hi - v3_lo);
+
+    array[125] real log_terms;
+    int idx = 1;
+    for (a in 1:5) {
+      real x1 = mid1 + half1 * t[a];
+      for (b in 1:5) {
+        real x2 = mid2 + half2 * t[b];
+        for (c in 1:5) {
+          real x3 = mid3 + half3 * t[c];
+          log_terms[idx] = log(w[a]) + log(w[b]) + log(w[c])
+                           + joint_3_order_stat_logpdf(x1, x2, x3, i1, i2, i3, n,
+                                                        dist_type, loc, phi, kappa);
+          idx += 1;
+        }
+      }
+    }
+    return log_sum_exp(log_terms) + log(half1) + log(half2) + log(half3);
+  }
+
+  // Log-likelihood contribution for a raw frequency-table count that has
+  // been rounded to the nearest multiple of `resolution` days: log P(v -
+  // resolution/2 <= X < v + resolution/2), rather than treating v as an
+  // exact continuous observation (summary_type 4's freq_value, and
+  // summary_type 5's degenerate freq_lower==freq_upper point entries).
+  // This is the same rounding treatment already applied to reported order
+  // statistics, for consistency across every summary type where a single
+  // reported value stands in for an underlying continuous, day-rounded
+  // observation.
+  //
+  // No explicit clamp is needed on the lower bound, even when it goes
+  // negative (v < resolution/2): unlike the order statistic case, this uses
+  // a CDF *difference*, never the point density, so dist_log_cdf_fun's own
+  // x<=0 special case (identical for any x<=0, negative or not) already
+  // gives the correct result directly.
+  real rounded_freq_loglik_fun(real v, int dist_type, real loc, real phi, real kappa, real resolution) {
+    real half_res = resolution / 2;
+    return log_diff_exp(
+      dist_log_cdf_fun(v + half_res, dist_type, loc, phi, kappa),
+      dist_log_cdf_fun(v - half_res, dist_type, loc, phi, kappa)
+    );
+  }
+
+  // Log-density of a bivariate normal with mean (mx, my), variances (vx, vy)
+  // and covariance cxy. Used for the joint mean/SD likelihood (summary_type
+  // 3), which needs a nonzero covariance term for every right-skewed family
+  // used here.
+  //
+  // Guards against a non-positive-definite or non-finite covariance (which
+  // can arise from floating-point cancellation, or from the 3rd/4th central
+  // moments overflowing at extreme parameter draws explored during warmup)
+  // by treating it as a rejected region of parameter space (-Inf) rather
+  // than propagating a NaN into target.
+  real bvn_log_dens(real x, real y, real mx, real my, real vx, real vy, real cxy) {
+    real det  = vx * vy - cxy * cxy;
+    if (!(vx > 0) || !(vy > 0) || !(det > 0) || !(det < positive_infinity())) {
+      return negative_infinity();
+    }
+    real dx   = x - mx;
+    real dy   = y - my;
+    real quad = (dx * dx * vy - 2 * dx * dy * cxy + dy * dy * vx) / det;
+    return -log(2 * pi()) - 0.5 * log(det) - 0.5 * quad;
+  }
+
   // Helper function to compute gamma quantile approximation
   real gamma_quantile_approx(real p, real shape, real scale) {
     real z = inv_Phi(p);
@@ -222,7 +280,7 @@ functions {
     }
   }
 
-  // Log of integral_{ex_l}^{ex_r} F_D(T - e) de — truncation denominator
+  // Log of integral_{ex_l}^{ex_r} F_D(T - e) de: truncation denominator
   // for type 7 (right-truncated, doubly censored).  Uses 7-point GL quadrature.
   // Degenerates to log F_D(T - ex_l) when ex_l == ex_r (point exposure).
   real trunc_denom_log(real ex_l, real ex_r, real T,
@@ -249,7 +307,7 @@ functions {
     return log_sum_exp(log_terms);
   }
 
-  // Log of integral_{ex_l}^{ex_r} [1 - F_D(T - e)] de — right-censored contribution
+  // Log of integral_{ex_l}^{ex_r} [1 - F_D(T - e)] de: right-censored contribution
   // for type 7 (onset not yet observed by T).  Uses 7-point GL quadrature.
   real right_censor_log_lik(real ex_l, real ex_r, real T,
                              int dist_type, real loc, real phi, real kappa) {
@@ -278,9 +336,14 @@ functions {
   // Double-censored log-likelihood for one observation (summary type 6).
   // Identical to the version in hierarchical_data_synthesis_summary_stats.stan.
   real dc_log_lik(real ex_l, real ex_r, real ev_l, real ev_r,
-                  int dist_type, real loc, real phi, real kappa) {
+                  int dist_type, real loc, real phi, real kappa, real resolution) {
+    // Both endpoints point-observed: the implied delay ev_l - ex_l is itself
+    // a rounded reported value, not an exact continuous observation, and is
+    // treated the same way via rounded_freq_loglik_fun as summary_type 4/5's
+    // degenerate case, rather than the raw point density dist_logpdf_fun
+    // (singular/undefined at a delay of exactly 0 for several families).
     if (ex_l == ex_r && ev_l == ev_r) {
-      return dist_logpdf_fun(ev_l - ex_l, dist_type, loc, phi, kappa);
+      return rounded_freq_loglik_fun(ev_l - ex_l, dist_type, loc, phi, kappa, resolution);
     }
     if (ex_l == ex_r) {
       return log_diff_exp(
@@ -326,6 +389,14 @@ data {
   array[n_datasets] real<lower=0> obs_stat2;
   array[n_datasets] real<lower=0> obs_stat3;
 
+  // Day-fraction rounding resolution (e.g. 1 = whole day, 1/24 = hourly); see
+  // detect_resolution() in R/utils.R. Used by summary_type 1/2 (reported
+  // order statistics), summary_type 4/5 (raw/degenerate frequency-table
+  // counts), and summary_type 6/7's own degenerate (both-endpoints-point-
+  // observed) case in dc_log_lik, all treated as rounded point values.
+  // Ignored for summary_type 3 (populate with 1, unused).
+  array[n_datasets] real<lower=0> resolution;
+
   int<lower=0> n_freq_total;
   array[n_freq_total] real<lower=0> freq_value;
   array[n_freq_total] int<lower=1>  freq_count;
@@ -366,26 +437,53 @@ transformed data {
   real z_q90 = 1.28155;
   real z_q95 = 1.64485;
 
+  // Non-strict (<=), matching the factorised model: day-rounding a
+  // short-incubation dataset routinely produces exact ties between
+  // reported statistics (e.g. Q1 == median), which a strict check would
+  // reject and abort the entire fit on. joint_3_order_stat_rounded_loglik
+  // still loses accuracy near (but not at) a tie; see its docstring and
+  // REVISION_TODO.md.
   for (d in 1:n_datasets) {
     if (summary_type[d] == 1) {
-      if (obs_stat2[d] >= obs_stat1[d] || obs_stat1[d] >= obs_stat3[d]) {
-        reject("For summary_type=1, must have min < median < max");
+      if (obs_stat2[d] > obs_stat1[d] || obs_stat1[d] > obs_stat3[d]) {
+        reject("For summary_type=1, must have min <= median <= max");
+      }
+      if (resolution[d] <= 0) {
+        reject("For summary_type=1, resolution must be > 0");
       }
     } else if (summary_type[d] == 2) {
-      if (obs_stat2[d] >= obs_stat1[d] || obs_stat1[d] >= obs_stat3[d]) {
-        reject("For summary_type=2, must have q25 < median < q75");
+      if (obs_stat2[d] > obs_stat1[d] || obs_stat1[d] > obs_stat3[d]) {
+        reject("For summary_type=2, must have q25 <= median <= q75");
+      }
+      if (resolution[d] <= 0) {
+        reject("For summary_type=2, resolution must be > 0");
+      }
+    } else if (summary_type[d] == 3) {
+      // A sample SD is undefined for a single observation; the mean/SD
+      // likelihood also divides by (n-1), which is degenerate at n=1.
+      if (n_obs[d] < 2) {
+        reject("For summary_type=3, n_obs must be >= 2 (a sample SD requires at least 2 observations)");
       }
     } else if (summary_type[d] == 4) {
       if (freq_len[d] == 0) {
         reject("For summary_type=4, freq_len must be > 0");
       }
+      if (resolution[d] <= 0) {
+        reject("For summary_type=4, resolution must be > 0");
+      }
     } else if (summary_type[d] == 5) {
       if (freq_len[d] == 0) {
         reject("For summary_type=5, freq_len must be > 0");
       }
+      if (resolution[d] <= 0) {
+        reject("For summary_type=5, resolution must be > 0");
+      }
     } else if (summary_type[d] == 6) {
       if (freq_len[d] == 0) {
         reject("For summary_type=6, freq_len must be > 0");
+      }
+      if (resolution[d] <= 0) {
+        reject("For summary_type=6, resolution must be > 0");
       }
     } else if (summary_type[d] == 7) {
       if (freq_len[d] == 0) {
@@ -393,6 +491,9 @@ transformed data {
       }
       if (truncation_time[d] <= 0) {
         reject("For summary_type=7, truncation_time must be > 0");
+      }
+      if (resolution[d] <= 0) {
+        reject("For summary_type=7, resolution must be > 0");
       }
     }
   }
@@ -425,106 +526,116 @@ model {
     real loc = loc_d[d];
     int n = n_obs[d];
 
-    if (summary_type[d] == 1) {  // median + range: joint density of (min, median, max)
+    if (summary_type[d] == 1) {  // median + range: joint density of (min, median, max), rounded
       int k_median = (n + 1) %/% 2;
-      target += joint_3_order_stat_logpdf(
+      target += joint_3_order_stat_rounded_loglik(
           obs_stat2[d], obs_stat1[d], obs_stat3[d],  // x1=min, x2=median, x3=max
           1, k_median, n,                             // i1=1, i2=k_median, i3=n
-          n, dist_type, loc, phi, kappa);
+          n, dist_type, loc, phi, kappa, resolution[d]);
     }
 
-    else if (summary_type[d] == 2) {  // median + IQR: joint density of (q25, median, q75)
+    else if (summary_type[d] == 2) {  // median + IQR: joint density of (q25, median, q75), rounded
       int k_median = (n + 1) %/% 2;
       int k_q25 = (n + 1) %/% 4;
       if (k_q25 < 1) k_q25 = 1;
       int k_q75 = (3 * (n + 1)) %/% 4;
       if (k_q75 <= k_q25) k_q75 = k_q25 + 1;
       if (k_q75 > n) k_q75 = n;
-      target += joint_3_order_stat_logpdf(
+      target += joint_3_order_stat_rounded_loglik(
           obs_stat2[d], obs_stat1[d], obs_stat3[d],  // x1=q25, x2=median, x3=q75
           k_q25, k_median, k_q75,
-          n, dist_type, loc, phi, kappa);
+          n, dist_type, loc, phi, kappa, resolution[d]);
     }
 
-    else if (summary_type[d] == 3) {  // mean + sd (unchanged from factorised model)
-      real expected_mean;
-      real expected_sd;
-      real se_mean;
-      real se_sd;
+    else if (summary_type[d] == 3) {  // mean + sd (identical to factorised model, see there for derivation)
+      real mean_d;
+      real var_d;  // sigma_d^2
+      real mu3;
+      real mu4;
+      int  moments_ok = 1;
 
       if (dist_type == 1) {  // lognormal
-        expected_mean = exp(loc + phi^2 / 2);
-        real var_ = (exp(phi^2) - 1) * exp(2 * loc + phi^2);
-        expected_sd = sqrt(var_);
-        se_mean = expected_sd / sqrt(n);
-        se_sd = expected_sd / sqrt(2 * (n - 1));
+        real omega = exp(phi^2);
+        mean_d = exp(loc + phi^2 / 2);
+        var_d  = mean_d^2 * (omega - 1);
+        mu3    = (omega + 2) * (omega - 1)^2 * mean_d^3;
+        mu4    = (omega^4 + 2*omega^3 + 3*omega^2 - 3) * (omega - 1)^2 * mean_d^4;
 
       } else if (dist_type == 2) {  // gamma
-        real mean_d = exp(loc);
         real shape = phi;
-        real scale_param = mean_d / shape;
-        expected_mean = mean_d;
-        expected_sd = sqrt(shape * scale_param^2);
-        se_mean = expected_sd / sqrt(n);
-        se_sd = expected_sd / sqrt(2 * (n - 1));
+        mean_d = exp(loc);
+        var_d  = mean_d^2 / shape;
+        mu3    = 2 * mean_d^3 / shape^2;
+        mu4    = (3 + 6 / shape) * var_d^2;
 
       } else if (dist_type == 3) {  // weibull
-        real scale = exp(loc);
         real shape = phi;
-        expected_mean = scale * tgamma(1 + 1.0 / shape);
-        real var_ = scale^2 * (tgamma(1 + 2.0 / shape) - pow(tgamma(1 + 1.0 / shape), 2));
-        expected_sd = sqrt(var_);
-        se_mean = expected_sd / sqrt(n);
-        se_sd = expected_sd / sqrt(2 * (n - 1));
+        real scale = exp(loc);
+        real g1 = tgamma(1 + 1.0/shape);
+        real g2 = tgamma(1 + 2.0/shape);
+        real g3 = tgamma(1 + 3.0/shape);
+        real g4 = tgamma(1 + 4.0/shape);
+        mean_d = scale * g1;
+        var_d  = scale^2 * (g2 - g1^2);
+        mu3    = scale^3 * (g3 - 3*g1*g2 + 2*g1^3);
+        mu4    = scale^4 * (g4 - 4*g1*g3 + 6*g1^2*g2 - 3*g1^4);
 
-      } else if (dist_type == 4) {  // burr XII
-        if (kappa * phi <= 2.0) {
+      } else if (dist_type == 4) {  // burr XII: lambda=exp(loc), c=phi, k=kappa
+        // 4th moment (needed for Var(S^2)) requires k*c > 4, stricter than
+        // the k*c > 2 needed for the variance alone.
+        if (kappa * phi <= 4.0) {
+          moments_ok = 0;
           target += negative_infinity();
         } else {
           real lam = exp(loc);
-          expected_mean = lam * kappa * exp(lbeta(kappa - 1.0/phi, 1.0 + 1.0/phi));
-          real e2       = lam^2 * kappa * exp(lbeta(kappa - 2.0/phi, 1.0 + 2.0/phi));
-          expected_sd   = sqrt(fabs(e2 - expected_mean^2));
-          se_mean = expected_sd / sqrt(n);
-          se_sd   = expected_sd / sqrt(2 * (n - 1));
-          obs_stat1[d] ~ normal(expected_mean, se_mean);
-          obs_stat2[d] ~ normal(expected_sd,   se_sd);
+          real m1 = lam   * kappa * exp(lbeta(kappa - 1.0/phi, 1 + 1.0/phi));
+          real m2 = lam^2 * kappa * exp(lbeta(kappa - 2.0/phi, 1 + 2.0/phi));
+          real m3 = lam^3 * kappa * exp(lbeta(kappa - 3.0/phi, 1 + 3.0/phi));
+          real m4 = lam^4 * kappa * exp(lbeta(kappa - 4.0/phi, 1 + 4.0/phi));
+          mean_d = m1;
+          var_d  = fabs(m2 - m1^2);
+          mu3    = m3 - 3*m1*m2 + 2*m1^3;
+          mu4    = m4 - 4*m1*m3 + 6*m1^2*m2 - 3*m1^4;
         }
 
-      } else if (dist_type == 5) {  // generalised gamma
+      } else if (dist_type == 5) {  // generalised gamma (Prentice): mu=loc, sigma=phi, Q=kappa
         real gamma_shape = 1.0 / (kappa * kappa);
-        real log_ET  = loc + 2.0*phi/kappa * log(kappa)
-                       + lgamma(gamma_shape + phi/kappa) - lgamma(gamma_shape);
-        real log_ET2 = 2.0*loc + 4.0*phi/kappa * log(kappa)
-                       + lgamma(gamma_shape + 2.0*phi/kappa) - lgamma(gamma_shape);
-        expected_mean = exp(log_ET);
-        expected_sd   = sqrt(fabs(exp(log_ET2) - expected_mean^2));
-        se_mean = expected_sd / sqrt(n);
-        se_sd   = expected_sd / sqrt(2 * (n - 1));
-        obs_stat1[d] ~ normal(expected_mean, se_mean);
-        obs_stat2[d] ~ normal(expected_sd,   se_sd);
+        real m1 = exp(loc     + 2.0*phi/kappa * log(kappa) + lgamma(gamma_shape + phi/kappa)   - lgamma(gamma_shape));
+        real m2 = exp(2.0*loc + 4.0*phi/kappa * log(kappa) + lgamma(gamma_shape + 2.0*phi/kappa) - lgamma(gamma_shape));
+        real m3 = exp(3.0*loc + 6.0*phi/kappa * log(kappa) + lgamma(gamma_shape + 3.0*phi/kappa) - lgamma(gamma_shape));
+        real m4 = exp(4.0*loc + 8.0*phi/kappa * log(kappa) + lgamma(gamma_shape + 4.0*phi/kappa) - lgamma(gamma_shape));
+        mean_d = m1;
+        var_d  = fabs(m2 - m1^2);
+        mu3    = m3 - 3*m1*m2 + 2*m1^3;
+        mu4    = m4 - 4*m1*m3 + 6*m1^2*m2 - 3*m1^4;
       }
 
-      if (dist_type <= 3) {
-        obs_stat1[d] ~ normal(expected_mean, se_mean);
-        obs_stat2[d] ~ normal(expected_sd, se_sd);
+      if (moments_ok == 1) {
+        real var_mean = var_d / n;
+        real var_var2 = (mu4 - ((n - 3.0) / (n - 1.0)) * var_d^2) / n;
+        real cov_mv2  = mu3 / n;
+        target += bvn_log_dens(obs_stat1[d], obs_stat2[d]^2, mean_d, var_d, var_mean, var_var2, cov_mv2);
       }
     }
 
-    else if (summary_type[d] == 4) {  // raw frequency table (unchanged)
+    else if (summary_type[d] == 4) {  // raw frequency table
+      // Each distinct observed value is treated as rounded to the nearest
+      // multiple of `resolution` days, not as an exact continuous observation.
       int s = freq_start[d];
       int len = freq_len[d];
       for (i in s:(s + len - 1)) {
-        target += freq_count[i] * dist_logpdf_fun(freq_value[i], dist_type, loc, phi, kappa);
+        target += freq_count[i] * rounded_freq_loglik_fun(freq_value[i], dist_type, loc, phi, kappa, resolution[d]);
       }
     }
 
-    else if (summary_type[d] == 5) {  // interval-censored frequency table (unchanged)
+    else if (summary_type[d] == 5) {  // interval-censored frequency table
+      // When lower == upper (no reported range), the value is treated as a
+      // rounded point observation, like summary_type 4.
       int s = freq_start[d];
       int len = freq_len[d];
       for (i in s:(s + len - 1)) {
         if (freq_lower[i] == freq_upper[i]) {
-          target += freq_count[i] * dist_logpdf_fun(freq_lower[i], dist_type, loc, phi, kappa);
+          target += freq_count[i] * rounded_freq_loglik_fun(freq_lower[i], dist_type, loc, phi, kappa, resolution[d]);
         } else {
           real log_cdf_u = dist_log_cdf_fun(freq_upper[i], dist_type, loc, phi, kappa);
           real log_cdf_l = dist_log_cdf_fun(freq_lower[i], dist_type, loc, phi, kappa);
@@ -540,7 +651,7 @@ model {
         target += freq_count[i] * dc_log_lik(
           freq_lower[i], freq_upper[i],
           event_lower[i], event_upper[i],
-          dist_type, loc, phi, kappa
+          dist_type, loc, phi, kappa, resolution[d]
         );
       }
     }
@@ -554,7 +665,7 @@ model {
           target += freq_count[i] * (
             dc_log_lik(freq_lower[i], freq_upper[i],
                        event_lower[i], event_upper[i],
-                       dist_type, loc, phi, kappa)
+                       dist_type, loc, phi, kappa, resolution[d])
             - trunc_denom_log(freq_lower[i], freq_upper[i], T,
                               dist_type, loc, phi, kappa)
           );
@@ -757,82 +868,106 @@ generated quantities {
       real loc = loc_d[d];
       int n = n_obs[d];
 
-      if (summary_type[d] == 1) {  // joint density of (min, median, max)
+      if (summary_type[d] == 1) {  // joint density of (min, median, max), rounded
         int k_median = (n + 1) %/% 2;
-        log_lik[idx] = joint_3_order_stat_logpdf(
+        log_lik[idx] = joint_3_order_stat_rounded_loglik(
             obs_stat2[d], obs_stat1[d], obs_stat3[d],
             1, k_median, n,
-            n, dist_type, loc, phi, kappa);
+            n, dist_type, loc, phi, kappa, resolution[d]);
         log_lik[idx + 1] = 0;
         log_lik[idx + 2] = 0;
 
-      } else if (summary_type[d] == 2) {  // joint density of (q25, median, q75)
+      } else if (summary_type[d] == 2) {  // joint density of (q25, median, q75), rounded
         int k_median = (n + 1) %/% 2;
         int k_q25    = (n + 1) %/% 4;
         if (k_q25 < 1) k_q25 = 1;
         int k_q75    = (3 * (n + 1)) %/% 4;
         if (k_q75 <= k_q25) k_q75 = k_q25 + 1;
         if (k_q75 > n) k_q75 = n;
-        log_lik[idx] = joint_3_order_stat_logpdf(
+        log_lik[idx] = joint_3_order_stat_rounded_loglik(
             obs_stat2[d], obs_stat1[d], obs_stat3[d],
             k_q25, k_median, k_q75,
-            n, dist_type, loc, phi, kappa);
+            n, dist_type, loc, phi, kappa, resolution[d]);
         log_lik[idx + 1] = 0;
         log_lik[idx + 2] = 0;
 
-      } else if (summary_type[d] == 3) {  // mean + sd (unchanged)
-        real expected_mean;
-        real expected_sd;
+      } else if (summary_type[d] == 3) {  // mean + sd (see model block for derivation)
+        real mean_d;
+        real var_d;
+        real mu3;
+        real mu4;
+        int  moments_ok = 1;
 
         if (dist_type == 1) {
-          expected_mean = exp(loc + phi^2 / 2);
-          real var_ = (exp(phi^2) - 1) * exp(2 * loc + phi^2);
-          expected_sd = sqrt(var_);
+          real omega = exp(phi^2);
+          mean_d = exp(loc + phi^2 / 2);
+          var_d  = mean_d^2 * (omega - 1);
+          mu3    = (omega + 2) * (omega - 1)^2 * mean_d^3;
+          mu4    = (omega^4 + 2*omega^3 + 3*omega^2 - 3) * (omega - 1)^2 * mean_d^4;
+
         } else if (dist_type == 2) {
-          real mean_d = exp(loc);
           real shape = phi;
-          real scale_param = mean_d / shape;
-          expected_mean = mean_d;
-          expected_sd = sqrt(mean_d * scale_param);
+          mean_d = exp(loc);
+          var_d  = mean_d^2 / shape;
+          mu3    = 2 * mean_d^3 / shape^2;
+          mu4    = (3 + 6 / shape) * var_d^2;
+
         } else if (dist_type == 3) {
-          real scale = exp(loc);
           real shape = phi;
-          expected_mean = scale * tgamma(1 + 1.0 / shape);
-          real var_ = scale^2 * (tgamma(1 + 2.0 / shape) - pow(tgamma(1 + 1.0 / shape), 2));
-          expected_sd = sqrt(var_);
+          real scale = exp(loc);
+          real g1 = tgamma(1 + 1.0/shape);
+          real g2 = tgamma(1 + 2.0/shape);
+          real g3 = tgamma(1 + 3.0/shape);
+          real g4 = tgamma(1 + 4.0/shape);
+          mean_d = scale * g1;
+          var_d  = scale^2 * (g2 - g1^2);
+          mu3    = scale^3 * (g3 - 3*g1*g2 + 2*g1^3);
+          mu4    = scale^4 * (g4 - 4*g1*g3 + 6*g1^2*g2 - 3*g1^4);
+
         } else if (dist_type == 4) {
-          if (kappa * phi > 2.0) {
-            real lam = exp(loc);
-            expected_mean = lam * kappa * exp(lbeta(kappa - 1.0/phi, 1.0 + 1.0/phi));
-            real e2       = lam^2 * kappa * exp(lbeta(kappa - 2.0/phi, 1.0 + 2.0/phi));
-            expected_sd   = sqrt(fabs(e2 - expected_mean^2));
+          if (kappa * phi <= 4.0) {
+            moments_ok = 0;
           } else {
-            log_lik[idx]     = negative_infinity();
-            log_lik[idx + 1] = negative_infinity();
-            log_lik[idx + 2] = 0;
+            real lam = exp(loc);
+            real m1 = lam   * kappa * exp(lbeta(kappa - 1.0/phi, 1 + 1.0/phi));
+            real m2 = lam^2 * kappa * exp(lbeta(kappa - 2.0/phi, 1 + 2.0/phi));
+            real m3 = lam^3 * kappa * exp(lbeta(kappa - 3.0/phi, 1 + 3.0/phi));
+            real m4 = lam^4 * kappa * exp(lbeta(kappa - 4.0/phi, 1 + 4.0/phi));
+            mean_d = m1;
+            var_d  = fabs(m2 - m1^2);
+            mu3    = m3 - 3*m1*m2 + 2*m1^3;
+            mu4    = m4 - 4*m1*m3 + 6*m1^2*m2 - 3*m1^4;
           }
+
         } else if (dist_type == 5) {
           real gamma_shape = 1.0 / (kappa * kappa);
-          real log_ET  = loc + 2.0*phi/kappa * log(kappa)
-                         + lgamma(gamma_shape + phi/kappa) - lgamma(gamma_shape);
-          real log_ET2 = 2.0*loc + 4.0*phi/kappa * log(kappa)
-                         + lgamma(gamma_shape + 2.0*phi/kappa) - lgamma(gamma_shape);
-          expected_mean = exp(log_ET);
-          expected_sd   = sqrt(fabs(exp(log_ET2) - expected_mean^2));
+          real m1 = exp(loc     + 2.0*phi/kappa * log(kappa) + lgamma(gamma_shape + phi/kappa)   - lgamma(gamma_shape));
+          real m2 = exp(2.0*loc + 4.0*phi/kappa * log(kappa) + lgamma(gamma_shape + 2.0*phi/kappa) - lgamma(gamma_shape));
+          real m3 = exp(3.0*loc + 6.0*phi/kappa * log(kappa) + lgamma(gamma_shape + 3.0*phi/kappa) - lgamma(gamma_shape));
+          real m4 = exp(4.0*loc + 8.0*phi/kappa * log(kappa) + lgamma(gamma_shape + 4.0*phi/kappa) - lgamma(gamma_shape));
+          mean_d = m1;
+          var_d  = fabs(m2 - m1^2);
+          mu3    = m3 - 3*m1*m2 + 2*m1^3;
+          mu4    = m4 - 4*m1*m3 + 6*m1^2*m2 - 3*m1^4;
         }
 
-        if (dist_type != 4 || kappa * phi > 2.0) {
-          log_lik[idx]     = normal_lpdf(obs_stat1[d] | expected_mean, expected_sd / sqrt(n));
-          log_lik[idx + 1] = normal_lpdf(obs_stat2[d] | expected_sd,   expected_sd / sqrt(2 * (n - 1)));
-          log_lik[idx + 2] = 0;
+        if (moments_ok == 1) {
+          real var_mean = var_d / n;
+          real var_var2 = (mu4 - ((n - 3.0) / (n - 1.0)) * var_d^2) / n;
+          real cov_mv2  = mu3 / n;
+          log_lik[idx]  = bvn_log_dens(obs_stat1[d], obs_stat2[d]^2, mean_d, var_d, var_mean, var_var2, cov_mv2);
+        } else {
+          log_lik[idx]  = negative_infinity();
         }
+        log_lik[idx + 1] = 0;  // unused
+        log_lik[idx + 2] = 0;  // unused
 
       } else if (summary_type[d] == 4) {  // raw frequency table
         real ll_type4 = 0;
         int s = freq_start[d];
         int len = freq_len[d];
         for (i in s:(s + len - 1)) {
-          ll_type4 += freq_count[i] * dist_logpdf_fun(freq_value[i], dist_type, loc, phi, kappa);
+          ll_type4 += freq_count[i] * rounded_freq_loglik_fun(freq_value[i], dist_type, loc, phi, kappa, resolution[d]);
         }
         log_lik[idx]     = ll_type4;
         log_lik[idx + 1] = 0;
@@ -844,7 +979,7 @@ generated quantities {
         int len = freq_len[d];
         for (i in s:(s + len - 1)) {
           if (freq_lower[i] == freq_upper[i]) {
-            ll_type5 += freq_count[i] * dist_logpdf_fun(freq_lower[i], dist_type, loc, phi, kappa);
+            ll_type5 += freq_count[i] * rounded_freq_loglik_fun(freq_lower[i], dist_type, loc, phi, kappa, resolution[d]);
           } else {
             real log_cdf_u = dist_log_cdf_fun(freq_upper[i], dist_type, loc, phi, kappa);
             real log_cdf_l = dist_log_cdf_fun(freq_lower[i], dist_type, loc, phi, kappa);
@@ -863,7 +998,7 @@ generated quantities {
           ll_type6 += freq_count[i] * dc_log_lik(
             freq_lower[i], freq_upper[i],
             event_lower[i], event_upper[i],
-            dist_type, loc, phi, kappa
+            dist_type, loc, phi, kappa, resolution[d]
           );
         }
         log_lik[idx]     = ll_type6;
@@ -880,7 +1015,7 @@ generated quantities {
             ll_type7 += freq_count[i] * (
               dc_log_lik(freq_lower[i], freq_upper[i],
                          event_lower[i], event_upper[i],
-                         dist_type, loc, phi, kappa)
+                         dist_type, loc, phi, kappa, resolution[d])
               - trunc_denom_log(freq_lower[i], freq_upper[i], T,
                                 dist_type, loc, phi, kappa)
             );
