@@ -175,13 +175,11 @@ datasets_SARS <- list(            # Severe Acute Respiratory Syndrome (SARS-CoV-
     source     = "Meltzer (2004), doi: 10.3201/eid1002.030426"
   ),
   d18 = list(
-    # Note: four cases have freq_lower = 0 (unknown exposure start). Replaced with 0.1 to
-    # avoid a NaN gradient in the Weibull likelihood (0^phi * log(0) = 0 * -Inf = NaN).
-    # Lognormal and gamma are unaffected; this has negligible impact on all posteriors.
-    freq_lower = c( 2.5,  4.5,  0.1,  0.5,  5.5,  2.5,  1.5,  3.5,  7.5,  1.5,  2.5,  7.5,  4.5,  4.5,  3.5,
-                    0.5,  0.5,  2.5,  2.5,  0.1,  2.5,  0.1, 11.5,  0.5,  0.5,  1.5,  5.5,  3.5,  2.5, 12.5,
+    # Note: four cases have freq_lower = 0 (unknown exposure start).
+    freq_lower = c( 2.5,  4.5,  0,    0.5,  5.5,  2.5,  1.5,  3.5,  7.5,  1.5,  2.5,  7.5,  4.5,  4.5,  3.5,
+                    0.5,  0.5,  2.5,  2.5,  0,    2.5,  0,   11.5,  0.5,  0.5,  1.5,  5.5,  3.5,  2.5, 12.5,
                     1.5,  8.5,  7.5,  1.5,  5.5,  4.5,  3.5,  1.5,  0.5,  0.5,  3.5,  7.5,  5.5,  2.5,  1.5,
-                    1.5,  0.5,  1.5,  1.5,  1.5,  0.5,  8.5,  0.5,  0.1,  2.5,  5.5,  9.5,  2.5,  7.5,  4.5,
+                    1.5,  0.5,  1.5,  1.5,  1.5,  0.5,  8.5,  0.5,  0,    2.5,  5.5,  9.5,  2.5,  7.5,  4.5,
                     3.5,  1.5,  3.5,  3.5,  3.5,  4.5,  0.5),
     freq_upper = c( 6.5,  7.5,  2.5,  3.5,  6.5,  5.5,  4.5,  5.5, 11.5,  4.5,  5.5, 12.5,  5.5,  5.5,  6.5,
                     1.5,  4.5,  4.5,  4.5,  1.5,  4.5,  4.5, 13.5,  2.5,  1.5,  2.5, 10.5,  5.5,  4.5, 14.5,
@@ -248,11 +246,11 @@ datasets_MERS <- list(            # Middle East Respiratory Syndrome (MERS-CoV)
     source     = "Assiri (2013), doi: 10.1056/NEJMoa1306742"
   ),
   d11 = list(      # South Korea
-    freq_lower = c( 0.1, 0.1, 0.1, 0.1,  1,  2,  2,  2,  3,  3,  3,  4,  
-                    4,  4,  4,  4,  5,  5,  5,  5,  5,  5,  6,  6,  6,  
-                    6,  7,  7,  7,  7,  8,  8,  8,  8,  8,  9,  9, 10, 
+    freq_lower = c( 0,   0,   0,   0,    1,  2,  2,  2,  3,  3,  3,  4,
+                    4,  4,  4,  4,  5,  5,  5,  5,  5,  5,  6,  6,  6,
+                    6,  7,  7,  7,  7,  8,  8,  8,  8,  8,  9,  9, 10,
                     10, 10, 11, 11, 12, 12, 12, 13, 15 ),
-    freq_upper = c( 0.1,   6,  12,  15,  3,  3,  4,  8,  3,  5,  8,  4,  
+    freq_upper = c( 0,     6,  12,  15,  3,  3,  4,  8,  3,  5,  8,  4,
                     5,  6,  8, 14,  5,  6,  7,  8,  9, 13,  6,  7,  8, 
                     12,  7,  8,  9, 11,  8,  9, 10, 11, 12,  9, 10, 10, 
                     12, 18, 12, 13, 14, 21, 27, 13, 17 ),
@@ -348,7 +346,7 @@ datasets_Mpox <- list(            # Mpox
   d11 = list(median =  7, Q1  =  4, Q3  = 11, n =  51, country = 'Mixed',       subgroup = 'IIb',source = "Thornhill (2022), doi: 10.1016/S0140-6736(22)02187-0"),
   d12 = list(median =  7, min =  3, max = 20, n =  23, country = 'Mixed',       subgroup = 'IIb',source = "Thornhill (2022a), doi: 10.1056/NEJMoa2207323"),
   d13 = list(
-    freq_lower = c( 4, 0.1,   1, 2,   3, 0.1,  9, 0.1, 10, 1,  6, 0.1,  7, 0.1,  8,  1,  2,  1, 0.1,  1,  3, 0.1 ),
+    freq_lower = c( 4, 0,     1, 2,   3, 0,    9, 0,   10, 1,  6, 0,    7, 0,    8,  1,  2,  1, 0,    1,  3, 0   ),
     freq_upper = c( 6,   8,  23, 5,   6,  14, 11,  24, 12, 6,  8,  18, 16,   2, 17, 29, 10,  6,  23,  3,  8,  12 ),
     freq_count = c( 1,   1,   1, 1,   1,   1,  1,   1,  1, 1,  1,   1,  1,   1,  1,  1,  1,  1,   1,  1,  1,   1 ),
     subgroup = 'IIb',
@@ -363,7 +361,7 @@ datasets_Mpox <- list(            # Mpox
     source     = "Cobos (2023), doi: 10.37201/req/112.2022"
   ),
   d15 = list(
-    freq_lower = c( 0.1, 0.1, 0.1, 0.1,  1,  2,  2,  3,  3,  4,  5,  6,  6,  6,  
+    freq_lower = c( 0,   0,   0,   0,    1,  2,  2,  3,  3,  4,  5,  6,  6,  6,
                     6,  7,  7,  7,  8,  9,  9, 10, 11, 11, 12, 15, 19, 19 ),
     freq_upper = c(   2,   3,   7,  12,  4,  2,  9,  3,  8,  4,  5,  6, 12, 13, 
                       15,  7, 14, 14,  13,  9, 24,  10, 11, 11, 22, 22, 19, 24 ),
@@ -374,8 +372,8 @@ datasets_Mpox <- list(            # Mpox
     source     = "Guzzetta (2022), doi: 10.3201/eid2810.221126"
   ),
   d16 = list(
-    freq_lower = c( 0.1, 0.1, 0.1,   1,   1,   1,   2,   2,   2,   2,   2,   3,   3,   
-                    3,   4,   4,   5,   5,   5,   6,   6,   6,   6,   7,   7,   7,   
+    freq_lower = c( 0,   0,   0,     1,   1,   1,   2,   2,   2,   2,   2,   3,   3,
+                    3,   4,   4,   5,   5,   5,   6,   6,   6,   6,   7,   7,   7,
                     7,   8,   8,   8,   9,   9,   9,   9,  10,  10,  10,  11,  11,  
                     12,  12,  13,  13,  14,  14,  15,  15,  15,  15,  16,  16,  17,  
                     18,  18,  18,  19,  19,  20,  20,  21,  21,  22,  30 ),
@@ -405,7 +403,7 @@ datasets_Cholera <- list(         # Cholera
   d1  = list(median =  21/24, min =  19/24, max = 49/24, n =  7,  country = 'USA', subgroup = "O139", source = "Morris (1995), doi: 10.1093/infdis/171.4.903"),
   d2  = list(median =  31/24, min =  19/24, max = 64/24, n =  11, country = 'USA', subgroup = "O139", source = "Morris (1995), doi: 10.1093/infdis/171.4.903"),
   d3  = list(
-    freq_lower = c( 0.1, 1.0, 1.5, 2.0, 2.0, 1.0, 2.0, 3.0, 6.0, 7.0 ),
+    freq_lower = c( 0,   1.0, 1.5, 2.0, 2.0, 1.0, 2.0, 3.0, 6.0, 7.0 ),
     freq_upper = c( 1.0, 2.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0, 8.0,11.0 ),
     freq_count = c(   6,   9,   2,   1,   2,   1,   1,   1,   1,   1 ),
     subgroup = "O1 Classical",
@@ -433,7 +431,7 @@ datasets_Cholera <- list(         # Cholera
     source = "Cash (1974), doi: 10.1093/infdis/129.1.45"
   ),
   d6  = list(
-    freq_lower = c( 0.1,  1,  2,  3,  4,  5,  6 ),
+    freq_lower = c( 0,    1,  2,  3,  4,  5,  6 ),
     freq_upper = c(   1,  2,  3,  4,  5,  6,  7 ),
     freq_count = c(   6, 26, 23,  6,  3,  1,  1 ),
     subgroup = 'O1 El Tor',
@@ -478,14 +476,14 @@ datasets_Cholera <- list(         # Cholera
     # Achlorhydric:   12(x2), 22(x4), 48(x2), 72, 96
     # Normochlorhydric: 22, 48, 72(x3), 96(x2), 144(x3)
     # Not examined:   22(x2), 48(x4), 72(x2), 96, 120
-    freq_value = c( 0.1,  2,  5, 12, 15, 22, 24, 48, 72, 96, 120, 144 ) / 24,
+    freq_value = c( 0,    2,  5, 12, 15, 22, 24, 48, 72, 96, 120, 144 ) / 24,
     freq_count = c(   4,  2,  1,  4,  1, 11,  2, 13,   7,  4,   1,   3 ),
     country = 'Italy',
     subgroup = "O1 El Tor Ogawa",
     source = "Schiraldi (1974), PMCID: PMC2366304"
   ),
   d11 = list(
-    freq_lower = c(0.1, 24, 49, 72)/24,
+    freq_lower = c(0,   24, 49, 72)/24,
     freq_upper = c(24, 48, 72, 150)/24,
     freq_count = c(1, 15, 5, 2),
     subgroup = "O1 El Tor",
@@ -693,7 +691,7 @@ datasets_COVID_19 <- list(
   d2  = list( median = 4.3,  Q1 = 2.5,  Q3 = 6.5,    n = 53,   source = "Bender (2021), doi: 10.3201/eid2704.204576",                     country = "Germany",     subgroup = "Wildtype" ),
   d3  = list( median = 6,    min = 1,    max = 13,    n = 27,   source = "Liu (2020), doi: 10.1097/JCMA.0000000000000411",                country = "China",       subgroup = "Wildtype" ),
   d4  = list( mean = 8.23,   sd = 3.58,              n = 22,   source = "Song (2020), doi: 10.1016/j.jinf.2020.04.018",                   country = "China",       subgroup = "Wildtype" ),
-  d5  = list( median = 3,    min = 0.1,  max = 15,    n = 10,   source = "Ki (2020), doi: 10.4178/epih.e2020007",                         country = "South Korea", subgroup = "Wildtype" ),
+  d5  = list( median = 3,    min = 0,    max = 15,    n = 10,   source = "Ki (2020), doi: 10.4178/epih.e2020007",                         country = "South Korea", subgroup = "Wildtype" ),  # min encoded as 0: integer-day same-day onset recorded as 0
   d6  = list( median = 8.5,  min = 1,    max = 24,    n = 28,   source = "Mao (2020), doi: 10.1186/s12889-020-09606-4",                   country = "China",       subgroup = "Wildtype" ),
   d7  = list( median = 7,    min = 2,    max = 12,    n = 8,    source = "Zhang (2020), doi: 10.1186/s12879-020-05570-x",                 country = "China",       subgroup = "Wildtype" ),
   d8  = list( median = 8,    min = 4,    max = 13,    n = 23,   source = "Zhang (2020), doi: 10.1186/s12879-020-05570-x",                 country = "China",       subgroup = "Wildtype" ),
@@ -709,23 +707,23 @@ datasets_COVID_19 <- list(
   d17 = list(
     # n=256, Bavaria Germany, Wildtype. Jan 20 – Mar 19 2020.
     # Interval-censored: lower = onset - right_expo, upper = onset - left_expo.
-    # 67 cases where left_expo = right_expo (point exposure): lower set to 0.1.
+    # 67 cases where left_expo = right_expo (point exposure): lower set to 0.
     # 10 cases with upper > 20 days reflect wide exposure windows (uninformative but valid).
     # Replaces summary-statistic entry d17 (mean=4.6, sd=3.0, n=256).
     freq_lower = c(
-      6, 3, 4, 6, 1, 2, 2, 2, 0.1, 3, 9, 0.1, 2, 0.1, 0.1, 2, 3, 4, 1, 1,
-      1, 2, 1, 5, 0.1, 1, 7, 0.1, 0.1, 7, 0.1, 6, 1, 3, 2, 5, 0.1, 1, 2, 2,
-      4, 0.1, 0.1, 12, 1, 0.1, 11, 9, 5, 3, 3, 7, 7, 7, 6, 6, 0.1, 1, 1, 1,
-      3, 1, 1, 9, 2, 0.1, 0.1, 4, 2, 2, 4, 4, 1, 5, 3, 8, 15, 2, 2, 3,
-      15, 3, 1, 2, 4, 4, 7, 0.1, 0.1, 3, 6, 1, 0.1, 0.1, 2, 1, 1, 1, 3, 3,
-      0.1, 1, 3, 9, 2, 0.1, 2, 0.1, 7, 9, 5, 4, 0.1, 0.1, 0.1, 0.1, 3, 3, 1, 1,
-      11, 2, 0.1, 2, 2, 1, 5, 6, 9, 0.1, 5, 0.1, 2, 1, 2, 7, 1, 1, 7, 0.1,
-      5, 3, 1, 4, 0.1, 1, 3, 2, 1, 0.1, 0.1, 4, 1, 10, 0.1, 2, 2, 0.1, 5, 10,
-      0.1, 1, 2, 2, 0.1, 0.1, 7, 1, 1, 0.1, 0.1, 0.1, 0.1, 0.1, 3, 6, 0.1, 0.1, 0.1, 0.1,
-      2, 1, 2, 2, 1, 3, 0.1, 2, 1, 1, 1, 0.1, 2, 2, 2, 0.1, 1, 0.1, 3, 2,
-      2, 0.1, 2, 2, 8, 1, 0.1, 1, 1, 4, 5, 1, 8, 15, 2, 0.1, 3, 2, 0.1, 4,
-      2, 0.1, 0.1, 2, 0.1, 5, 1, 6, 0.1, 2, 1, 0.1, 1, 0.1, 0.1, 0.1, 2, 1, 2, 2,
-      2, 2, 0.1, 1, 2, 7, 0.1, 0.1, 3, 0.1, 9, 9, 1, 6, 5, 2
+      6, 3, 4, 6, 1, 2, 2, 2, 0, 3, 9, 0, 2, 0, 0, 2, 3, 4, 1, 1,
+      1, 2, 1, 5, 0, 1, 7, 0, 0, 7, 0, 6, 1, 3, 2, 5, 0, 1, 2, 2,
+      4, 0, 0, 12, 1, 0, 11, 9, 5, 3, 3, 7, 7, 7, 6, 6, 0, 1, 1, 1,
+      3, 1, 1, 9, 2, 0, 0, 4, 2, 2, 4, 4, 1, 5, 3, 8, 15, 2, 2, 3,
+      15, 3, 1, 2, 4, 4, 7, 0, 0, 3, 6, 1, 0, 0, 2, 1, 1, 1, 3, 3,
+      0, 1, 3, 9, 2, 0, 2, 0, 7, 9, 5, 4, 0, 0, 0, 0, 3, 3, 1, 1,
+      11, 2, 0, 2, 2, 1, 5, 6, 9, 0, 5, 0, 2, 1, 2, 7, 1, 1, 7, 0,
+      5, 3, 1, 4, 0, 1, 3, 2, 1, 0, 0, 4, 1, 10, 0, 2, 2, 0, 5, 10,
+      0, 1, 2, 2, 0, 0, 7, 1, 1, 0, 0, 0, 0, 0, 3, 6, 0, 0, 0, 0,
+      2, 1, 2, 2, 1, 3, 0, 2, 1, 1, 1, 0, 2, 2, 2, 0, 1, 0, 3, 2,
+      2, 0, 2, 2, 8, 1, 0, 1, 1, 4, 5, 1, 8, 15, 2, 0, 3, 2, 0, 4,
+      2, 0, 0, 2, 0, 5, 1, 6, 0, 2, 1, 0, 1, 0, 0, 0, 2, 1, 2, 2,
+      2, 2, 0, 1, 2, 7, 0, 0, 3, 0, 9, 9, 1, 6, 5, 2
     ),
     freq_upper = c(
       13, 6, 6, 10, 3, 4, 6, 43, 7, 10, 12, 3, 6, 2, 3, 5, 5, 7, 3, 8,
@@ -779,13 +777,13 @@ datasets_COVID_19 <- list(
   d25 = list( median = 2,    min = 1,    max = 4,     n = 6,    source = "Huang (2020), doi: 10.1016/j.jinf.2020.03.006",                 country = "China",       subgroup = "Wildtype" ),
   d26 = list( mean = 6.5,    sd = 4.58,              n = 102,  source = "Zhao (2021b), doi: 10.1097/MD.0000000000027846",                 country = "China",       subgroup = "Wildtype" ),
   d27 = list( mean = 8.67,   sd = 5.16,              n = 957,  source = "Li (2020), doi: 10.3389/fpubh.2020.577431",                      country = "China",       subgroup = "Wildtype" ),
-  d28 = list( median = 4,    min = 0.1,  max = 11,    n = 45,   source = "Bernal Lopez (2022), doi: 10.2807/1560-7917.ES.2022.27.15.2001551",   country = "UK",          subgroup = "Wildtype" ),  # min raised 0→0.5: integer-day same-day onset recorded as 0
+  d28 = list( median = 4,    min = 0,    max = 11,    n = 45,   source = "Bernal Lopez (2022), doi: 10.2807/1560-7917.ES.2022.27.15.2001551",   country = "UK",          subgroup = "Wildtype" ),  # min encoded as 0: integer-day same-day onset recorded as 0
   d29 = list( median = 4,    min = 2,    max = 11,    n = 12,   source = "Bernal Lopez (2022), doi: 10.2807/1560-7917.ES.2022.27.15.2001551",   country = "UK",          subgroup = "Wildtype" ),
   
   # --- Omicron ---
   d30 = list( mean = 4.58,   sd = 1.72,              n = 57,   source = "Mefsin (2022), doi: 10.3201/eid2809.220613",                     country = "China",       subgroup = "Omicron" ),
   d31 = list( mean = 4.42,   sd = 1.42,              n = 23,   source = "Mefsin (2022), doi: 10.3201/eid2809.220613",                     country = "China",       subgroup = "Omicron" ),
-  d32 = list( median = 3,    min = 0.1,  max = 8,     n = 81,   source = "Brandal (2021), doi: 10.2807/1560-7917.ES.2021.26.50.2101147",  country = "Norway",      subgroup = "Omicron" ),  # min raised 0→0.5: integer-day same-day onset recorded as 0
+  d32 = list( median = 3,    min = 0,    max = 8,     n = 81,   source = "Brandal (2021), doi: 10.2807/1560-7917.ES.2021.26.50.2101147",  country = "Norway",      subgroup = "Omicron" ),  # min encoded as 0: integer-day same-day onset recorded as 0
   d34 = list( mean = 3.2,    sd = 2.2,               n = 258,  source = "Backer (2022), doi: 10.2807/1560-7917.ES.2022.27.6.2200042",     country = "Netherlands", subgroup = "Omicron" ),
   
   d36 = list(
@@ -811,9 +809,9 @@ datasets_COVID_19 <- list(
   d38 = list( mean = 4.4,    sd = 1.9,               n = 47,   source = "Zhang (2021), doi: 10.46234/ccdcw2021.148",                      country = "China",       subgroup = "Delta" ),
   
   # Each case's incubation period window length (onset - earliest possible exposure) treated as the upper bound of an interval-censored observation.
-  # Lower bound set to 0.1 throughout (Weibull convention to avoid zero) -- Manually digitised from Fig S2 using daily gridlines; N=136. 
+  # Lower bound set to 0 throughout -- Manually digitised from Fig S2 using daily gridlines; N=136.
   d40 = list(
-    freq_lower = rep(0.1, 12),
+    freq_lower = rep(0, 12),
     freq_upper = c( 2,  3,  4,  5,  6,  7,  8, 10, 11, 12, 14, 15),
     freq_count = c( 4, 30, 21, 10, 26, 14, 10,  5, 11,  1,  3,  1),
     subgroup   = "Delta",
@@ -1042,7 +1040,7 @@ datasets_Dengue <- list(
   d13 = list(
     # CDC (1982). Five IIP observations (DENV-4), all interval-censored,
     # as extracted by Chan et al. (2012), doi:10.1371/journal.pone.0050972.
-    freq_lower = c(0.1, 5, 5, 5, 5),
+    freq_lower = c(0, 5, 5, 5, 5),
     freq_upper = c(6, 11, 11, 11, 11),
     freq_count = c(1, 1, 1, 1, 1),
     source  = "CDC (1982)"
@@ -1191,26 +1189,26 @@ datasets_flu <- list(
     # Supplementary Table 1: n=134 doubly interval-censored incubation period
     # observations from 2009 H1N1 outbreak at a New York City school.
     # Approximation: onset midpoint S = (SL+SR)/2 used (SR-SL = 1 day for all
-    # observations, so maximum error = 0.5 days). Lower bound = max(0.1, S-ER),
-    # upper bound = S-EL. 129/134 lower bounds floored to 0.1 due to wide
+    # observations, so maximum error = 0.5 days). Lower bound = max(0, S-ER),
+    # upper bound = S-EL. 129/134 lower bounds floored to 0 due to wide
     # exposure windows (EL=7.25, ER >= S_mid for most school-contact cases).
     # Authors' log-normal fit (full doubly censored likelihood): median 6.4 days
     # (95% CI 5.9-6.8), dispersion 1.19 (95% CI 1.15-1.24).
     freq_lower = c(
-      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
-      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
-      0.1, 0.1, 0.1, 1.5, 2.5, 1.5, 0.1, 0.1, 0.1, 0.1,
-      1.5, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
-      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 1.5,
-      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
-      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
-      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
-      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
-      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
-      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
-      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
-      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
-      0.1, 0.1, 0.1, 0.1),
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 1.5, 2.5, 1.5, 0, 0, 0, 0,
+      1.5, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 1.5,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0),
     freq_upper = c(
       9.5,  3.25, 3.25, 3.25, 1.25, 2.25, 3.25, 3.25, 2.5,  2.25,
       6.5,  3.25, 4.5,  3.25, 3.25, 5.5,  2.5,  5.5,  3.25, 4.25,
