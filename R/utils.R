@@ -373,6 +373,20 @@ detect_resolution <- function(exact_vals, risky_vals = numeric(0), tol = 1e-6) {
 #'       All five vectors must have the same length. Requires
 #'       `expo_upper[i] <= event_lower[i]` for all i (positive delays). `n`
 #'       is optional and defaults to `sum(freq_count)`.}
+#'     \item{`expo_lower`, `expo_upper`, `event_lower`, `event_upper`,
+#'       `event_observed`, `freq_count`, `truncation_time`}{Double
+#'       interval-censored with right truncation/censoring (summary type 7).
+#'       As type 6, plus `event_observed` (1 = onset seen, 0 = right-censored:
+#'       not yet observed by the analysis cutoff) and a single
+#'       `truncation_time` per dataset (the analysis cutoff `T`, in the same
+#'       time origin as the exposure/event windows). `truncation_time` is a
+#'       study-design choice, not a rounded observation of a random event
+#'       time, so it is never treated as day-rounded the way exposure/event
+#'       windows are. Set it using the same time-encoding convention as that
+#'       dataset's own windows: e.g. if event days are encoded as `[day,
+#'       day+1)` intervals, set `truncation_time` to `(last observed day +
+#'       1)` to mean "complete through the end of that day", not to the bare
+#'       day number.}
 #'   }
 #'   Each element may also contain an optional `source` field — a free-text
 #'   character string recording the bibliographic reference for that dataset
