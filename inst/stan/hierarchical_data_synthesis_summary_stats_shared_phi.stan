@@ -1,4 +1,18 @@
-// hierarchical_data_synthesis_summary_stats.stan
+// hierarchical_data_synthesis_summary_stats_shared_phi.stan
+//
+// Pre-point-4 variant, deliberately kept alongside the hierarchical model:
+// a single shared scalar `phi` per pathogen rather than per-study `phi_d`.
+// Identical to hierarchical_data_synthesis_summary_stats.stan as of commit
+// ead8803 (before the point-4 phi_d/omega reparameterization).
+//
+// Used for gamma (POINT4_LIKELIHOOD_MATHS.md Part E.5): gamma's shape
+// parameter is a concentration-type parameter whose per-study Fisher
+// information about phi vanishes as phi grows (exactly -1/(2*phi), the
+// fastest decay of any family in this corpus, compounded by gamma
+// currently sitting at the largest fitted phi of any family here), so the
+// non-centered phi_d/omega hierarchy creates a genuine funnel for gamma
+// rather than just needing a better prior. See Part E.4.1 for the general
+// "spread-type vs. concentration-type shape parameter" intuition.
 functions {
   // CDF for each distribution
   real dist_cdf_fun(real x, int dist_type, real loc, real phi, real kappa) {
@@ -166,14 +180,8 @@ functions {
   // that magnitude (around -450 in the case tested). A narrower box (finer
   // resolution) is strictly easier to resolve, since the accuracy problem is
   // driven by the box being wide relative to the order statistic's SE.
-  // n_panels: number of composite Gauss-Legendre panels (7-point rule each)
-  // used to integrate over the rounding box. Passed in per-dataset (see
-  // R/utils.R's .order_stat_n_panels() and POINT1_LIKELIHOOD_MATHS.md Part
-  // G) rather than hardcoded, so small/typical studies do not pay for the
-  // resolution only needed to resolve the sharp, large-n order-statistic
-  // peaks (COVID-19-scale line lists) that motivated the original 24-panel
-  // choice.
-  real order_stat_rounded_loglik_fun(real v, int n, int k, int dist_type, real loc, real phi, real kappa, real resolution, int n_panels) {
+  real order_stat_rounded_loglik_fun(real v, int n, int k, int dist_type, real loc, real phi, real kappa, real resolution) {
+    int n_panels = 24;
     array[7] real t = {-0.9491079123427585, -0.7415311855993945,
                        -0.4058451513773832,  0.0,
                         0.4058451513773832,  0.7415311855993945,
@@ -431,15 +439,6 @@ data {
   // Ignored for summary_type 3 (populate with 1, unused).
   array[n_datasets] real<lower=0> resolution;
 
-  // Per-order-statistic composite-quadrature panel count for
-  // order_stat_rounded_loglik_fun (summary_type 1/2 only elsewhere; ignored,
-  // but must still be present, for other summary types). Computed in
-  // R/utils.R's .order_stat_n_panels(); see POINT1_LIKELIHOOD_MATHS.md Part
-  // G. Family 2 (gamma) always gets 24 here (no adaptive reduction).
-  array[n_datasets] int<lower=1> n_panels_stat1;
-  array[n_datasets] int<lower=1> n_panels_stat2;
-  array[n_datasets] int<lower=1> n_panels_stat3;
-
   // --- Frequency table data for summary_type == 4 ---
   // All datasets' frequency tables are stored in flat arrays.
   // For dataset d, its entries occupy indices freq_start[d] .. freq_start[d] + freq_len[d] - 1.
@@ -480,21 +479,9 @@ data {
   real log_tau_mean;
   real<lower=0> log_tau_sd;
 
-  // Prior hyperparameters for log_phi0 ~ normal(log_phi_mean, log_phi_sd).
-  // log_phi0 is the population-mean log dispersion; per-study dispersion
-  // phi_d is now hierarchical (see log_omega below), not a shared scalar.
+  // Prior hyperparameters for log_phi ~ normal(log_phi_mean, log_phi_sd)
   real log_phi_mean;
   real<lower=0> log_phi_sd;
-
-  // Prior hyperparameters for log_omega ~ normal(log_omega_mean, log_omega_sd).
-  // omega is the between-study SD of log dispersion (log_phi_d), analogous to
-  // tau for location. Default log_omega_mean=-0.9, log_omega_sd=0.5, chosen
-  // from a no-pooling per-dataset real-likelihood fit across 4 well-populated
-  // pathogens (COVID-19, SARS, Cholera, Dengue): pooled within-pathogen
-  // sd(log phi) = 0.415, matching this codebase's existing log_tau_sd=0.5
-  // convention. See REVISION_TODO.md / point 4 writeup for the full record.
-  real log_omega_mean;
-  real<lower=0> log_omega_sd;
 
   // Prior hyperparameters for log_kappa ~ normal(log_kappa_mean, log_kappa_sd)
   // kappa = exp(log_kappa) > 0; used by dist_type 4 (Burr XII k) and 5 (GG Q).
@@ -569,62 +556,50 @@ transformed data {
 
 parameters {
   real mu0;                        // Population mean (location)
-  real log_tau;                    // Log of between-study SD (location)
-  real log_phi0;                   // Log of population-mean dispersion
-  real log_omega;                  // Log of between-study SD (log dispersion)
-  real log_kappa;                  // Log of 3rd distribution parameter (Burr XII k; GG Q), shared
-  vector[n_datasets] loc_d_raw;    // Non-centered parameterization, location
-  vector[n_datasets] log_phi_d_raw; // Non-centered parameterization, dispersion
+  real log_tau;                    // Log of between-study SD
+  real log_phi;                    // Log of distribution-specific shape/scale parameter
+  real log_kappa;                  // Log of 3rd distribution parameter (Burr XII k; GG Q)
+  vector[n_datasets] loc_d_raw;    // Non-centered parameterization
 }
 
 transformed parameters {
-  real<lower=0> tau    = exp(log_tau);
-  real<lower=0> phi0   = exp(log_phi0);
-  real<lower=0> omega  = exp(log_omega);
-  real<lower=0> kappa  = exp(log_kappa);
+  real<lower=0> tau   = exp(log_tau);
+  real<lower=0> phi   = exp(log_phi);
+  real<lower=0> kappa = exp(log_kappa);
   vector[n_datasets] loc_d = mu0 + tau * loc_d_raw;
-  // Per-study dispersion. kappa stays shared: the type-3 (mean+SD) profile
-  // Fisher information for the shape pair is rank 1 (see
-  // vignettes/gg_identifiability.Rmd Appendix B), so a single mean+SD study
-  // cannot separate a per-study kappa from a per-study phi; only the shared
-  // component (kappa here) can be estimated per study without collapsing.
-  vector<lower=0>[n_datasets] phi_d = exp(log_phi0 + omega * log_phi_d_raw);
 }
 
 model {
-  mu0           ~ normal(mu0_mean, mu0_sd);
-  log_tau       ~ normal(log_tau_mean, log_tau_sd);
-  log_phi0      ~ normal(log_phi_mean, log_phi_sd);
-  log_omega     ~ normal(log_omega_mean, log_omega_sd);
-  log_kappa     ~ normal(log_kappa_mean, log_kappa_sd);
-  log_phi_d_raw ~ std_normal();
+  mu0       ~ normal(mu0_mean, mu0_sd);
+  log_tau   ~ normal(log_tau_mean, log_tau_sd);
+  log_phi   ~ normal(log_phi_mean, log_phi_sd);
+  log_kappa ~ normal(log_kappa_mean, log_kappa_sd);
 
   loc_d_raw ~ std_normal();
 
   for (d in 1:n_datasets) {
     real loc = loc_d[d];
-    real phi = phi_d[d];
     int n = n_obs[d];
 
     if (summary_type[d] == 1) {  // median + range (min, max), rounded to `resolution[d]`
       int k_median = (n + 1) %/% 2;
-      target += order_stat_rounded_loglik_fun(obs_stat1[d], n, k_median, dist_type, loc, phi, kappa, resolution[d], n_panels_stat1[d]);
-      target += order_stat_rounded_loglik_fun(obs_stat2[d], n, 1, dist_type, loc, phi, kappa, resolution[d], n_panels_stat2[d]);
-      target += order_stat_rounded_loglik_fun(obs_stat3[d], n, n, dist_type, loc, phi, kappa, resolution[d], n_panels_stat3[d]);
+      target += order_stat_rounded_loglik_fun(obs_stat1[d], n, k_median, dist_type, loc, phi, kappa, resolution[d]);
+      target += order_stat_rounded_loglik_fun(obs_stat2[d], n, 1, dist_type, loc, phi, kappa, resolution[d]);
+      target += order_stat_rounded_loglik_fun(obs_stat3[d], n, n, dist_type, loc, phi, kappa, resolution[d]);
     }
 
     else if (summary_type[d] == 2) {  // median + IQR (q25, q75), rounded to `resolution[d]`
       int k_median = (n + 1) %/% 2;
-      target += order_stat_rounded_loglik_fun(obs_stat1[d], n, k_median, dist_type, loc, phi, kappa, resolution[d], n_panels_stat1[d]);
+      target += order_stat_rounded_loglik_fun(obs_stat1[d], n, k_median, dist_type, loc, phi, kappa, resolution[d]);
 
       int k_q25 = (n + 1) %/% 4;
       if (k_q25 < 1) k_q25 = 1;
-      target += order_stat_rounded_loglik_fun(obs_stat2[d], n, k_q25, dist_type, loc, phi, kappa, resolution[d], n_panels_stat2[d]);
+      target += order_stat_rounded_loglik_fun(obs_stat2[d], n, k_q25, dist_type, loc, phi, kappa, resolution[d]);
 
       int k_q75 = (3 * (n + 1)) %/% 4;
       if (k_q75 <= k_q25) k_q75 = k_q25 + 1;
       if (k_q75 > n) k_q75 = n;
-      target += order_stat_rounded_loglik_fun(obs_stat3[d], n, k_q75, dist_type, loc, phi, kappa, resolution[d], n_panels_stat3[d]);
+      target += order_stat_rounded_loglik_fun(obs_stat3[d], n, k_q75, dist_type, loc, phi, kappa, resolution[d]);
     }
 
     else if (summary_type[d] == 3) {  // mean + sd
@@ -650,12 +625,11 @@ model {
       int  moments_ok = 1;
 
       if (dist_type == 1) {  // lognormal
-        real w_ln = exp(phi^2);  // named w_ln, not omega, to avoid shadowing the
-                                  // model-level between-study dispersion SD
+        real omega = exp(phi^2);
         mean_d = exp(loc + phi^2 / 2);
-        var_d  = mean_d^2 * (w_ln - 1);
-        mu3    = (w_ln + 2) * (w_ln - 1)^2 * mean_d^3;
-        mu4    = (w_ln^4 + 2*w_ln^3 + 3*w_ln^2 - 3) * (w_ln - 1)^2 * mean_d^4;
+        var_d  = mean_d^2 * (omega - 1);
+        mu3    = (omega + 2) * (omega - 1)^2 * mean_d^3;
+        mu4    = (omega^4 + 2*omega^3 + 3*omega^2 - 3) * (omega - 1)^2 * mean_d^4;
 
       } else if (dist_type == 2) {  // gamma
         real shape = phi;
@@ -817,17 +791,7 @@ generated quantities {
   //        Rover et al. (2021) doi:10.1002/jrsm.1475
   // - When n_datasets >= 5, tau is identifiable; sample from Normal(mu0, tau)
   //   to include between-study heterogeneity. L=2000 for MC stability.
-  //
-  // TODO(point 4, task 17): phi is currently evaluated at the population
-  // mean phi0 only, i.e. these predictive quantities do NOT yet marginalize
-  // over between-study dispersion heterogeneity (omega), unlike location
-  // (which already does via loc_sample below). This is a placeholder to
-  // keep the model compiling after the phi -> phi_d reparameterization;
-  // fixing it properly (sampling phi alongside loc per Monte Carlo draw,
-  // mirroring locs <- rnorm(...)) is tracked as its own task since it
-  // changes Table 1's reported P95/median, not just machinery.
   {
-    real phi = phi0;
     if (n_datasets < 5) {
       real loc_pred = mean(loc_d);
 
@@ -1008,14 +972,13 @@ generated quantities {
 
     for (d in 1:n_datasets) {
       real loc = loc_d[d];
-      real phi = phi_d[d];
       int n = n_obs[d];
 
       if (summary_type[d] == 1) {  // median + range
         int k_median = (n + 1) %/% 2;
-        log_lik[idx]     = order_stat_rounded_loglik_fun(obs_stat1[d], n, k_median, dist_type, loc, phi, kappa, resolution[d], n_panels_stat1[d]);
-        log_lik[idx + 1] = order_stat_rounded_loglik_fun(obs_stat2[d], n, 1, dist_type, loc, phi, kappa, resolution[d], n_panels_stat2[d]);
-        log_lik[idx + 2] = order_stat_rounded_loglik_fun(obs_stat3[d], n, n, dist_type, loc, phi, kappa, resolution[d], n_panels_stat3[d]);
+        log_lik[idx]     = order_stat_rounded_loglik_fun(obs_stat1[d], n, k_median, dist_type, loc, phi, kappa, resolution[d]);
+        log_lik[idx + 1] = order_stat_rounded_loglik_fun(obs_stat2[d], n, 1,        dist_type, loc, phi, kappa, resolution[d]);
+        log_lik[idx + 2] = order_stat_rounded_loglik_fun(obs_stat3[d], n, n,        dist_type, loc, phi, kappa, resolution[d]);
 
       } else if (summary_type[d] == 2) {  // median + IQR
         int k_median = (n + 1) %/% 2;
@@ -1025,9 +988,9 @@ generated quantities {
         if (k_q75 <= k_q25) k_q75 = k_q25 + 1;
         if (k_q75 > n) k_q75 = n;
 
-        log_lik[idx]     = order_stat_rounded_loglik_fun(obs_stat1[d], n, k_median, dist_type, loc, phi, kappa, resolution[d], n_panels_stat1[d]);
-        log_lik[idx + 1] = order_stat_rounded_loglik_fun(obs_stat2[d], n, k_q25, dist_type, loc, phi, kappa, resolution[d], n_panels_stat2[d]);
-        log_lik[idx + 2] = order_stat_rounded_loglik_fun(obs_stat3[d], n, k_q75, dist_type, loc, phi, kappa, resolution[d], n_panels_stat3[d]);
+        log_lik[idx]     = order_stat_rounded_loglik_fun(obs_stat1[d], n, k_median, dist_type, loc, phi, kappa, resolution[d]);
+        log_lik[idx + 1] = order_stat_rounded_loglik_fun(obs_stat2[d], n, k_q25,   dist_type, loc, phi, kappa, resolution[d]);
+        log_lik[idx + 2] = order_stat_rounded_loglik_fun(obs_stat3[d], n, k_q75,   dist_type, loc, phi, kappa, resolution[d]);
 
       } else if (summary_type[d] == 3) {  // mean + sd (see model block for derivation)
         real mean_d;
@@ -1037,11 +1000,11 @@ generated quantities {
         int  moments_ok = 1;
 
         if (dist_type == 1) {
-          real w_ln = exp(phi^2);  // named w_ln, not omega; see model block
+          real omega = exp(phi^2);
           mean_d = exp(loc + phi^2 / 2);
-          var_d  = mean_d^2 * (w_ln - 1);
-          mu3    = (w_ln + 2) * (w_ln - 1)^2 * mean_d^3;
-          mu4    = (w_ln^4 + 2*w_ln^3 + 3*w_ln^2 - 3) * (w_ln - 1)^2 * mean_d^4;
+          var_d  = mean_d^2 * (omega - 1);
+          mu3    = (omega + 2) * (omega - 1)^2 * mean_d^3;
+          mu4    = (omega^4 + 2*omega^3 + 3*omega^2 - 3) * (omega - 1)^2 * mean_d^4;
 
         } else if (dist_type == 2) {
           real shape = phi;
