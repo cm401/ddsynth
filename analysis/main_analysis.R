@@ -194,8 +194,17 @@ subgroup_config <- list(
 )
 
 
-# ── 5. Compile Stan model (once) ──────────────────────────────────────────────
+# ── 5. Compile Stan models (once) ─────────────────────────────────────────────
 # Set to "factorised" (default) or "joint" to switch between Stan models.
+#
+# Two models are compiled per STAN_MODEL choice: the hierarchical per-study
+# `phi_d` model (used for lognormal, Weibull, Burr XII, and gengamma when
+# should_attempt_gg() passes), and the pre-point-4 shared-scalar-`phi` model
+# (used for gamma). See POINT4_LIKELIHOOD_MATHS.md Part E.5: gamma's shape
+# parameter is a concentration-type parameter whose per-study information
+# vanishes as phi grows, creating a genuine hierarchical funnel (not just a
+# prior-calibration problem) rather than a family that can safely take the
+# phi_d/omega reparameterization.
 STAN_MODEL <- "factorised"
 if (!STAN_MODEL %in% c("factorised", "joint"))
   stop('STAN_MODEL must be "factorised" or "joint", got: "', STAN_MODEL, '"')
@@ -204,10 +213,27 @@ stan_model_file <- switch(STAN_MODEL,
   factorised = "hierarchical_data_synthesis_summary_stats.stan",
   joint      = "hierarchical_data_synthesis_summary_stats_joint.stan"
 )
+stan_model_shared_phi_file <- switch(STAN_MODEL,
+  factorised = "hierarchical_data_synthesis_summary_stats_shared_phi.stan",
+  joint      = "hierarchical_data_synthesis_summary_stats_joint_shared_phi.stan"
+)
+
 stan_file  <- system.file("stan", stan_model_file, package = "ddsynth")
 if (!nzchar(stan_file))
   stop("Stan file '", stan_model_file, "' not found in ddsynth installation.")
 stan_model <- rstan::stan_model(stan_file)
+
+stan_file_shared_phi <- system.file("stan", stan_model_shared_phi_file, package = "ddsynth")
+if (!nzchar(stan_file_shared_phi))
+  stop("Stan file '", stan_model_shared_phi_file, "' not found in ddsynth installation.")
+stan_model_shared_phi <- rstan::stan_model(stan_file_shared_phi)
+
+# Families using the hierarchical phi_d model vs. the shared-scalar-phi model
+# (POINT4_LIKELIHOOD_MATHS.md Part E.5). Gen. gamma is hierarchical whenever
+# it is attempted at all (the should_attempt_gg() gate below already decides
+# whether to attempt it, per Part E.5's "two sequential gates" requirement).
+HIERARCHICAL_FAMILIES <- c("lognormal", "weibull", "burr", "gengamma")
+SHARED_PHI_FAMILIES    <- c("gamma")
 
 
 # ── 6. Helper: fit one (dataset list, distribution) combination ──────────────
@@ -227,9 +253,11 @@ stan_model <- rstan::stan_model(stan_file)
 
   stan_data <- update_phi_prior(stan_data, datasets)
 
+  model_to_use <- if (dist_name %in% SHARED_PHI_FAMILIES) stan_model_shared_phi else stan_model
+
   fit <- tryCatch(
     rstan::sampling(
-      stan_model,
+      model_to_use,
       data    = stan_data,
       chains  = CHAINS,
       iter    = ITER,
