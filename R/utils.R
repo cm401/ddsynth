@@ -468,7 +468,7 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
   # not previously produce this failure mode; with phi now hierarchical
   # per-dataset, a too-tight shared omega prior caused a severe funnel/mixing
   # pathology for gamma specifically (Rhat > 100) that resolved once
-  # family-specific scale was used. See REVISION_TODO.md, point 4.
+  # family-specific scale was used. 
   #
   # kappa meaning per distribution:
   #   dist 1-3: kappa is unused; wide uninformative prior centred at 1.
@@ -497,7 +497,7 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
     # above); log_omega_sd is left flat at 0.5 across families, matching
     # the log_tau_sd=0.5 convention already used here - it is a generic
     # uncertainty width on top of the point estimate, not itself
-    # data-derived per family. See REVISION_TODO.md, point 4.
+    # data-derived per family. 
     log_omega_mean = dist_defaults$log_omega_mean,
     log_omega_sd   = 0.5,
     log_kappa_mean = dist_defaults$log_kappa_mean,
@@ -821,8 +821,7 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
   stan_data$log_kappa_sd   <- custom_priors$log_kappa_sd
 
   # Per-order-statistic adaptive quadrature panel count (performance lever,
-  # not a correctness change): see POINT1_LIKELIHOOD_MATHS.md Part G for the
-  # derivation. A wrong choice here only costs efficiency (or triggers
+  # not a correctness change). A wrong choice here only costs efficiency (or triggers
   # pre_inference_checks()-style convergence issues, handled by the settings
   # escalation in fit_with_escalation()), since the underlying quadrature
   # maths is unchanged - it just decides how many panels to spend.
@@ -858,8 +857,7 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
 
 # Adaptive quadrature panel count for order-statistic rounding likelihoods --
 #
-# See POINT1_LIKELIHOOD_MATHS.md Part G for the full derivation. Summary: the
-# panel count needed for the composite Gauss-Legendre quadrature
+# Summary: the panel count needed for the composite Gauss-Legendre quadrature
 # (order_stat_rounded_loglik_fun in the .stan files) to hit the same accuracy
 # as the original fixed 24-panel scheme is, empirically, a clean function of
 # rho = resolution / SE_asymptotic(order statistic) - not of n or family
@@ -1301,6 +1299,88 @@ should_attempt_gg <- function(datasets,
 }
 
 
+# Burr XII per-study phi_d reliability heuristic -------------------------------
+
+#' Check whether Burr XII's per-study dispersion hierarchy is safe to attempt
+#'
+#' Burr XII's mean+SD likelihood needs kappa*phi_d[d] > 4 per dataset (see
+#' the Stan model's summary_type==3 branch); under the per-study phi_d
+#' hierarchy this becomes n simultaneous constraints instead of one, which
+#' can fragment the feasible region into separate modes. Detected here via a
+#' cheap empirical stress test (several random-init `optimizing()` calls)
+#' rather than a closed-form margin, which turned out unreliable in
+#' practice. 
+#'
+#' @param datasets A named list of datasets as accepted by
+#'   [prepare_stan_data_from_datasets()].
+#' @param stan_model The compiled hierarchical Burr XII model
+#'   (`dist_type = 4`), not the shared-phi variant.
+#' @param n_starts Number of random-init `rstan::optimizing()` calls.
+#' @param min_success_frac Minimum fraction of starts that must converge.
+#' @param lp_agreement_tol Max log-posterior spread across successful starts
+#'   before they're judged to be different modes.
+#' @param verbose Print a one-line verdict.
+#'
+#' @return `TRUE` if safe to attempt the per-study hierarchy, `FALSE` if it
+#'   should fall back to shared-phi. Always `TRUE` when there are no
+#'   mean+SD datasets (the constraint can't fire).
+#' @export
+burr_phid_reliable <- function(datasets, stan_model, n_starts = 10,
+                                min_success_frac = 0.3, lp_agreement_tol = 1.0,
+                                verbose = TRUE) {
+
+  n_type3 <- sum(vapply(datasets, function(d) !is.null(d$mean) && !is.null(d$sd), logical(1)))
+  if (n_type3 == 0) {
+    if (verbose) message("burr_phid_reliable: OK — no mean+SD datasets, the 4th-moment constraint never fires.")
+    return(TRUE)
+  }
+
+  stan_data <- tryCatch({
+    sd_ <- prepare_stan_data_from_datasets(datasets, dist_type = 4L)
+    update_phi_prior(sd_, datasets)
+  }, error = function(e) NULL)
+  if (is.null(stan_data)) {
+    if (verbose) message("burr_phid_reliable: SKIP — data prep failed; defaulting to shared phi to be safe.")
+    return(FALSE)
+  }
+
+  codes <- numeric(0); vals <- numeric(0)
+  for (i in seq_len(n_starts)) {
+    opt <- tryCatch(
+      rstan::optimizing(stan_model, data = stan_data, seed = 10000 + i, hessian = FALSE,
+                         as_vector = FALSE, init = "random"),
+      error = function(e) NULL
+    )
+    if (!is.null(opt)) { codes <- c(codes, opt$return_code); vals <- c(vals, opt$value) }
+  }
+
+  n_success     <- sum(codes == 0)
+  success_frac  <- n_success / n_starts
+  if (success_frac < min_success_frac) {
+    if (verbose) message(sprintf(
+      "burr_phid_reliable: SKIP — too many optimiser failures (%d/%d succeeded, need >= %.0f%%); ",
+      n_success, n_starts, 100 * min_success_frac),
+      sprintf("the kappa*phi_d>4 reject likely fragments the feasible region across %d mean+SD dataset(s).",
+              n_type3))
+    return(FALSE)
+  }
+
+  lp_success <- vals[codes == 0]
+  lp_range   <- if (length(lp_success) > 1) diff(range(lp_success)) else 0
+  if (lp_range > lp_agreement_tol) {
+    if (verbose) message(sprintf(
+      "burr_phid_reliable: SKIP — successful starts disagree (log-posterior range = %.2f > %.2f), multiple modes found.",
+      lp_range, lp_agreement_tol))
+    return(FALSE)
+  }
+
+  if (verbose) message(sprintf(
+    "burr_phid_reliable: OK — %d/%d optimiser starts succeeded and agree (log-posterior range = %.2e).",
+    n_success, n_starts, lp_range))
+  TRUE
+}
+
+
 # Gamma + type-2 reliability heuristic ----------------------------------------
 
 #' Check whether Gamma can be reliably fitted from median + IQR summary statistics
@@ -1428,6 +1508,72 @@ gamma_type2_reliable <- function(datasets,
 }
 
 
+# Gamma numerical-fragility heuristic (grad_reg_lower_inc_gamma) --------------
+
+#' Check whether a corpus is safe from gamma's slow-incomplete-gamma-series risk
+#'
+#' An extreme method-of-moments-implied gamma shape (often a small-n
+#' `(max-min)/4` artifact) can drive NUTS into Stan's slow
+#' `grad_reg_lower_inc_gamma` series during warmup, hanging for hours
+#' without erroring. Not caught by `pre_inference_checks()`'s lognormal-proxy
+#' filter. 
+#'
+#' @param datasets A named list of datasets as accepted by
+#'   [prepare_stan_data_from_datasets()].
+#' @param max_implied_phi Skip if any dataset's implied gamma shape exceeds
+#'   this.
+#' @param verbose Print a one-line verdict naming the offending dataset.
+#'
+#' @return `TRUE` if safe, `FALSE` if gamma should be skipped for this
+#'   pathogen/analysis (no fallback model exists, unlike Burr XII's
+#'   [burr_phid_reliable()]).
+#' @export
+gamma_phi_extreme_safe <- function(datasets, max_implied_phi = 60, verbose = TRUE) {
+
+  implied_phi <- vapply(datasets, function(d) {
+    mean_est <- sd_est <- NA_real_
+    if (!is.null(d$mean) && !is.null(d$sd)) {
+      mean_est <- d$mean; sd_est <- d$sd
+    } else if (!is.null(d$median) && !is.null(d$Q1) && !is.null(d$Q3)) {
+      mean_est <- d$median; sd_est <- (d$Q3 - d$Q1) / 1.35
+    } else if (!is.null(d$median) && !is.null(d$min) && !is.null(d$max)) {
+      mean_est <- d$median; sd_est <- (d$max - d$min) / 4
+    } else if (!is.null(d$freq_value) && !is.null(d$freq_count)) {
+      w <- d$freq_count / sum(d$freq_count)
+      mean_est <- sum(d$freq_value * w)
+      sd_est   <- sqrt(sum(w * (d$freq_value - mean_est)^2))
+    } else if (!is.null(d$freq_lower) && !is.null(d$freq_upper) && !is.null(d$freq_count)) {
+      mid <- (d$freq_lower + d$freq_upper) / 2
+      w   <- d$freq_count / sum(d$freq_count)
+      mean_est <- sum(mid * w)
+      sd_est   <- sqrt(sum(w * (mid - mean_est)^2))
+    }
+    if (is.na(mean_est) || is.na(sd_est) || mean_est <= 0 || sd_est <= 0) return(NA_real_)
+    (mean_est / sd_est)^2
+  }, numeric(1))
+
+  implied_phi_valid <- implied_phi[!is.na(implied_phi)]
+  if (length(implied_phi_valid) == 0) {
+    if (verbose) message("gamma_phi_extreme_safe: OK \u2014 no datasets with a computable implied shape.")
+    return(TRUE)
+  }
+
+  worst_val  <- max(implied_phi_valid)
+  worst_name <- names(implied_phi_valid)[which.max(implied_phi_valid)]
+  if (worst_val > max_implied_phi) {
+    if (verbose) message(sprintf(
+      "gamma_phi_extreme_safe: SKIP \u2014 dataset '%s' implies an extreme gamma shape (%.1f > %.0f); ",
+      worst_name, worst_val, max_implied_phi),
+      "extreme shape proposals during warmup risk grad_reg_lower_inc_gamma's slow-series regime.")
+    return(FALSE)
+  }
+
+  if (verbose) message(sprintf(
+    "gamma_phi_extreme_safe: OK \u2014 max implied shape = %.1f (threshold %.0f).", worst_val, max_implied_phi))
+  TRUE
+}
+
+
 # Compile Stan model -------------------------------------------------------
 
 #' Compile a ddsynth Stan model
@@ -1468,9 +1614,9 @@ compile_stan_model <- function(model = c("factorised", "joint")) {
 #' The five checks performed are:
 #' \describe{
 #'   \item{1. Method-of-moments consistency}{Estimates `phi` from each dataset
-#'     individually using moment-based approximations and flags any dataset
-#'     whose implied `phi` is more than `phi_outlier_threshold` times the
-#'     median of all implied values.}
+#'     individually (using `dist_type`'s own formula, all five families) and
+#'     flags a dataset if it's far from the median (`phi_outlier_threshold`)
+#'     or is the min/max of a set whose spread exceeds `phi_spread_threshold`.}
 #'   \item{2. Prior predictive compatibility}{Simulates summary statistics from
 #'     the prior and checks whether each observed value falls within the 95%
 #'     prior predictive interval. Datasets outside this range suggest a
@@ -1489,13 +1635,24 @@ compile_stan_model <- function(model = c("factorised", "joint")) {
 #' @param datasets A named list of datasets in the format accepted by
 #'   [prepare_stan_data_from_datasets()].
 #' @param stan_model A compiled Stan model object from [rstan::stan_model()].
+#'   Must be the hierarchical per-study `phi_d` model - Checks 3-5 assume
+#'   that parameterisation and will error on a shared-`phi` model like
+#'   gamma's. Use [gamma_phi_extreme_safe()] for gamma instead.
 #' @param dist_type Integer distribution code: `1` = log-normal, `2` = gamma,
-#'   `3` = Weibull. Defaults to `1`.
+#'   `3` = Weibull, `4` = Burr XII, `5` = generalised gamma. Defaults to `1`.
+#'   Checks 1-2 use `dist_type`'s own moment formulas; Checks 3-5 assume the
+#'   hierarchical model regardless.
 #' @param custom_priors Optional named list of prior overrides passed to
 #'   [prepare_stan_data_from_datasets()].
 #' @param phi_outlier_threshold Multiplier used in the method-of-moments check.
 #'   A dataset is flagged if its implied `phi` exceeds
 #'   `phi_outlier_threshold * median(implied_phi)`. Defaults to `5`.
+#' @param phi_spread_threshold Complementary criterion to
+#'   `phi_outlier_threshold`: flags the min/max datasets when
+#'   `max(implied_phi)/min(implied_phi)` exceeds this, catching two datasets
+#'   pulling toward opposite extremes (neither individually far enough from
+#'   the median to trip the other check). Calibrated on Weibull; 
+#'   
 #' @param phi_grid Numeric vector of `phi` values for the log-likelihood
 #'   surface scan. Defaults to `seq(0.5, 50, by = 0.5)`.
 #' @param n_sim Number of draws for the prior predictive check. Defaults to
@@ -1532,6 +1689,7 @@ pre_inference_checks <- function(datasets,
                                  dist_type             = 1,
                                  custom_priors         = list(),
                                  phi_outlier_threshold = 5,
+                                 phi_spread_threshold  = 7,
                                  phi_grid              = seq(0.5, 50, by = 0.5),
                                  n_sim                 = 2000,
                                  loo_iter              = 4000,
@@ -1539,7 +1697,8 @@ pre_inference_checks <- function(datasets,
                                  verbose               = TRUE,
                                  filter                = FALSE) {
 
-  dist_name <- c("1" = "lognormal", "2" = "gamma", "3" = "weibull")[[as.character(dist_type)]]
+  dist_name <- c("1" = "lognormal", "2" = "gamma", "3" = "weibull",
+                 "4" = "burr12", "5" = "gengamma")[[as.character(dist_type)]]
   stan_data <- prepare_stan_data_from_datasets(datasets, dist_type = dist_type,
                                                custom_priors = custom_priors)
 
@@ -1583,7 +1742,10 @@ pre_inference_checks <- function(datasets,
           # CV^2 = Gamma(1+2/k)/Gamma(1+1/k)^2 - 1; solve for k
           obj <- function(k) sqrt(gamma(1 + 2/k) / gamma(1 + 1/k)^2 - 1) - cv
           tryCatch(stats::uniroot(obj, c(0.1, 200))$root, error = function(e) NA_real_)
-        }
+        },
+        # Reuse .mom_phi_guess() rather than duplicate its uniroot logic.
+        burr12   = .mom_phi_guess(d, dist_type, stan_data$log_kappa_mean),
+        gengamma = .mom_phi_guess(d, dist_type, stan_data$log_kappa_mean)
       )
     }
 
@@ -1594,9 +1756,21 @@ pre_inference_checks <- function(datasets,
   med_phi  <- stats::median(mom_df$implied_phi, na.rm = TRUE)
   mom_df   <- dplyr::mutate(
     mom_df,
-    is_outlier = !is.na(implied_phi) &
+    is_outlier_median = !is.na(implied_phi) &
       (implied_phi > phi_outlier_threshold * med_phi |
        implied_phi < med_phi / phi_outlier_threshold)
+  )
+
+  # Distance-from-median misses two datasets pulling toward opposite
+  # extremes at once (see Part E.10). OR-ing only adds flags, never removes.
+  phi_valid <- mom_df$implied_phi[!is.na(mom_df$implied_phi)]
+  spread    <- if (length(phi_valid) >= 2) max(phi_valid) / min(phi_valid) else NA_real_
+  mom_df    <- dplyr::mutate(
+    mom_df,
+    is_outlier_spread = !is.na(implied_phi) & !is.na(spread) &
+      spread > phi_spread_threshold &
+      (implied_phi == max(phi_valid) | implied_phi == min(phi_valid)),
+    is_outlier = is_outlier_median | is_outlier_spread
   )
   results$mom_consistency <- mom_df
 
@@ -1609,7 +1783,25 @@ pre_inference_checks <- function(datasets,
   sim_sd <- switch(dist_name,
     lognormal = exp(loc_draws) * sqrt(exp(phi_draws^2) - 1),
     gamma     = exp(loc_draws) / sqrt(phi_draws),
-    weibull   = exp(loc_draws) * sqrt(gamma(1 + 2/phi_draws) - gamma(1 + 1/phi_draws)^2)
+    weibull   = exp(loc_draws) * sqrt(gamma(1 + 2/phi_draws) - gamma(1 + 1/phi_draws)^2),
+    # Raw moments matching the Stan model's own formulas; kappa_draws is
+    # only needed here since the other three families lack a 3rd shape param.
+    burr12    = {
+      kappa_draws <- exp(stats::rnorm(n_sim, stan_data$log_kappa_mean, stan_data$log_kappa_sd))
+      lam <- exp(loc_draws)
+      m1  <- lam    * kappa_draws * exp(lbeta(kappa_draws - 1/phi_draws, 1 + 1/phi_draws))
+      m2  <- lam^2  * kappa_draws * exp(lbeta(kappa_draws - 2/phi_draws, 1 + 2/phi_draws))
+      sqrt(abs(m2 - m1^2))
+    },
+    gengamma  = {
+      kappa_draws <- exp(stats::rnorm(n_sim, stan_data$log_kappa_mean, stan_data$log_kappa_sd))
+      gamma_shape <- 1 / kappa_draws^2
+      m1 <- exp(loc_draws   + 2*phi_draws/kappa_draws * log(kappa_draws) +
+                  lgamma(gamma_shape +   phi_draws/kappa_draws) - lgamma(gamma_shape))
+      m2 <- exp(2*loc_draws + 4*phi_draws/kappa_draws * log(kappa_draws) +
+                  lgamma(gamma_shape + 2*phi_draws/kappa_draws) - lgamma(gamma_shape))
+      sqrt(abs(m2 - m1^2))
+    }
   )
 
   prior_pi <- stats::quantile(sim_sd, c(0.025, 0.975), na.rm = TRUE)
@@ -2330,13 +2522,11 @@ fit_model <- function(sim_data, stan_model,
 #' pre-lever-1 production settings (`iter=12000`, `adapt_delta=0.999`,
 #' `max_treedepth=12`) as the last tier if cheaper settings do not converge -
 #' those settings were originally chosen because some chains did not
-#' converge without them (see `REVISION_TODO.md`), so this is a floor, not
-#' just a starting point to relax.
+#' converge without them, so this is a floor, not just a starting point to relax.
 #'
 #' Most fits are expected to converge at the cheap first tier, especially
 #' now that lever 3 (`R/utils.R`'s `.order_stat_n_panels()`) has reduced
-#' per-iteration cost and point 4's family gating
-#' (`POINT4_LIKELIHOOD_MATHS.md` Part E) means gamma no longer needs a
+#' per-iteration cost and point 4's family gating means gamma no longer needs a
 #' hierarchical `phi_d` funnel resolved. The escalation ladder exists for the
 #' cases that still need it, not as the expected path.
 #'
@@ -2425,24 +2615,59 @@ fit_with_escalation <- function(stan_data, stan_model, rhat_target = 1.05,
   result
 }
 
+#' Kill a process and every descendant it has forked
+#'
+#' `tools::pskill()` only kills the named PID. `rstan::sampling()` spawns its
+#' own PSOCK cluster underneath, which would otherwise survive as zombies.
+#' Walks `ps`'s process table to find and kill all descendants too.
+#'
+#' @param pid Integer or character process ID to kill, with its descendants.
+#' @return Invisibly, the PIDs killed (including `pid`).
+#' @noRd
+.kill_process_tree <- function(pid) {
+  pid <- as.integer(pid)
+  tab <- tryCatch({
+    lines <- system2("ps", c("-eo", "pid,ppid"), stdout = TRUE)[-1]
+    do.call(rbind, lapply(strsplit(trimws(lines), "\\s+"), function(x) as.integer(x[1:2])))
+  }, error = function(e) NULL)
+
+  all_pids <- pid
+  if (!is.null(tab) && nrow(tab) > 0) {
+    colnames(tab) <- c("pid", "ppid")
+    descendants_of <- function(root) {
+      kids <- tab[tab[, "ppid"] == root, "pid"]
+      if (length(kids) == 0) return(integer(0))
+      c(kids, unlist(lapply(kids, descendants_of), use.names = FALSE))
+    }
+    all_pids <- c(pid, descendants_of(pid))
+  }
+  for (p in all_pids) tryCatch(tools::pskill(p, signal = tools::SIGKILL), error = function(e) NULL)
+  invisible(all_pids)
+}
+
 #' Fit a list of (dataset, family) tasks concurrently, leaving cores free
 #'
 #' @description
-#' Runs [fit_with_escalation()] over a list of independent fitting tasks in
-#' parallel (fork-based, via `parallel::mclapply()` - Unix/macOS only), each
-#' task's chains still parallelised internally as usual. Deliberately caps
-#' total core usage well below the machine's full core count so the machine
-#' remains usable for other work while a corpus run is in progress - this is
-#' a hard requirement, not a tuning default: leave `reserve_cores` alone
-#' unless the person running this has explicitly said otherwise.
+#' Runs [fit_with_escalation()] over a list of independent fitting tasks with
+#' bounded concurrency (fork-based - Unix/macOS only), each task's chains
+#' still parallelised internally as usual. Deliberately caps total core
+#' usage well below the machine's full core count so the machine remains
+#' usable for other work while a corpus run is in progress - this is a hard
+#' requirement, not a tuning default: leave `reserve_cores` alone unless the
+#' person running this has explicitly said otherwise.
 #'
-#' Each task's result is written to its own file immediately on completion
-#' (`task$output_file`), rather than accumulating in a single shared
-#' in-memory list written once at the end - this avoids concurrent workers
-#' racing on one output file, and means a crash partway through loses only
-#' the tasks that hadn't finished, not everything. Call
-#' [merge_parallel_fit_results()] afterwards to assemble the per-task files
-#' into a single results list.
+#' Streams rather than batches: uses a manually-managed rolling pool
+#' (`parallel::mcparallel()`/`mccollect()`, not `mclapply()`) so a finished
+#' slot is immediately handed the next queued task instead of waiting for
+#' the whole set dispatched together to finish - this both keeps the core
+#' pool continuously busy (a straggler task no longer stalls an entire
+#' batch) and lets `on_complete` fire the moment *each* task finishes, not
+#' just at the end. Each task's result is still also written to its own
+#' file immediately on completion (`task$output_file`) regardless of
+#' `on_complete`, so a crash partway through loses only the tasks that
+#' hadn't finished yet, not everything; [merge_parallel_fit_results()] can
+#' assemble those files after the fact if `on_complete` wasn't used to do it
+#' incrementally.
 #'
 #' @param tasks A list of task specifications, each a list with:
 #'   `label` (character, for logging), `datasets` (named list, as passed to
@@ -2460,11 +2685,24 @@ fit_with_escalation <- function(stan_data, stan_model, rhat_target = 1.05,
 #'   interactive use, not just background slack - do not reduce this without
 #'   explicit instruction.
 #' @param rhat_target Passed through to [fit_with_escalation()].
+#' @param on_complete Optional `function(task, result)`, called in the
+#'   parent process as soon as each task finishes (`result` is the same list
+#'   already saved to `task$output_file`, or `list(error=...)` on failure).
+#'   Intended for incremental merge-and-save into a caller-side results
+#'   object, e.g. via `<<-` from a top-level analysis script - see
+#'   `analysis/main_analysis.R` for the pattern. Errors inside the callback
+#'   are caught and reported, not allowed to take down the whole run.
+#' @param task_timeout_secs Wall-clock ceiling per task (all escalation tiers
+#'   combined), default 5400 (90 min). Guards against a chain wandering into
+#'   a genuinely slow numerical region and grinding forever without
+#'   erroring. Past this, the task is killed and recorded with
+#'   `error = "timed out after <n>s"`.
 #' @return Invisibly, a character vector of the `output_file` paths written
 #'   (some may be missing if a task errored - check before merging).
 #' @export
 fit_corpus_parallel <- function(tasks, chains_per_fit = 4, reserve_cores = 4,
-                                  rhat_target = 1.05) {
+                                  rhat_target = 1.05, on_complete = NULL,
+                                  task_timeout_secs = 90 * 60) {
   total_cores <- parallel::detectCores()
   usable_cores <- max(total_cores - reserve_cores, chains_per_fit)
   n_concurrent <- max(floor(usable_cores / chains_per_fit), 1)
@@ -2473,7 +2711,7 @@ fit_corpus_parallel <- function(tasks, chains_per_fit = 4, reserve_cores = 4,
     total_cores, reserve_cores, n_concurrent, length(tasks)
   ))
 
-  parallel::mclapply(tasks, function(task) {
+  run_task <- function(task) {
     dist_type <- c(lognormal = 1L, gamma = 2L, weibull = 3L, burr = 4L, gengamma = 5L)[[task$dist_name]]
     stan_data <- tryCatch(
       prepare_stan_data_from_datasets(task$datasets, dist_type = dist_type),
@@ -2492,7 +2730,68 @@ fit_corpus_parallel <- function(tasks, chains_per_fit = 4, reserve_cores = 4,
            runtime_secs = res$runtime_secs)
     saveRDS(out, task$output_file)
     invisible(NULL)
-  }, mc.cores = n_concurrent)
+  }
+
+  pending      <- tasks
+  in_flight    <- list()  # keyed by PID (as character) -> task spec
+  started_at   <- list()  # keyed by PID (as character) -> Sys.time() at launch
+
+  launch_next <- function() {
+    if (length(pending) == 0) return(invisible(FALSE))
+    task <- pending[[1]]
+    pending <<- pending[-1]
+    job <- parallel::mcparallel(run_task(task), silent = TRUE)
+    pid <- as.character(job$pid)
+    in_flight[[pid]]  <<- task
+    started_at[[pid]] <<- Sys.time()
+    invisible(TRUE)
+  }
+
+  # Handles one task reaching a terminal state (normal completion or forced
+  # timeout) identically: bookkeeping, on_complete, and refilling the slot.
+  finish_task <- function(pid, result) {
+    task <- in_flight[[pid]]
+    in_flight[[pid]]  <<- NULL
+    started_at[[pid]] <<- NULL
+    n_done <<- n_done + 1L
+    message(sprintf("  [fit_corpus_parallel] completed %d/%d: %s", n_done, length(tasks), task$label))
+    if (!is.null(on_complete)) {
+      tryCatch(on_complete(task, result), error = function(e)
+        message("  [fit_corpus_parallel] on_complete callback failed for ", task$label, ": ", conditionMessage(e)))
+    }
+    launch_next()
+  }
+
+  while (length(pending) > 0 && length(in_flight) < n_concurrent) launch_next()
+
+  n_done <- 0L
+  while (length(in_flight) > 0) {
+    done <- parallel::mccollect(wait = FALSE)
+    for (pid in intersect(names(done), names(in_flight))) {
+      task <- in_flight[[pid]]
+      result <- if (file.exists(task$output_file)) readRDS(task$output_file) else list(error = "no output file written")
+      finish_task(pid, result)
+    }
+
+    # Kill anything that has overrun the wall-clock budget - a fit stuck in a
+    # pathologically slow numerical region never errors or returns on its
+    # own, so this is the only thing that reclaims the slot (see
+    # @param task_timeout_secs above for why this is necessary at all).
+    now <- Sys.time()
+    timed_out <- Filter(function(pid) as.numeric(now - started_at[[pid]], units = "secs") > task_timeout_secs,
+                         names(in_flight))
+    for (pid in timed_out) {
+      task <- in_flight[[pid]]
+      killed <- .kill_process_tree(pid)
+      message(sprintf("  [fit_corpus_parallel] TIMEOUT after %ds, killed pid %s and %d descendant(s): %s",
+                       task_timeout_secs, pid, length(killed) - 1L, task$label))
+      result <- list(error = sprintf("timed out after %ds", task_timeout_secs))
+      if (!file.exists(task$output_file)) saveRDS(result, task$output_file)
+      finish_task(pid, result)
+    }
+
+    if ((is.null(done) || length(done) == 0) && length(timed_out) == 0) Sys.sleep(1)
+  }
 
   invisible(vapply(tasks, function(t) t$output_file, character(1)))
 }
