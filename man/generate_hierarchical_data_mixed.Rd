@@ -12,7 +12,9 @@ generate_hierarchical_data_mixed(
   tau,
   phi,
   kappa = 1,
-  summary_type = NULL
+  summary_type = NULL,
+  round_order_stats = FALSE,
+  resolution = 1
 )
 }
 \arguments{
@@ -34,6 +36,17 @@ length \code{n_datasets} (one type per dataset), a length-3 probability vector
 (sample from types 1-3 with those probabilities), or a length-4 probability
 vector (sample from types 1-4 with those probabilities). Type 4 produces a
 frequency table of observations rounded to the nearest whole day.}
+
+\item{round_order_stats}{If \code{TRUE}, the median/min/max/Q1/Q3 reported for
+summary types 1 and 2 are rounded to the nearest multiple of
+\code{resolution} before being returned, matching how these statistics are
+actually reported in the literature.}
+
+\item{resolution}{Rounding grid in days, used only when
+\code{round_order_stats = TRUE}. Default \code{1} (nearest whole day); pass e.g.
+\code{1/24} to simulate hour-resolution reporting. Recorded in the returned
+\code{obs_data$resolution} field so the Stan model integrates over the same
+window that was used to round the data.}
 }
 \value{
 List containing true parameters and observed summary statistics

@@ -10,6 +10,7 @@ pre_inference_checks(
   dist_type = 1,
   custom_priors = list(),
   phi_outlier_threshold = 5,
+  phi_spread_threshold = 7,
   phi_grid = seq(0.5, 50, by = 0.5),
   n_sim = 2000,
   loo_iter = 4000,
@@ -22,10 +23,15 @@ pre_inference_checks(
 \item{datasets}{A named list of datasets in the format accepted by
 \code{\link[=prepare_stan_data_from_datasets]{prepare_stan_data_from_datasets()}}.}
 
-\item{stan_model}{A compiled Stan model object from \code{\link[rstan:stan_model]{rstan::stan_model()}}.}
+\item{stan_model}{A compiled Stan model object from \code{\link[rstan:stan_model]{rstan::stan_model()}}.
+Must be the hierarchical per-study \code{phi_d} model - Checks 3-5 assume
+that parameterisation and will error on a shared-\code{phi} model like
+gamma's. Use \code{\link[=gamma_phi_extreme_safe]{gamma_phi_extreme_safe()}} for gamma instead.}
 
 \item{dist_type}{Integer distribution code: \code{1} = log-normal, \code{2} = gamma,
-\code{3} = Weibull. Defaults to \code{1}.}
+\code{3} = Weibull, \code{4} = Burr XII, \code{5} = generalised gamma. Defaults to \code{1}.
+Checks 1-2 use \code{dist_type}'s own moment formulas; Checks 3-5 assume the
+hierarchical model regardless.}
 
 \item{custom_priors}{Optional named list of prior overrides passed to
 \code{\link[=prepare_stan_data_from_datasets]{prepare_stan_data_from_datasets()}}.}
@@ -33,6 +39,12 @@ pre_inference_checks(
 \item{phi_outlier_threshold}{Multiplier used in the method-of-moments check.
 A dataset is flagged if its implied \code{phi} exceeds
 \code{phi_outlier_threshold * median(implied_phi)}. Defaults to \code{5}.}
+
+\item{phi_spread_threshold}{Complementary criterion to
+\code{phi_outlier_threshold}: flags the min/max datasets when
+\code{max(implied_phi)/min(implied_phi)} exceeds this, catching two datasets
+pulling toward opposite extremes (neither individually far enough from
+the median to trip the other check). Calibrated on Weibull;}
 
 \item{phi_grid}{Numeric vector of \code{phi} values for the log-likelihood
 surface scan. Defaults to \code{seq(0.5, 50, by = 0.5)}.}
@@ -80,14 +92,14 @@ computational cost and a summary is printed to the console.
 The five checks performed are:
 \describe{
 \item{1. Method-of-moments consistency}{Estimates \code{phi} from each dataset
-individually using moment-based approximations and flags any dataset
-whose implied \code{phi} is more than \code{phi_outlier_threshold} times the
-median of all implied values.}
+individually (using \code{dist_type}'s own formula, all five families) and
+flags a dataset if it's far from the median (\code{phi_outlier_threshold})
+or is the min/max of a set whose spread exceeds \code{phi_spread_threshold}.}
 \item{2. Prior predictive compatibility}{Simulates summary statistics from
 the prior and checks whether each observed value falls within the 95\%
 prior predictive interval. Datasets outside this range suggest a
 prior--data mismatch.}
-\item{3. MAP optimisation probe}{Runs \code{\link[rstan:stanmodel-method-optimizing]{rstan::optimizing()}} as a fast
+\item{3. MAP optimisation probe}{Runs \code{\link[rstan:optimizing]{rstan::optimizing()}} as a fast
 proxy for MCMC convergence. Failure or extreme \code{phi} at the MAP
 estimate is a reliable early warning that HMC will struggle.}
 \item{4. Log-likelihood surface scan}{Evaluates the joint log-posterior

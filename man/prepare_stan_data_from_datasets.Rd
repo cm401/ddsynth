@@ -30,6 +30,25 @@ upper bound of the censoring interval and the count of individuals
 in that interval. When \code{freq_lower[i] == freq_upper[i]} the
 observation is treated as exact. \code{n} is optional and defaults to
 \code{sum(freq_count)}.}
+\item{\code{expo_lower}, \code{expo_upper}, \code{event_lower}, \code{event_upper},
+\code{freq_count}}{Double interval-censored frequency table (summary
+type 6). Both the exposure window (\code{expo_lower}, \code{expo_upper}) and
+the event window (\code{event_lower}, \code{event_upper}) are interval-censored.
+All five vectors must have the same length. Requires
+\code{expo_upper[i] <= event_lower[i]} for all i (positive delays). \code{n}
+is optional and defaults to \code{sum(freq_count)}.}
+\item{\code{expo_lower}, \code{expo_upper}, \code{event_lower}, \code{event_upper},
+\code{event_observed}, \code{freq_count}, \code{truncation_time}}{Double
+interval-censored with right truncation/censoring (summary type 7).
+As type 6, plus \code{event_observed} (1 = onset seen, 0 = right-censored:
+not yet observed by the analysis cutoff) and a single
+\code{truncation_time} per dataset (the analysis cutoff \code{T}, in the same
+time origin as the exposure/event windows). \code{truncation_time} is a
+study-design choice, not a rounded observation of a random event
+time, so it is never treated as day-rounded the way exposure/event
+windows are. Set it using the same time-encoding convention as that
+dataset's own windows: e.g. if event days are encoded as \verb{[day, day+1)} intervals, set \code{truncation_time} to \verb{(last observed day + 1)} to mean "complete through the end of that day", not to the bare
+day number.}
 }
 Each element may also contain an optional \code{source} field — a free-text
 character string recording the bibliographic reference for that dataset
@@ -45,10 +64,14 @@ Currently unused; reserved for future extension. Defaults to \code{0}.}
 \item{custom_priors}{Named list of prior overrides. Any values not supplied
 fall back to distribution-appropriate defaults (see Details). Recognised
 names: \code{mu0_sd}, \code{log_tau_mean}, \code{log_tau_sd}, \code{log_phi_mean},
-\code{log_phi_sd}.}
+\code{log_phi_sd}, \code{log_omega_mean}, \code{log_omega_sd}. \code{log_phi_mean}/\code{log_phi_sd}
+are the prior for \code{log_phi0} (population-mean dispersion);
+\code{log_omega_mean}/\code{log_omega_sd} are the prior for \code{log_omega}, the
+between-study SD of log dispersion (per-study \code{phi_d} is hierarchical,
+not a shared scalar).}
 }
 \value{
-A named list suitable for passing to \code{\link[rstan:stanmodel-method-sampling]{rstan::sampling()}} as the
+A named list suitable for passing to \code{\link[rstan:sampling]{rstan::sampling()}} as the
 \code{data} argument. The list always includes \code{freq_lower} and \code{freq_upper}
 fields (populated with zeros for non-type-5 datasets), as these are
 required by the Stan model regardless of which summary types are present.
@@ -76,13 +99,15 @@ element(s) in \code{custom_priors}, e.g.
 the distribution-appropriate defaults above.
 }
 \note{
-\strong{Backward compatibility:} The Stan model requires \code{freq_lower} and
-\code{freq_upper} to be present in the data list for all runs, including those
-that contain only type 1--4 datasets. This is handled automatically when
-using this function. If you construct the Stan data list manually (rather
-than via this function), you must include these fields explicitly, e.g.:
+\strong{Backward compatibility:} The Stan model requires \code{freq_lower},
+\code{freq_upper}, \code{event_lower}, and \code{event_upper} to be present in the data
+list for all runs. These are populated automatically by this function.
+If constructing the Stan data list manually, fill all four arrays with
+zeros for non-applicable datasets, e.g.:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{stan_data$freq_lower <- rep(0, stan_data$n_freq_total)
-stan_data$freq_upper <- rep(0, stan_data$n_freq_total)
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{stan_data$freq_lower  <- rep(0, stan_data$n_freq_total)
+stan_data$freq_upper  <- rep(0, stan_data$n_freq_total)
+stan_data$event_lower <- rep(0, stan_data$n_freq_total)
+stan_data$event_upper <- rep(0, stan_data$n_freq_total)
 }\if{html}{\out{</div>}}
 }
