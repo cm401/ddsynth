@@ -139,7 +139,9 @@ functions {
     if (k > 1) log_F   = dist_log_cdf_fun(x, dist_type, loc, phi, kappa);
     if (k < n) log_1mF = dist_log_ccdf_fun(x, dist_type, loc, phi, kappa);
 
-    real log_dens = lchoose(n, k) + log_f;
+    // Order-statistic normalising constant is n!/((k-1)!(n-k)!) = k*choose(n,k),
+    // not choose(n,k) alone. See hierarchical_data_synthesis_summary_stats.stan.
+    real log_dens = lchoose(n, k) + log(k) + log_f;
     if (k > 1) log_dens += (k - 1) * log_F;
     if (k < n) log_dens += (n - k) * log_1mF;
     return log_dens;
