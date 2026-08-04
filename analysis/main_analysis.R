@@ -20,10 +20,19 @@
 #     $stan_data  list passed to Stan
 #     $datasets   the dataset list used (possibly filtered / subsetted)
 #     $checks     output of pre_inference_checks() (NULL for subgroup runs)
+#     $tier, $max_rhat, $divergences, $converged, $runtime_secs
+#                 diagnostics from fit_with_escalation() (R/utils.R)
 #
-# The file is saved after every completed pathogen so a crash does not
-# lose earlier work.  Re-running the script skips any (pathogen, analysis,
-# distribution) triple that already has a non-NULL entry.
+# Fitting itself is queued across every pathogen first, then dispatched in
+# one parallel batch (fit_corpus_parallel(), reserving RESERVE_CORES cores -
+# see section 1) rather than one fit at a time. Each individual fit is
+# additionally saved to its own file the moment it completes
+# (results/main_analysis_tasks/), independent of the merged
+# results/main_results.rds written once at the end - so a crash partway
+# through only loses fits that hadn't completed yet, not the whole run, and
+# re-running the script skips any (pathogen, analysis, distribution) triple
+# whose task file (or, from before this restructuring, whose merged-results
+# entry) already exists.
 # =============================================================================
 
 # load_all() instead of library() so that unexported package objects
@@ -56,13 +65,25 @@ options(mc.cores = parallel::detectCores())
 
 
 # ── 1. Sampling settings ──────────────────────────────────────────────────────
+#
+# Fitting now goes through fit_with_escalation() (R/utils.R), which tries
+# increasingly conservative settings until Rhat<RHAT_TARGET and divergence
+# rate <1%, falling back to the original fixed settings below (kept exactly
+# as they were, not relaxed - they were originally needed for some chains to
+# converge at all) as the final tier. There is no longer a single CHAINS/
+# ITER/CONTROL to set here; SEED is still passed through directly.
 
-CHAINS  <- 4
-ITER    <- 12000
-WARMUP  <- 2000
-THIN    <- 1
-SEED    <- 123
-CONTROL <- list(adapt_delta = 0.999, max_treedepth = 12, stepsize = 0.01)
+SEED        <- 123
+RHAT_TARGET <- 1.05
+
+# Hard requirement, not a tuning default: leave this many cores free so the
+# machine stays usable while a run is in progress. Do not reduce without
+# being told to.
+RESERVE_CORES <- 4
+
+# Per-task wall-clock ceiling. A stuck fit never errors on its own; past
+# this the task is killed and recorded as timed out so the run keeps moving.
+TASK_TIMEOUT_SECS <- 90 * 60
 
 DIST_CODES <- c(lognormal = 1L, gamma = 2L, weibull = 3L, burr = 4L,
                 gengamma  = 5L)
@@ -85,6 +106,14 @@ FORCE_SKIP <- list(
 OUTPUT_DIR  <- here::here("results")
 OUTPUT_FILE <- file.path(OUTPUT_DIR, "main_results.rds")
 dir.create(OUTPUT_DIR, showWarnings = FALSE)
+
+# Each (pathogen, analysis, distribution) fit is saved to its own file the
+# moment it completes (fit_corpus_parallel(), R/utils.R), independent of
+# whether/when the merged all_results list below is next written. This is
+# the resume unit: a task whose file already exists is skipped even if a
+# crash happened before the merge step ran.
+TASK_DIR <- file.path(OUTPUT_DIR, "main_analysis_tasks")
+dir.create(TASK_DIR, showWarnings = FALSE)
 
 
 # ── 3. Pathogen registry ──────────────────────────────────────────────────────
@@ -236,45 +265,16 @@ HIERARCHICAL_FAMILIES <- c("lognormal", "weibull", "burr", "gengamma")
 SHARED_PHI_FAMILIES    <- c("gamma")
 
 
-# ── 6. Helper: fit one (dataset list, distribution) combination ──────────────
+# ── 6. Helper: resolve which compiled model a family uses ────────────────────
+# (data prep, phi-prior update, and the escalation ladder itself are now
+# handled inside fit_corpus_parallel()/fit_with_escalation(), R/utils.R)
 
-.fit_one <- function(datasets, dist_name, pathogen, label) {
-  dist_type <- DIST_CODES[[dist_name]]
+.model_for_family <- function(dist_name) {
+  if (dist_name %in% SHARED_PHI_FAMILIES) stan_model_shared_phi else stan_model
+}
 
-  stan_data <- tryCatch(
-    prepare_stan_data_from_datasets(datasets, dist_type = dist_type),
-    error = function(e) {
-      message("  [SKIP] prepare_stan_data failed for ",
-              pathogen, "/", label, "/", dist_name, ": ", conditionMessage(e))
-      NULL
-    }
-  )
-  if (is.null(stan_data)) return(NULL)
-
-  stan_data <- update_phi_prior(stan_data, datasets)
-
-  model_to_use <- if (dist_name %in% SHARED_PHI_FAMILIES) stan_model_shared_phi else stan_model
-
-  fit <- tryCatch(
-    rstan::sampling(
-      model_to_use,
-      data    = stan_data,
-      chains  = CHAINS,
-      iter    = ITER,
-      warmup  = WARMUP,
-      thin    = THIN,
-      control = CONTROL,
-      seed    = SEED,
-      refresh = 200
-    ),
-    error = function(e) {
-      message("  [FAIL] sampling failed for ",
-              pathogen, "/", label, "/", dist_name, ": ", conditionMessage(e))
-      NULL
-    }
-  )
-
-  list(fit = fit, stan_data = stan_data, datasets = datasets)
+.task_file <- function(pathogen, analysis_label, dist_name) {
+  file.path(TASK_DIR, paste0(pathogen, "__", analysis_label, "__", dist_name, ".rds"))
 }
 
 
@@ -301,7 +301,18 @@ if (length(FORCE_RERUN) > 0) {
 }
 
 
-# ── 8. Main loop ──────────────────────────────────────────────────────────────
+# ── 8. Build the analysis table for every pathogen, and one global task list ─
+#
+# Building `analyses` (all/filtered/subgroups) stays per-pathogen and serial,
+# as before - it's comparatively cheap and each pathogen's "filtered" variant
+# depends on that pathogen's own pre_inference_checks() result. What changes
+# is the fitting step: rather than fitting each (pathogen, analysis, family)
+# combination immediately and serially, every combination that still needs
+# fitting is appended to one task list across ALL pathogens, dispatched in a
+# single parallel batch at the end (section 9) so the concurrency-limited
+# core budget stays continuously busy instead of idling between pathogens.
+
+tasks <- list()
 
 for (pathogen in names(pathogen_registry)) {
 
@@ -329,41 +340,43 @@ for (pathogen in names(pathogen_registry)) {
   # "all" analysis — always the full dataset, nothing to recover
   analyses[["all"]] <- list(datasets = datasets_full, checks = NULL)
 
-  # "filtered" analysis — recover or run fresh
-  prior_filtered <- all_results[[pathogen]][["filtered"]]
-  prior_filtered <- if (!is.null(prior_filtered)) Filter(Negate(is.null), prior_filtered) else list()
+  # "filtered" analysis - family-specific (see POINT4_LIKELIHOOD_MATHS.md
+  # Part E.10 for why a single shared lognormal proxy isn't enough). One
+  # filtered list per HIERARCHICAL_FAMILIES member. gamma reuses "all"
+  # unfiltered - it's protected instead by gamma_phi_extreme_safe().
+  analyses[["filtered"]] <- list(by_family = list(gamma = analyses[["all"]]))
 
-  if (length(prior_filtered) > 0) {
-    ref <- prior_filtered[[1]]
-    analyses[["filtered"]] <- list(datasets = ref$datasets, checks = ref$checks)
-    message("\n  Recovered filtered datasets from existing results",
-            " (skipping pre_inference_checks).")
-  } else {
-    message("\n  Running pre_inference_checks for filter (lognormal proxy)...")
-    checks_proxy <- tryCatch(
+  for (dist_name in HIERARCHICAL_FAMILIES) {
+    prior <- all_results[[pathogen]][["filtered"]][[dist_name]]
+    if (!is.null(prior$datasets)) {
+      analyses[["filtered"]]$by_family[[dist_name]] <- list(datasets = prior$datasets, checks = prior$checks)
+      message("\n  Recovered filtered datasets for ", dist_name, " from existing results.")
+      next
+    }
+    message("\n  Running pre_inference_checks for filter (", dist_name, ")...")
+    checks_res <- tryCatch(
       suppressWarnings(
         pre_inference_checks(
           datasets_full, stan_model,
-          dist_type = 1L,   # lognormal as proxy
+          dist_type = DIST_CODES[[dist_name]],
           verbose   = FALSE,
           filter    = TRUE
         )
       ),
       error = function(e) {
-        message("  [WARN] pre_inference_checks failed: ", conditionMessage(e),
-                " — 'filtered' analysis will use full dataset.")
+        message("  [WARN] pre_inference_checks failed for ", dist_name, ": ", conditionMessage(e),
+                " — 'filtered' will use the full dataset for this family.")
         list(datasets = datasets_full)
       }
     )
-    analyses[["filtered"]] <- list(datasets = checks_proxy$datasets,
-                                    checks   = checks_proxy)
-    n_removed <- length(datasets_full) - length(checks_proxy$datasets)
+    analyses[["filtered"]]$by_family[[dist_name]] <- list(datasets = checks_res$datasets, checks = checks_res)
+    n_removed <- length(datasets_full) - length(checks_res$datasets)
     if (n_removed > 0) {
-      message("  Filter removed ", n_removed, " dataset(s): ",
+      message("  Filter (", dist_name, ") removed ", n_removed, " dataset(s): ",
               paste(setdiff(names(datasets_full),
-                            names(checks_proxy$datasets)), collapse = ", "))
+                            names(checks_res$datasets)), collapse = ", "))
     } else {
-      message("  Filter: no datasets removed.")
+      message("  Filter (", dist_name, "): no datasets removed.")
     }
   }
 
@@ -411,20 +424,25 @@ for (pathogen in names(pathogen_registry)) {
     next
   }
 
-  # ── Fit all (analysis × distribution) combinations ─────────────────────────
+  # ── Decide what needs fitting; queue it rather than fit immediately ────────
   for (analysis_label in names(analyses)) {
 
     if (is.null(all_results[[pathogen]][[analysis_label]]))
       all_results[[pathogen]][[analysis_label]] <- list()
 
-    analysis_datasets <- analyses[[analysis_label]]$datasets
-
-    if (length(analysis_datasets) == 0) {
-      message("\n  [SKIP] ", analysis_label, ": 0 datasets remaining.")
-      next
-    }
-
     for (dist_name in names(DIST_CODES)) {
+
+      # "filtered" is family-specific; other analyses aren't.
+      analysis_datasets <- if (analysis_label == "filtered") {
+        analyses[["filtered"]]$by_family[[dist_name]]$datasets
+      } else {
+        analyses[[analysis_label]]$datasets
+      }
+
+      if (length(analysis_datasets) == 0) {
+        message("\n  [SKIP] ", analysis_label, " / ", dist_name, ": 0 datasets remaining.")
+        next
+      }
 
       # Skip if already done (includes the skipped-GG sentinel)
       if (!is.null(all_results[[pathogen]][[analysis_label]][[dist_name]])) {
@@ -477,24 +495,98 @@ for (pathogen in names(pathogen_registry)) {
         next
       }
 
-      message("\n  Fitting: ", pathogen, " | ", analysis_label,
-              " | ", dist_name,
-              "  (n_datasets = ", length(analysis_datasets), ")")
+      # Gamma numerical-fragility check (see gamma_phi_extreme_safe() docs).
+      if (dist_name == "gamma" &&
+          !gamma_phi_extreme_safe(analysis_datasets, verbose = FALSE)) {
+        message("\n  [SKIP] ", pathogen, " / ", analysis_label,
+                " / gamma — a dataset's implied shape is extreme enough to",
+                " risk grad_reg_lower_inc_gamma's slow-series regime",
+                " (gamma_phi_extreme_safe() check failed).")
+        all_results[[pathogen]][[analysis_label]][["gamma"]] <-
+          list(skipped  = TRUE,
+               reason   = "gamma_phi_extreme_safe",
+               datasets = analysis_datasets)
+        next
+      }
 
-      result <- .fit_one(analysis_datasets, dist_name, pathogen, analysis_label)
+      # Burr XII per-study phi_d reliability check (see burr_phid_reliable() docs).
+      task_stan_model <- .model_for_family(dist_name)
+      if (dist_name == "burr" &&
+          !burr_phid_reliable(analysis_datasets, stan_model, verbose = FALSE)) {
+        message("\n  [INFO] ", pathogen, " / ", analysis_label,
+                " / burr — falling back to shared-phi Burr XII ",
+                "(burr_phid_reliable() check failed).")
+        task_stan_model <- stan_model_shared_phi
+      }
 
-      if (!is.null(result))
-        result$checks <- analyses[[analysis_label]]$checks
+      out_file <- .task_file(pathogen, analysis_label, dist_name)
+      task <- list(
+        label       = paste(pathogen, analysis_label, dist_name, sep = "/"),
+        pathogen    = pathogen,
+        analysis_label = analysis_label,
+        dist_name   = dist_name,
+        datasets    = analysis_datasets,
+        stan_model  = task_stan_model,
+        output_file = out_file,
+        checks      = if (analysis_label == "filtered") {
+          analyses[["filtered"]]$by_family[[dist_name]]$checks
+        } else {
+          analyses[[analysis_label]]$checks
+        }
+      )
 
-      all_results[[pathogen]][[analysis_label]][[dist_name]] <- result
+      if (file.exists(out_file)) {
+        # Completed in an earlier (possibly interrupted) run of this script,
+        # but not yet merged into all_results below - merge it, don't refit.
+        message("\n  [RESUME] ", task$label, " — task file already exists, will merge without refitting.")
+      } else {
+        message("\n  [QUEUE] ", task$label, "  (n_datasets = ", length(analysis_datasets), ")")
+      }
+      tasks[[length(tasks) + 1]] <- task
     }
   }
-
-  # Save after each pathogen
-  saveRDS(all_results, OUTPUT_FILE)
-  message("\n  Saved results to: ", OUTPUT_FILE)
 }
 
+# ── 9. Merge already-done tasks (from an earlier interrupted run) up front ───
+# Tasks whose output file already exists (see [RESUME] above) are excluded
+# from dispatch in section 10, but still need merging in - do that now so
+# main_results.rds reflects everything on disk even before any new fitting
+# happens this run.
+
+for (task in tasks) {
+  if (file.exists(task$output_file) && is.null(all_results[[task$pathogen]][[task$analysis_label]][[task$dist_name]])) {
+    result <- readRDS(task$output_file)
+    if (is.null(result$error)) result$checks <- task$checks
+    all_results[[task$pathogen]][[task$analysis_label]][[task$dist_name]] <- result
+  }
+}
+saveRDS(all_results, OUTPUT_FILE)
+
+# ── 10. Dispatch every remaining task, saving as each one completes ─────────
+# fit_corpus_parallel()'s on_complete callback fires in this (parent) process
+# the moment each individual task finishes - not batched, not deferred to the
+# end - so results/main_results.rds is never more than one fit's worth of
+# work behind, and stopping the run part-way through loses at most whatever
+# was still mid-fit, never anything already completed.
+
+to_fit <- Filter(function(t) !file.exists(t$output_file), tasks)
+message("\n", strrep("=", 70))
+message(length(tasks), " total (pathogen, analysis, family) combinations queued; ",
+        length(to_fit), " need fitting (", length(tasks) - length(to_fit), " already done).")
+message(strrep("=", 70))
+
+if (length(to_fit) > 0) {
+  fit_corpus_parallel(
+    to_fit, reserve_cores = RESERVE_CORES, rhat_target = RHAT_TARGET,
+    task_timeout_secs = TASK_TIMEOUT_SECS,
+    on_complete = function(task, result) {
+      if (is.null(result$error)) result$checks <- task$checks
+      all_results[[task$pathogen]][[task$analysis_label]][[task$dist_name]] <<- result
+      saveRDS(all_results, OUTPUT_FILE)
+      message("  Saved results to: ", OUTPUT_FILE, " (", task$label, ")")
+    }
+  )
+}
 message("\n", strrep("=", 70))
 message("All done.  Results written to: ", OUTPUT_FILE)
 message(strrep("=", 70))
