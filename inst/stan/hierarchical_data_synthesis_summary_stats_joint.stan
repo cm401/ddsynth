@@ -201,9 +201,9 @@ functions {
                          0.4786286704993665,  0.2369268850561891};
 
     real half_res = resolution / 2;
-    real v1_lo = fmax(v1 - half_res, 1e-6); real v1_hi = v1 + half_res;
-    real v2_lo = fmax(v2 - half_res, 1e-6); real v2_hi = v2 + half_res;
-    real v3_lo = fmax(v3 - half_res, 1e-6); real v3_hi = v3 + half_res;
+    real v1_lo = fmax(v1 - half_res, 0); real v1_hi = v1 + half_res;
+    real v2_lo = fmax(v2 - half_res, 0); real v2_hi = v2 + half_res;
+    real v3_lo = fmax(v3 - half_res, 0); real v3_hi = v3 + half_res;
     real mid1 = 0.5 * (v1_hi + v1_lo); real half1 = 0.5 * (v1_hi - v1_lo);
     real mid2 = 0.5 * (v2_hi + v2_lo); real half2 = 0.5 * (v2_hi - v2_lo);
     real mid3 = 0.5 * (v3_hi + v3_lo); real half3 = 0.5 * (v3_hi - v3_lo);

@@ -193,7 +193,7 @@ functions {
                         0.3818300505051189,  0.2797053914892767,
                         0.1294849661688697};
     real half_res = resolution / 2;
-    real v_lo = fmax(v - half_res, 1e-6);
+    real v_lo = fmax(v - half_res, 0);
     real v_hi = v + half_res;
     real panel_width = (v_hi - v_lo) / n_panels;
     array[n_panels * 7] real log_terms;
