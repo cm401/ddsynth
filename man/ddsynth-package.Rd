@@ -6,6 +6,8 @@
 \alias{ddsynth-package}
 \title{ddsynth: Delay Distribution from Summary Statistics}
 \description{
+\if{html}{\figure{logo.svg}{options: style='float: right' alt='logo' width='120'}}
+
 Methods to compute delay distributions from summary statistics.
 }
 \seealso{
@@ -19,5 +21,10 @@ Useful links:
 }
 \author{
 \strong{Maintainer}: Christian Morgenstern \email{c.morgenstern@imperial.ac.uk}
+
+Authors:
+\itemize{
+  \item Christian Morgenstern \email{c.morgenstern@imperial.ac.uk}
+}
 
 }
