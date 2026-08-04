@@ -34,6 +34,7 @@ utils::globalVariables(c(
   # simulation / analysis result columns
   "analysis_", "cdf", "ci_95", "dataset", "datasets", "ESS",
   "high", "high_97.5", "i", "implied_phi", "is_outlier",
+  "is_outlier_median", "is_outlier_spread",
   "log_prob", "low", "low_2.5",
   "median_bias_mu0", "median_bias_phi", "median_bias_tau",
   "model", "mu0",
