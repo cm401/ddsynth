@@ -1303,7 +1303,7 @@ should_attempt_gg <- function(datasets,
 
 #' Check whether Burr XII's per-study dispersion hierarchy is safe to attempt
 #'
-#' Burr XII's mean+SD likelihood needs kappa*phi_d[d] > 4 per dataset (see
+#' Burr XII's mean+SD likelihood needs `kappa*phi_d[d] > 4` per dataset (see
 #' the Stan model's summary_type==3 branch); under the per-study phi_d
 #' hierarchy this becomes n simultaneous constraints instead of one, which
 #' can fragment the feasible region into separate modes. Detected here via a
