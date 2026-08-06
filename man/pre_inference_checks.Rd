@@ -15,6 +15,7 @@ pre_inference_checks(
   n_sim = 2000,
   loo_iter = 4000,
   loo_chains = 2,
+  loo_timeout_secs = 120,
   verbose = TRUE,
   filter = FALSE
 )
@@ -57,6 +58,14 @@ single-dataset fits. Defaults to \code{4000}.}
 
 \item{loo_chains}{Number of chains for the leave-one-out fits. Defaults to
 \code{2}.}
+
+\item{loo_timeout_secs}{Wall-clock ceiling per individual LOO fit in Check
+5, forked via \code{\link[parallel:mcparallel]{parallel::mcparallel()}} and killed with
+\code{.kill_process_tree()} if it overruns. A normal fit takes a few seconds;
+this guards against the rare dataset whose single-parameter posterior
+lands in a genuinely slow numerical region and never returns. Default
+\code{120} (2 min). A killed fit is recorded as \code{NA} in \code{loo_fits}, the same
+as any other Check 5 failure.}
 
 \item{verbose}{Logical. If \code{TRUE} (default), prints a formatted summary of
 all check results to the console.}
