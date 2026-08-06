@@ -85,6 +85,12 @@ RESERVE_CORES <- 4
 # this the task is killed and recorded as timed out so the run keeps moving.
 TASK_TIMEOUT_SECS <- 90 * 60
 
+# Per-dataset ceiling for pre_inference_checks()'s Check 5 LOO fits (a much
+# smaller, fixed-settings single-dataset fit, not a full escalation-ladder
+# corpus fit) - measured normal cost is ~4-5s/dataset, so 2 min gives ample
+# headroom while still catching a fit stuck in a pathological region.
+CHECKS_LOO_TIMEOUT_SECS <- 120
+
 DIST_CODES <- c(lognormal = 1L, gamma = 2L, weibull = 3L, burr = 4L,
                 gengamma  = 5L)
 
@@ -114,6 +120,13 @@ dir.create(OUTPUT_DIR, showWarnings = FALSE)
 # crash happened before the merge step ran.
 TASK_DIR <- file.path(OUTPUT_DIR, "main_analysis_tasks")
 dir.create(TASK_DIR, showWarnings = FALSE)
+
+# pre_inference_checks() results (one per pathogen x hierarchical family),
+# cached independently of TASK_DIR/main_results.rds so recovery of the
+# "filtered" dataset list doesn't depend on whether the corresponding fit -
+# or any fit at all - has completed yet.
+CHECKS_DIR <- file.path(OUTPUT_DIR, "main_analysis_checks")
+dir.create(CHECKS_DIR, showWarnings = FALSE)
 
 
 # ── 3. Pathogen registry ──────────────────────────────────────────────────────
@@ -277,6 +290,10 @@ SHARED_PHI_FAMILIES    <- c("gamma")
   file.path(TASK_DIR, paste0(pathogen, "__", analysis_label, "__", dist_name, ".rds"))
 }
 
+.checks_file <- function(pathogen, dist_name) {
+  file.path(CHECKS_DIR, paste0(pathogen, "__", dist_name, ".rds"))
+}
+
 
 # ── 7. Load results and apply force-rerun ────────────────────────────────────
 
@@ -297,6 +314,18 @@ if (length(FORCE_RERUN) > 0) {
   for (p in intersect(FORCE_RERUN, names(all_results))) {
     message("Force-rerun: clearing stored results for '", p, "'.")
     all_results[[p]] <- NULL
+  }
+
+  # A force-rerun should also recompute pre_inference_checks(), not just the
+  # fits - otherwise the cache below would keep serving the old filtered
+  # dataset list straight through the "cleared" run.
+  for (p in FORCE_RERUN) {
+    stale_checks <- Sys.glob(file.path(CHECKS_DIR, paste0(p, "__*.rds")))
+    if (length(stale_checks) > 0) {
+      message("Force-rerun: clearing ", length(stale_checks),
+              " cached pre_inference_checks() result(s) for '", p, "'.")
+      unlink(stale_checks)
+    }
   }
 }
 
@@ -347,12 +376,24 @@ for (pathogen in names(pathogen_registry)) {
   analyses[["filtered"]] <- list(by_family = list(gamma = analyses[["all"]]))
 
   for (dist_name in HIERARCHICAL_FAMILIES) {
+
+    checks_file <- .checks_file(pathogen, dist_name)
+
+    if (file.exists(checks_file)) {
+      checks_res <- readRDS(checks_file)
+      analyses[["filtered"]]$by_family[[dist_name]] <- list(datasets = checks_res$datasets, checks = checks_res)
+      message("\n  Recovered filtered datasets for ", dist_name, " from cached checks file.")
+      next
+    }
+
     prior <- all_results[[pathogen]][["filtered"]][[dist_name]]
     if (!is.null(prior$datasets)) {
       analyses[["filtered"]]$by_family[[dist_name]] <- list(datasets = prior$datasets, checks = prior$checks)
       message("\n  Recovered filtered datasets for ", dist_name, " from existing results.")
+      if (!is.null(prior$checks)) saveRDS(prior$checks, checks_file)
       next
     }
+
     message("\n  Running pre_inference_checks for filter (", dist_name, ")...")
     checks_res <- tryCatch(
       suppressWarnings(
@@ -360,7 +401,8 @@ for (pathogen in names(pathogen_registry)) {
           datasets_full, stan_model,
           dist_type = DIST_CODES[[dist_name]],
           verbose   = FALSE,
-          filter    = TRUE
+          filter    = TRUE,
+          loo_timeout_secs = CHECKS_LOO_TIMEOUT_SECS
         )
       ),
       error = function(e) {
@@ -369,6 +411,7 @@ for (pathogen in names(pathogen_registry)) {
         list(datasets = datasets_full)
       }
     )
+    saveRDS(checks_res, checks_file)
     analyses[["filtered"]]$by_family[[dist_name]] <- list(datasets = checks_res$datasets, checks = checks_res)
     n_removed <- length(datasets_full) - length(checks_res$datasets)
     if (n_removed > 0) {
@@ -505,6 +548,25 @@ for (pathogen in names(pathogen_registry)) {
         all_results[[pathogen]][[analysis_label]][["gamma"]] <-
           list(skipped  = TRUE,
                reason   = "gamma_phi_extreme_safe",
+               datasets = analysis_datasets)
+        next
+      }
+
+      # Gamma shared-(mu0,tau,phi) weak-identifiability check (see
+      # gamma_shared_phi_reliable() docs). Distinct from the two checks above:
+      # not a hard boundary/slow-series issue, a genuinely flat/multimodal
+      # surface diagnosed via Zika/all/gamma. Not predicted by sample size
+      # alone (MVD/all/gamma has the same n=2 but converges cleanly), so this
+      # runs unconditionally rather than being gated on n_datasets.
+      if (dist_name == "gamma" &&
+          !gamma_shared_phi_reliable(analysis_datasets, stan_model_shared_phi, verbose = FALSE)) {
+        message("\n  [SKIP] ", pathogen, " / ", analysis_label,
+                " / gamma — independent optimiser starts found no dominant",
+                " mode in the shared (mu0, tau, phi) surface",
+                " (gamma_shared_phi_reliable() check failed).")
+        all_results[[pathogen]][[analysis_label]][["gamma"]] <-
+          list(skipped  = TRUE,
+               reason   = "gamma_shared_phi_reliable",
                datasets = analysis_datasets)
         next
       }
