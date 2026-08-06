@@ -35,8 +35,8 @@ test_that("type-4 (freq_value/freq_count) flat arrays and indexing are correct",
   expect_equal(sd$n_freq_total,           9L)   # 5 + 4 entries
   expect_equal(as.integer(sd$freq_start), c(1L, 6L))
   expect_equal(as.integer(sd$freq_len),   c(5L, 4L))
-  expect_equal(sd$freq_value[1:5], c(1, 2, 3, 4, 5))
-  expect_equal(sd$freq_value[6:9], c(3, 4, 5, 6))
+  expect_equal(as.vector(sd$freq_value[1:5]), c(1, 2, 3, 4, 5))
+  expect_equal(as.vector(sd$freq_value[6:9]), c(3, 4, 5, 6))
   # n: first dataset omits n → sum(freq_count) = 20; second provides n = 20
   expect_equal(as.integer(sd$n_obs), c(20L, 20L))
 })
@@ -47,8 +47,8 @@ test_that("type-5 (interval-censored freq) flat arrays and indexing are correct"
   expect_equal(sd$n_freq_total,           7L)   # 4 + 3 entries
   expect_equal(as.integer(sd$freq_start), c(1L, 5L))
   expect_equal(as.integer(sd$freq_len),   c(4L, 3L))
-  expect_equal(sd$freq_lower[1:4], c(0, 3, 6, 9))
-  expect_equal(sd$freq_upper[1:4], c(3, 6, 9, 12))
+  expect_equal(as.vector(sd$freq_lower[1:4]), c(0, 3, 6, 9))
+  expect_equal(as.vector(sd$freq_upper[1:4]), c(3, 6, 9, 12))
   # n: first dataset omits n → sum(freq_count) = 26; second provides n = 16
   expect_equal(as.integer(sd$n_obs), c(26L, 16L))
 })
