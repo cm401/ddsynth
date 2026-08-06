@@ -658,10 +658,25 @@ model {
         // than the k*c > 2 needed for the variance alone. Hard barrier:
         // reject this region of parameter space for datasets that report
         // a mean and SD.
-        if (kappa * phi <= 4.0) {
+        real kc = kappa * phi;
+        if (kc <= 4.0) {
           moments_ok = 0;
           target += negative_infinity();
         } else {
+          // The moments below already diverge smoothly (not a jump) as
+          // kc->4+ (lbeta's first argument -> 0+), and bvn_log_dens()
+          // already guards against the resulting overflow. But the switch
+          // right at kc=4, from computing this (possibly huge) value to an
+          // exact -Inf, is itself a non-differentiable cliff that gives
+          // gradient-based samplers/optimisers no advance warning. Adding a
+          // smooth log-barrier that fades to exactly 0 by kc=4+KC_MARGIN
+          // gives an early, well-defined gradient pushing away from the
+          // boundary, while leaving every configuration outside this small
+          // margin (the overwhelming majority of parameter space)
+          // numerically identical to before.
+          if (kc < 4.0 + 0.5) {
+            target += log(kc - 4.0) - log(0.5);
+          }
           real lam = exp(loc);
           real m1 = lam   * kappa * exp(lbeta(kappa - 1.0/phi, 1 + 1.0/phi));
           real m2 = lam^2 * kappa * exp(lbeta(kappa - 2.0/phi, 1 + 2.0/phi));

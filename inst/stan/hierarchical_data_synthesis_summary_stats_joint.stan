@@ -650,10 +650,18 @@ model {
       } else if (dist_type == 4) {  // burr XII: lambda=exp(loc), c=phi, k=kappa
         // 4th moment (needed for Var(S^2)) requires k*c > 4, stricter than
         // the k*c > 2 needed for the variance alone.
-        if (kappa * phi <= 4.0) {
+        real kc = kappa * phi;
+        if (kc <= 4.0) {
           moments_ok = 0;
           target += negative_infinity();
         } else {
+          // Smooth log-barrier just above the true boundary (see
+          // hierarchical_data_synthesis_summary_stats.stan for the full
+          // rationale): fades to exactly 0 by kc=4+KC_MARGIN, leaving
+          // every configuration outside this small margin unchanged.
+          if (kc < 4.0 + 0.5) {
+            target += log(kc - 4.0) - log(0.5);
+          }
           real lam = exp(loc);
           real m1 = lam   * kappa * exp(lbeta(kappa - 1.0/phi, 1 + 1.0/phi));
           real m2 = lam^2 * kappa * exp(lbeta(kappa - 2.0/phi, 1 + 2.0/phi));
