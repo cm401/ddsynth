@@ -797,13 +797,13 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
     obs_stat3    = as.array(obs_stat3),
     resolution   = as.array(resolution_vec),
     n_freq_total     = length(freq_value_all),
-    freq_value       = freq_value_all,
-    freq_lower       = freq_lower_all,
-    freq_upper       = freq_upper_all,
-    event_lower      = event_lower_all,
-    event_upper      = event_upper_all,
-    event_observed   = event_observed_all,
-    freq_count       = freq_count_all,
+    freq_value       = as.array(freq_value_all),
+    freq_lower       = as.array(freq_lower_all),
+    freq_upper       = as.array(freq_upper_all),
+    event_lower      = as.array(event_lower_all),
+    event_upper      = as.array(event_upper_all),
+    event_observed   = as.array(event_observed_all),
+    freq_count       = as.array(freq_count_all),
     freq_start       = as.array(freq_start_vec),
     freq_len         = as.array(freq_len_vec),
     truncation_time  = as.array(truncation_time_vec)
@@ -1574,6 +1574,115 @@ gamma_phi_extreme_safe <- function(datasets, max_implied_phi = 60, verbose = TRU
 }
 
 
+# Gamma shared-phi weak-identifiability heuristic -----------------------------
+
+#' Check whether gamma's shared (mu0, tau, phi) surface is safe to attempt
+#'
+#' Diagnosed via `Zika/all/gamma` (2 datasets, mixed order-statistic and
+#' frequency-interval types): repeated MCMC escalation gave the same
+#' max_Rhat at both the cheap and moderate tiers - a genuinely
+#' weakly-identified surface, not a hard boundary wall like Burr XII's
+#' `kappa*phi_d>4` reject. Sample size alone does not predict this:
+#' `MVD/all/gamma` (also 2 datasets, but two *homogeneous* quantile-type
+#' datasets) has one clearly dominant mode and converges cleanly;
+#' `YFV/all/gamma` (3 datasets, homogeneous frequency-table types)
+#' converges to a single sharp optimum.
+#'
+#' Detected via repeated random-init `optimizing()` calls, matching
+#' [burr_phid_reliable()]'s existing methodology, but with two changes
+#' found necessary during calibration against the real corpus (not just
+#' Zika): (1) Stan's default `init="random"` turned out to be a poor init
+#' strategy for this model - it produced spurious optimiser failures even
+#' on `MVD/all/gamma`, a known-good case (0/10 successes), fixed by
+#' sampling each start from a generic wide normal instead. (2) requiring an
+#' exact `return_code==0` was too strict for the same reason (many
+#' known-good fits, e.g. `EVD/all/gamma`, only hit `return_code==0` on a
+#' minority of starts) and the *range* of successful log-posteriors was not
+#' robust - a single wild optimiser excursion (which happens even for
+#' clean cases, unrelated to real multimodality) inflates the range
+#' arbitrarily. The interquartile range (IQR) of all finite log-posteriors
+#' obtained (regardless of return code) is far more robust: every
+#' known-good case (MVD, YFV, SARS, Lassa, EVD) gives an IQR of exactly
+#' 0.000 across repeated calibration runs with different seeds - the
+#' central bulk of starts always finds the identical answer - while Zika's
+#' IQR is consistently, clearly nonzero (0.3-1.2 across two independent
+#' seed replications), and the already-known-bad Nipah/gamma and RVF/gamma
+#' (both separately caught by [gamma_phi_extreme_safe()]) give IQRs in the
+#' hundreds to thousands.
+#'
+#' @param datasets A named list of datasets as accepted by
+#'   [prepare_stan_data_from_datasets()].
+#' @param stan_model The compiled shared-phi model (`dist_type = 2`).
+#' @param n_starts Number of random-init `rstan::optimizing()` calls.
+#' @param min_success_frac Minimum fraction of starts that must return a
+#'   finite log-posterior (not error) at all.
+#' @param iqr_tol Maximum tolerated interquartile range of log-posteriors
+#'   across finite starts before they're judged to reflect more than one
+#'   mode.
+#' @param verbose Print a one-line verdict.
+#'
+#' @return `TRUE` if safe to attempt, `FALSE` if gamma should be skipped for
+#'   this pathogen/analysis (no fallback model exists, unlike Burr XII's
+#'   [burr_phid_reliable()]).
+#' @export
+gamma_shared_phi_reliable <- function(datasets, stan_model, n_starts = 20,
+                                       min_success_frac = 0.3, iqr_tol = 0.1,
+                                       verbose = TRUE) {
+
+  stan_data <- tryCatch({
+    sd_ <- prepare_stan_data_from_datasets(datasets, dist_type = 2L)
+    update_phi_prior(sd_, datasets)
+  }, error = function(e) NULL)
+  if (is.null(stan_data)) {
+    if (verbose) message("gamma_shared_phi_reliable: SKIP \u2014 data prep failed; treating gamma as unreliable to be safe.")
+    return(FALSE)
+  }
+
+  # Generic, moderately wide inits (not tied to each dataset's own,
+  # possibly very narrow, prior sd) so different starts genuinely explore
+  # different regions - see calibration notes above.
+  init_fun <- function() list(
+    mu0       = stats::rnorm(1, stan_data$mu0_mean, 1),
+    log_tau   = stats::rnorm(1, stan_data$log_tau_mean, 1),
+    log_phi   = stats::rnorm(1, stan_data$log_phi_mean, 1),
+    log_kappa = stats::rnorm(1, 0, 1),
+    loc_d_raw = as.array(stats::rnorm(stan_data$n_datasets, 0, 1))
+  )
+
+  vals <- numeric(0)
+  for (i in seq_len(n_starts)) {
+    opt <- tryCatch(
+      rstan::optimizing(stan_model, data = stan_data, seed = 20000 + i, hessian = FALSE,
+                         as_vector = FALSE, init = init_fun()),
+      error = function(e) NULL
+    )
+    if (!is.null(opt) && is.finite(opt$value)) vals <- c(vals, opt$value)
+  }
+
+  success_frac <- length(vals) / n_starts
+  if (success_frac < min_success_frac) {
+    if (verbose) message(sprintf(
+      "gamma_shared_phi_reliable: SKIP \u2014 too many optimiser failures (%d/%d returned a finite value, need >= %.0f%%); ",
+      length(vals), n_starts, 100 * min_success_frac),
+      "the shared (mu0, tau, phi) surface is likely too weakly identified from this data.")
+    return(FALSE)
+  }
+
+  iqr_val <- stats::IQR(vals)
+  if (iqr_val > iqr_tol) {
+    if (verbose) message(sprintf(
+      "gamma_shared_phi_reliable: SKIP \u2014 independent starts disagree (log-posterior IQR = %.3f > %.3f), no dominant mode.",
+      iqr_val, iqr_tol))
+    return(FALSE)
+  }
+
+  if (verbose) message(sprintf(
+    "gamma_shared_phi_reliable: OK \u2014 %d/%d starts returned a finite value with a single dominant mode (IQR = %.2e).",
+    length(vals), n_starts, iqr_val))
+  TRUE
+}
+
+
 # Compile Stan model -------------------------------------------------------
 
 #' Compile a ddsynth Stan model
@@ -1661,6 +1770,13 @@ compile_stan_model <- function(model = c("factorised", "joint")) {
 #'   single-dataset fits. Defaults to `4000`.
 #' @param loo_chains Number of chains for the leave-one-out fits. Defaults to
 #'   `2`.
+#' @param loo_timeout_secs Wall-clock ceiling per individual LOO fit in Check
+#'   5, forked via [parallel::mcparallel()] and killed with
+#'   `.kill_process_tree()` if it overruns. A normal fit takes a few seconds;
+#'   this guards against the rare dataset whose single-parameter posterior
+#'   lands in a genuinely slow numerical region and never returns. Default
+#'   `120` (2 min). A killed fit is recorded as `NA` in `loo_fits`, the same
+#'   as any other Check 5 failure.
 #' @param verbose Logical. If `TRUE` (default), prints a formatted summary of
 #'   all check results to the console.
 #' @param filter Logical. If `TRUE`, any dataset flagged by at least one
@@ -1694,6 +1810,7 @@ pre_inference_checks <- function(datasets,
                                  n_sim                 = 2000,
                                  loo_iter              = 4000,
                                  loo_chains            = 2,
+                                 loo_timeout_secs      = 120,
                                  verbose               = TRUE,
                                  filter                = FALSE) {
 
@@ -1880,15 +1997,26 @@ pre_inference_checks <- function(datasets,
                             rhat = NA_real_,   n_eff = NA_real_))
     }
 
-    fit <- tryCatch(
-      suppressWarnings(
-        rstan::sampling(stan_model, data = single_data,
-                        iter = loo_iter, chains = loo_chains,
-                        refresh = 0, show_messages = FALSE)
-      ),
-      error = function(e) NULL
-    )
-    if (is.null(fit) || fit@mode != 0L) {
+    # Forked with a timeout (not a plain tryCatch): a fit stuck in a
+    # pathologically slow numerical region for this one dataset never
+    # errors on its own, so this is the only thing that reclaims it. Same
+    # mechanism as fit_corpus_parallel()'s task timeout, just scaled down -
+    # a single-dataset fit at fixed settings normally takes a few seconds.
+    fit <- tryCatch({
+      job <- parallel::mcparallel(
+        suppressWarnings(
+          rstan::sampling(stan_model, data = single_data,
+                          iter = loo_iter, chains = loo_chains,
+                          refresh = 0, show_messages = FALSE)
+        ),
+        silent = TRUE
+      )
+      collected <- parallel::mccollect(job, wait = FALSE, timeout = loo_timeout_secs)
+      result <- collected[[as.character(job$pid)]]
+      if (is.null(result)) .kill_process_tree(job$pid)
+      result
+    }, error = function(e) NULL)
+    if (is.null(fit) || !inherits(fit, "stanfit") || fit@mode != 0L) {
       return(tibble::tibble(dataset = name, phi_mean = NA_real_,
                             phi_lo = NA_real_, phi_hi = NA_real_,
                             rhat = NA_real_,   n_eff = NA_real_))
