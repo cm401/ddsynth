@@ -1210,16 +1210,50 @@ compute_pathogen_model_bayes_factors <- function(all_results, analysis = "filter
     dist_results <- all_results[[pathogen]][[analysis]]
     if (is.null(dist_results)) next
 
+    # Only fits usable at all: not NULL/skipped-sentinel, has a fit and the
+    # dataset list used to build it (needed below to identify which
+    # observations are common across families).
+    usable <- Filter(function(nm) {
+      r <- dist_results[[nm]]
+      !is.null(r) && !isTRUE(r$skipped) && !is.null(r$fit) && !is.null(r$datasets)
+    }, names(dist_results))
+    if (length(usable) == 0L) next
+
+    # Since "filtered" is now family-specific (see POINT4_LIKELIHOOD_MATHS.md
+    # Part E.10), each family may have excluded a different subset of
+    # datasets. elpd_loo is a SUM over observations, so comparing it across
+    # families with different observation counts/membership would bias
+    # weights toward whichever family happened to filter out more data,
+    # regardless of genuine relative fit quality. Restricting every family's
+    # LOO computation to the datasets common to all of them makes the
+    # comparison apples-to-apples; each family's own final reported fit
+    # (e.g. in Table 1) is unaffected - only this cross-family weighting
+    # step is restricted.
+    common_datasets <- Reduce(intersect, lapply(usable, function(nm) names(dist_results[[nm]]$datasets)))
+    if (length(common_datasets) == 0L) {
+      message("  [WARN] ", pathogen, ": no datasets common to every family's '",
+              analysis, "' fit - skipping model comparison.")
+      next
+    }
+
     elpds <- c()
 
-    for (dist_name in names(dist_results)) {
+    for (dist_name in usable) {
       r <- dist_results[[dist_name]]
-      # Skip: NULL slot, skipped-GG sentinel, or failed fit
-      if (is.null(r) || isTRUE(r$skipped) || is.null(r$fit)) next
 
       elpd <- tryCatch({
         # Extract log_lik matrix (draws × log_lik slots)
         ll_mat <- rstan::extract(r$fit, "log_lik")$log_lik
+
+        # log_lik has 3 columns per dataset (vector[n_datasets*3] in Stan,
+        # filled dataset-by-dataset with idx += 3 each time), in the same
+        # order as r$datasets. Map the common dataset names to THIS fit's
+        # own column indices - a given dataset can sit at a different index
+        # in different families' filtered lists.
+        own_idx   <- match(common_datasets, names(r$datasets))
+        if (anyNA(own_idx)) stop("a common dataset is missing from this fit's own datasets")
+        keep_cols <- as.vector(vapply(own_idx, function(d) (3L * (d - 1L)) + 1:3, integer(3)))
+        ll_mat    <- ll_mat[, keep_cols, drop = FALSE]
 
         # The Stan model stores zero-filled placeholder columns for unused
         # summary-statistic slots (e.g. slot 3 for mean+SD datasets, slots
