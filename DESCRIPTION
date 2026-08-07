@@ -9,7 +9,6 @@ URL: https://cm401.github.io/ddsynth, https://github.com/cm401/ddsynth
 BugReports: https://github.com/cm401/ddsynth/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.1
 Imports:
     BSL,
     bridgesampling,
@@ -44,3 +43,4 @@ Suggests:
     tidyverse
 Config/testthat/edition: 3
 VignetteBuilder: knitr
+Config/roxygen2/version: 8.0.0

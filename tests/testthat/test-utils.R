@@ -35,7 +35,8 @@ test_that("make_stan_init_fn closure returns a list with required names", {
     )
   )
   init <- make_stan_init_fn(sd)()
-  expect_named(init, c("mu0", "log_tau", "log_phi", "log_kappa", "loc_d_raw"),
+  expect_named(init, c("mu0", "log_tau", "log_phi0", "log_omega", "log_kappa",
+                        "loc_d_raw", "log_phi_d_raw"),
                ignore.order = TRUE)
 })
 
@@ -50,7 +51,8 @@ test_that("make_stan_init_fn initialises parameters from stan_data", {
   init <- make_stan_init_fn(sd)()
   expect_equal(init$mu0,       sd$mu0_mean)
   expect_equal(init$log_tau,   sd$log_tau_mean)
-  expect_equal(init$log_phi,   sd$log_phi_mean)
+  expect_equal(init$log_phi0,  sd$log_phi_mean)
+  expect_equal(init$log_omega, sd$log_omega_mean)
   expect_equal(init$log_kappa, sd$log_kappa_mean)
 })
 

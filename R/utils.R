@@ -232,6 +232,116 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95), cdf_mat = NULL)
 }
 
 
+#' Detect the day-fraction reporting resolution of an order-statistic dataset
+#'
+#' Infers how finely a study's reported order statistics were rounded, so the
+#' day-rounded order-statistic likelihood (Reviewer 2, point 1(iii)) can use a
+#' window narrower than a full day where the data supports it, rather than
+#' assuming every dataset was rounded to the nearest whole day.
+#'
+#' `exact_vals` (the sample min and max for a median+range dataset) are
+#' always true order statistics: an actual individual observation, under any
+#' convention, at any sample size. `risky_vals` (the median, and for a
+#' median+IQR dataset the reported quartiles) are not: for an even sample
+#' size the standard median is the *average* of the two middle order
+#' statistics, and quartile conventions vary and routinely interpolate
+#' between adjacent order statistics. A day-integer dataset can therefore
+#' report a median or quartile with a spurious fractional part (most often an
+#' exact half, from averaging two integers) that reflects the interpolation
+#' arithmetic, not the study's real measurement precision. Checked against
+#' the curated corpus: several real median+range datasets (e.g. n=28, n=8,
+#' n=10, n=22) show exactly this pattern, a half-integer median next to
+#' integer min/max, for both even and odd n.
+#'
+#' Because of this, `exact_vals` are checked against the full set of "nice"
+#' divisors of a day (whole day, half-day, ..., hourly), coarsest first,
+#' since an integer is trivially consistent with every finer grid too (e.g.
+#' `5` is a multiple of `1/24` as well as of `1`) and the coarsest match is
+#' the meaningful one. `risky_vals` are trusted only for signals that a
+#' generic linear interpolation between two integers is unlikely to produce
+#' by chance: an hour-based grid (hourly, 2-hourly, 3-hourly) or a decimal
+#' precision of two or more places (a simple interpolation weight reproduces
+#' at most one non-trivial decimal digit from two integers, e.g. an eighth
+#' gives `x.125`, a genuine 3-decimal case, which is why the 2dp threshold is
+#' conservative rather than exact). Otherwise `risky_vals` are ignored and
+#' the result defaults to a whole day. This means the function will
+#' sometimes underestimate a median+IQR dataset's true resolution (there is
+#' no min/max to anchor it), but underestimating resolution only means
+#' falling back to the wider, already-accepted day window, not repeating the
+#' overconfidence problem this exists to fix.
+#'
+#' @param exact_vals Numeric vector of statistics that are always true order
+#'   statistics (min and max, for a median+range dataset). `NA`s are
+#'   dropped. Pass `numeric(0)` if none apply (e.g. a median+IQR dataset).
+#' @param risky_vals Numeric vector of statistics that may be interpolated
+#'   rather than raw order statistics (the median; and, for a median+IQR
+#'   dataset, the quartiles too). `NA`s are dropped. Default `numeric(0)`.
+#' @param tol Numerical tolerance for judging a value to be a multiple of a
+#'   candidate grid. Default `1e-6`.
+#' @return A single number: the detected resolution in days (`1` = whole day,
+#'   `1/24` = hourly, etc.). Defaults to `1` if both arguments are empty
+#'   after dropping `NA`s.
+#' @export
+detect_resolution <- function(exact_vals, risky_vals = numeric(0), tol = 1e-6) {
+  exact_vals <- exact_vals[!is.na(exact_vals)]
+  risky_vals <- risky_vals[!is.na(risky_vals)]
+
+  grid_match <- function(vals, denoms) {
+    for (den in denoms) {
+      if (all(abs(vals * den - round(vals * den)) < tol)) return(1 / den)
+    }
+    NA_real_
+  }
+  decimals_of <- function(x) {
+    s <- sub("0+$", "", formatC(x, digits = 6, format = "f"))
+    s <- sub("\\.$", "", s)  # a bare trailing "." remains when x is a whole number
+    if (!grepl(".", s, fixed = TRUE)) return(0L)
+    nchar(strsplit(s, ".", fixed = TRUE)[[1]][2])
+  }
+  decimal_precision <- function(vals) {
+    if (length(vals) == 0) return(NA_real_)
+    max_dec <- min(max(vapply(vals, decimals_of, integer(1))), 3L)
+    if (max_dec == 0L) NA_real_ else 10^(-max_dec)
+  }
+
+  nice_denoms <- c(1, 2, 3, 4, 6, 8, 12, 24)
+
+  # Exact order statistics: trust the full grid search, then the general
+  # decimal-precision fallback (a study reporting min/max to N decimal
+  # places really did measure to that precision).
+  if (length(exact_vals) > 0) {
+    res <- grid_match(exact_vals, nice_denoms)
+    if (is.na(res)) res <- decimal_precision(exact_vals)
+    if (!is.na(res)) return(res)
+  }
+
+  # No exact anchor, or it was all whole days: only accept risky_vals'
+  # evidence of finer resolution if it is not plausibly a simple
+  # interpolation artifact (an hour-based grid, or >=2dp decimal precision).
+  #
+  # Finding the COARSEST grid risky_vals fit (not just checking membership of
+  # {8,12,24} directly) matters here: a half-day value like 6.5 is *also*
+  # trivially a multiple of 1/8, 1/12 and 1/24 (0.5 = 4/8 = 6/12 = 12/24), so
+  # checking those denominators on their own would wrongly "confirm" an
+  # hour-based grid for a dataset that is really just half-day. Only the
+  # coarsest grid that fits is a genuine claim about the resolution.
+  if (length(risky_vals) > 0) {
+    coarsest_den <- NA_real_
+    for (den in nice_denoms) {
+      if (all(abs(risky_vals * den - round(risky_vals * den)) < tol)) { coarsest_den <- den; break }
+    }
+    hour_res <- if (!is.na(coarsest_den) && coarsest_den %in% c(8, 12, 24)) 1 / coarsest_den else NA_real_
+    dec_res  <- decimal_precision(risky_vals)
+    if (!is.na(dec_res) && dec_res > 0.01) dec_res <- NA_real_  # 1dp: too easily a simple-fraction artifact
+    candidates <- c(hour_res, dec_res)
+    candidates <- candidates[!is.na(candidates)]
+    if (length(candidates) > 0) return(min(candidates))
+  }
+
+  1
+}
+
+
 #' Prepare Stan data from a list of dataset summaries
 #'
 #' Converts a list of dataset descriptors (each providing summary statistics
@@ -263,6 +373,20 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95), cdf_mat = NULL)
 #'       All five vectors must have the same length. Requires
 #'       `expo_upper[i] <= event_lower[i]` for all i (positive delays). `n`
 #'       is optional and defaults to `sum(freq_count)`.}
+#'     \item{`expo_lower`, `expo_upper`, `event_lower`, `event_upper`,
+#'       `event_observed`, `freq_count`, `truncation_time`}{Double
+#'       interval-censored with right truncation/censoring (summary type 7).
+#'       As type 6, plus `event_observed` (1 = onset seen, 0 = right-censored:
+#'       not yet observed by the analysis cutoff) and a single
+#'       `truncation_time` per dataset (the analysis cutoff `T`, in the same
+#'       time origin as the exposure/event windows). `truncation_time` is a
+#'       study-design choice, not a rounded observation of a random event
+#'       time, so it is never treated as day-rounded the way exposure/event
+#'       windows are. Set it using the same time-encoding convention as that
+#'       dataset's own windows: e.g. if event days are encoded as `[day,
+#'       day+1)` intervals, set `truncation_time` to `(last observed day +
+#'       1)` to mean "complete through the end of that day", not to the bare
+#'       day number.}
 #'   }
 #'   Each element may also contain an optional `source` field — a free-text
 #'   character string recording the bibliographic reference for that dataset
@@ -275,7 +399,11 @@ extract_quantiles <- function(cdf_summary, probs = c(0.5, 0.95), cdf_mat = NULL)
 #' @param custom_priors Named list of prior overrides. Any values not supplied
 #'   fall back to distribution-appropriate defaults (see Details). Recognised
 #'   names: `mu0_sd`, `log_tau_mean`, `log_tau_sd`, `log_phi_mean`,
-#'   `log_phi_sd`.
+#'   `log_phi_sd`, `log_omega_mean`, `log_omega_sd`. `log_phi_mean`/`log_phi_sd`
+#'   are the prior for `log_phi0` (population-mean dispersion);
+#'   `log_omega_mean`/`log_omega_sd` are the prior for `log_omega`, the
+#'   between-study SD of log dispersion (per-study `phi_d` is hierarchical,
+#'   not a shared scalar).
 #'
 #' @details
 #' **Distribution-specific defaults for `log_phi`:**
@@ -316,7 +444,8 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
                                             use_custom_priors = 0,
                                             custom_priors = list()) {
 
-  # Apply distribution-specific defaults for log_phi_mean/log_phi_sd and
+  # Apply distribution-specific defaults for log_phi_mean/log_phi_sd,
+  # log_omega_mean (log_omega_sd stays flat, see below), and
   # log_kappa_mean/log_kappa_sd.
   #
   # phi meaning per distribution:
@@ -326,16 +455,31 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
   #   burr XII   (4): phi = c (shape1),      typical range 1-5      -> log_phi_mean =  0.7
   #   gen. gamma (5): phi = sigma (log-disp),typical range 0.2-1.0  -> log_phi_mean = -0.5
   #
+  # log_omega_mean: between-study SD of log dispersion, family-specific
+  # because how tightly phi is pinned down per study (and hence how much
+  # of its apparent between-study spread is real heterogeneity vs
+  # estimation noise) differs by family - notably gamma's shape parameter
+  # is intrinsically harder to identify per-study than lognormal's sigma
+  # (confirmed by a per-family, per-dataset no-pooling MAP scoping across
+  # COVID-19/SARS/Cholera/Dengue, 103 datasets/family; pooled within-pathogen
+  # sd(log phi): lognormal 0.410, burr12 0.415, gengamma 0.483, weibull 0.457,
+  # gamma 0.677). log_omega_mean below is log() of that pooled sd, rounded.
+  # A single shared uninformative prior on top of a single scalar phi could
+  # not previously produce this failure mode; with phi now hierarchical
+  # per-dataset, a too-tight shared omega prior caused a severe funnel/mixing
+  # pathology for gamma specifically (Rhat > 100) that resolved once
+  # family-specific scale was used. 
+  #
   # kappa meaning per distribution:
   #   dist 1-3: kappa is unused; wide uninformative prior centred at 1.
   #   burr XII (4): kappa = k (shape2), typical range 1-10  -> log_kappa_mean = 1.0
   #   gen. gamma (5): kappa = Q (shape), typical range 0.3-3 -> log_kappa_mean = 0.0
   dist_defaults <- list(
-    `1` = list(log_phi_mean = -0.7, log_phi_sd = 0.5, log_kappa_mean = 0.0, log_kappa_sd = 1.0),
-    `2` = list(log_phi_mean =  2.5, log_phi_sd = 0.5, log_kappa_mean = 0.0, log_kappa_sd = 1.0),
-    `3` = list(log_phi_mean =  1.0, log_phi_sd = 0.5, log_kappa_mean = 0.0, log_kappa_sd = 1.0),
-    `4` = list(log_phi_mean =  0.7, log_phi_sd = 0.5, log_kappa_mean = 1.0, log_kappa_sd = 0.5),
-    `5` = list(log_phi_mean = -0.5, log_phi_sd = 0.5, log_kappa_mean = 0.0, log_kappa_sd = 0.5)
+    `1` = list(log_phi_mean = -0.7, log_phi_sd = 0.5, log_omega_mean = -0.9, log_kappa_mean = 0.0, log_kappa_sd = 1.0),
+    `2` = list(log_phi_mean =  2.5, log_phi_sd = 0.5, log_omega_mean = -0.4, log_kappa_mean = 0.0, log_kappa_sd = 1.0),
+    `3` = list(log_phi_mean =  1.0, log_phi_sd = 0.5, log_omega_mean = -0.8, log_kappa_mean = 0.0, log_kappa_sd = 1.0),
+    `4` = list(log_phi_mean =  0.7, log_phi_sd = 0.5, log_omega_mean = -0.9, log_kappa_mean = 1.0, log_kappa_sd = 0.5),
+    `5` = list(log_phi_mean = -0.5, log_phi_sd = 0.5, log_omega_mean = -0.7, log_kappa_mean = 0.0, log_kappa_sd = 0.5)
   )[[as.character(dist_type)]]
 
   if (is.null(dist_defaults)) {
@@ -348,6 +492,14 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
     log_tau_sd    = 0.5,
     log_phi_mean  = dist_defaults$log_phi_mean,
     log_phi_sd    = dist_defaults$log_phi_sd,
+    # Between-study SD of log dispersion (log_phi_d), analogous to log_tau
+    # for location. log_omega_mean is family-specific (see dist_defaults
+    # above); log_omega_sd is left flat at 0.5 across families, matching
+    # the log_tau_sd=0.5 convention already used here - it is a generic
+    # uncertainty width on top of the point estimate, not itself
+    # data-derived per family. 
+    log_omega_mean = dist_defaults$log_omega_mean,
+    log_omega_sd   = 0.5,
     log_kappa_mean = dist_defaults$log_kappa_mean,
     log_kappa_sd   = dist_defaults$log_kappa_sd
   )
@@ -378,6 +530,9 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
   obs_stat1      <- numeric(n_datasets)
   obs_stat2      <- numeric(n_datasets)
   obs_stat3      <- numeric(n_datasets)
+  # Day-fraction rounding resolution for summary_type 1/2 (see
+  # detect_resolution()); irrelevant for other types, left at the default 1.
+  resolution_vec <- rep(1, n_datasets)
   # Frequency table flat arrays (for summary_type == 4, 5, 6, and 7)
   freq_value_all      <- numeric(0)
   freq_lower_all      <- numeric(0)
@@ -403,6 +558,9 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
       obs_stat1[i]    <- d$median
       obs_stat2[i]    <- d$min
       obs_stat3[i]    <- d$max
+      # min/max are always true order statistics; median may be an
+      # interpolated average for even n, so it is only a "risky" signal.
+      resolution_vec[i] <- detect_resolution(c(d$min, d$max), d$median)
 
     } else if (!is.null(d$median) && !is.null(d$Q1) && !is.null(d$Q3)) {
       # Type 2: median + IQR (Q1, Q3)
@@ -411,6 +569,9 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
       obs_stat1[i]    <- d$median
       obs_stat2[i]    <- d$Q1
       obs_stat3[i]    <- d$Q3
+      # No min/max anchor here; median and quartiles can all be interpolated,
+      # so all three are "risky" (see detect_resolution()).
+      resolution_vec[i] <- detect_resolution(numeric(0), c(d$median, d$Q1, d$Q3))
 
     } else if (!is.null(d$mean) && !is.null(d$sd)) {
       # Type 3: mean + sd
@@ -427,6 +588,10 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
       obs_stat1[i]      <- 0  # placeholder
       obs_stat2[i]      <- 0  # placeholder
       obs_stat3[i]      <- 0  # placeholder
+      # freq_value entries are true recorded values, not interpolated
+      # statistics, so (unlike median/Q1/Q3) they can all be trusted with the
+      # full "exact" grid search, the same way min/max are for type 1.
+      resolution_vec[i] <- detect_resolution(d$freq_value)
       freq_start_vec[i] <- running_start
       freq_len_vec[i]   <- length(d$freq_value)
       freq_value_all       <- c(freq_value_all,      as.numeric(d$freq_value))
@@ -452,6 +617,12 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
       obs_stat1[i]      <- 0  # placeholder
       obs_stat2[i]      <- 0  # placeholder
       obs_stat3[i]      <- 0  # placeholder
+      # Only entries with no reported range (freq_lower == freq_upper) are
+      # treated as rounded point values in Stan; resolution is inferred from
+      # just those (true recorded values, so the "exact" grid search
+      # applies). detect_resolution() defaults to 1 (unused) if a dataset has
+      # no such entries.
+      resolution_vec[i] <- detect_resolution(d$freq_lower[d$freq_lower == d$freq_upper])
       freq_start_vec[i] <- running_start
       freq_len_vec[i]   <- length(d$freq_lower)
       freq_value_all      <- c(freq_value_all,     rep(0, length(d$freq_lower)))  # unused for type 5
@@ -624,14 +795,15 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
     obs_stat1    = as.array(obs_stat1),
     obs_stat2    = as.array(obs_stat2),
     obs_stat3    = as.array(obs_stat3),
+    resolution   = as.array(resolution_vec),
     n_freq_total     = length(freq_value_all),
-    freq_value       = freq_value_all,
-    freq_lower       = freq_lower_all,
-    freq_upper       = freq_upper_all,
-    event_lower      = event_lower_all,
-    event_upper      = event_upper_all,
-    event_observed   = event_observed_all,
-    freq_count       = freq_count_all,
+    freq_value       = as.array(freq_value_all),
+    freq_lower       = as.array(freq_lower_all),
+    freq_upper       = as.array(freq_upper_all),
+    event_lower      = as.array(event_lower_all),
+    event_upper      = as.array(event_upper_all),
+    event_observed   = as.array(event_observed_all),
+    freq_count       = as.array(freq_count_all),
     freq_start       = as.array(freq_start_vec),
     freq_len         = as.array(freq_len_vec),
     truncation_time  = as.array(truncation_time_vec)
@@ -643,10 +815,155 @@ prepare_stan_data_from_datasets <- function(datasets, dist_type = 1,
   stan_data$log_tau_sd    <- custom_priors$log_tau_sd
   stan_data$log_phi_mean  <- custom_priors$log_phi_mean
   stan_data$log_phi_sd    <- custom_priors$log_phi_sd
+  stan_data$log_omega_mean <- custom_priors$log_omega_mean
+  stan_data$log_omega_sd   <- custom_priors$log_omega_sd
   stan_data$log_kappa_mean <- custom_priors$log_kappa_mean
   stan_data$log_kappa_sd   <- custom_priors$log_kappa_sd
 
+  # Per-order-statistic adaptive quadrature panel count (performance lever,
+  # not a correctness change). A wrong choice here only costs efficiency (or triggers
+  # pre_inference_checks()-style convergence issues, handled by the settings
+  # escalation in fit_with_escalation()), since the underlying quadrature
+  # maths is unchanged - it just decides how many panels to spend.
+  n_panels_stat1 <- integer(n_datasets)
+  n_panels_stat2 <- integer(n_datasets)
+  n_panels_stat3 <- integer(n_datasets)
+  for (i in seq_len(n_datasets)) {
+    if (summary_type[i] == 1L) {
+      k_median <- (n_obs_vec[i] + 1L) %/% 2L
+      phi_guess <- .mom_phi_guess(datasets[[i]], dist_type, custom_priors$log_kappa_mean)
+      n_panels_stat1[i] <- .order_stat_n_panels(obs_stat1[i], n_obs_vec[i], k_median, resolution_vec[i], dist_type, phi_guess, exp(custom_priors$log_kappa_mean))
+      n_panels_stat2[i] <- .order_stat_n_panels(obs_stat2[i], n_obs_vec[i], 1L,        resolution_vec[i], dist_type, phi_guess, exp(custom_priors$log_kappa_mean))
+      n_panels_stat3[i] <- .order_stat_n_panels(obs_stat3[i], n_obs_vec[i], n_obs_vec[i], resolution_vec[i], dist_type, phi_guess, exp(custom_priors$log_kappa_mean))
+    } else if (summary_type[i] == 2L) {
+      n <- n_obs_vec[i]
+      k_median <- (n + 1L) %/% 2L
+      k_q25 <- max((n + 1L) %/% 4L, 1L)
+      k_q75 <- min(max((3L * (n + 1L)) %/% 4L, k_q25 + 1L), n)
+      phi_guess <- .mom_phi_guess(datasets[[i]], dist_type, custom_priors$log_kappa_mean)
+      n_panels_stat1[i] <- .order_stat_n_panels(obs_stat1[i], n, k_median, resolution_vec[i], dist_type, phi_guess, exp(custom_priors$log_kappa_mean))
+      n_panels_stat2[i] <- .order_stat_n_panels(obs_stat2[i], n, k_q25,    resolution_vec[i], dist_type, phi_guess, exp(custom_priors$log_kappa_mean))
+      n_panels_stat3[i] <- .order_stat_n_panels(obs_stat3[i], n, k_q75,    resolution_vec[i], dist_type, phi_guess, exp(custom_priors$log_kappa_mean))
+    } else {
+      n_panels_stat1[i] <- 24L; n_panels_stat2[i] <- 24L; n_panels_stat3[i] <- 24L
+    }
+  }
+  stan_data$n_panels_stat1 <- as.array(n_panels_stat1)
+  stan_data$n_panels_stat2 <- as.array(n_panels_stat2)
+  stan_data$n_panels_stat3 <- as.array(n_panels_stat3)
+
   return(stan_data)
+}
+
+# Adaptive quadrature panel count for order-statistic rounding likelihoods --
+#
+# Summary: the panel count needed for the composite Gauss-Legendre quadrature
+# (order_stat_rounded_loglik_fun in the .stan files) to hit the same accuracy
+# as the original fixed 24-panel scheme is, empirically, a clean function of
+# rho = resolution / SE_asymptotic(order statistic) - not of n or family
+# alone. Since rho depends on the (unknown-until-fitted) dispersion
+# parameter, this uses a per-dataset method-of-moments guess evaluated at a
+# family-specific safety margin (the direction that INCREASES rho, chosen
+# per family from the empirical MAP-vs-MoM comparison this session): for
+# spread-type families (lognormal, gen. gamma - CV increases with phi) the
+# dangerous direction is phi too LOW; for concentration-type families
+# (Weibull, Burr XII - CV decreases with phi) it's phi too HIGH. Gamma is
+# excluded entirely (kept at the fixed 24 panels): its own MAP-vs-MoM
+# comparison showed a 99th-percentile ratio of 4.4x (vs ~1.7-2x for the
+# other concentration-type families), and covering that via margin alone
+# was found to require booking >96 panels even at moderate n - intractable,
+# and unnecessary, since that regime is exactly where the true log-density
+# is also vanishingly small (verified directly: both the reference and the
+# 24-panel scheme agree the region contributes ~0 to the posterior, they
+# just disagree on exactly how close to -Inf). Any residual risk for the
+# eligible families is caught by fit_with_escalation()'s Rhat/divergence
+# check, not by this heuristic alone.
+.panels_from_rho <- function(rho) {
+  if (!is.finite(rho)) return(24L)
+  if (rho <= 4)  return(2L)
+  if (rho <= 10) return(4L)
+  if (rho <= 20) return(6L)
+  if (rho <= 30) return(8L)
+  if (rho <= 46) return(12L)
+  if (rho <= 57) return(16L)
+  return(24L)
+}
+
+# Solve for `loc` such that the p-th quantile of the family equals v, given
+# phi/kappa - lets us evaluate the density AT the reported (fixed, known)
+# value v without needing an independent loc estimate.
+.solve_loc_for_quantile <- function(v, p, dist_type, phi, kappa) {
+  switch(as.character(dist_type),
+    "1" = log(v) - phi * stats::qnorm(p),
+    "3" = log(v) - (1 / phi) * log(-log1p(-p)),
+    "4" = log(v) - (1 / phi) * log((1 - p)^(-1 / kappa) - 1),
+    "5" = { a <- 1 / kappa^2; w <- log(stats::qgamma(p, a, 1) / a) / kappa; log(v) - phi * w },
+    NA_real_
+  )
+}
+
+# Log-density, matching dist_logpdf_fun in the .stan files exactly (families
+# 1/3/4/5 only - gamma, family 2, never calls this since it keeps the fixed
+# panel count).
+.dist_logpdf_r <- function(x, dist_type, loc, phi, kappa) {
+  switch(as.character(dist_type),
+    "1" = stats::dlnorm(x, meanlog = loc, sdlog = phi, log = TRUE),
+    "3" = stats::dweibull(x, shape = phi, scale = exp(loc), log = TRUE),
+    "4" = { u <- log(x) - loc; log_term <- log1p(exp(phi * u))
+            log(phi) + log(kappa) + (phi - 1) * u - loc - (kappa + 1) * log_term },
+    "5" = { a <- 1 / kappa^2; w <- (log(x) - loc) / phi
+            log(kappa) - log(phi) - log(x) + a * log(a) + a * kappa * w - a * exp(kappa * w) - lgamma(a) },
+    NA_real_
+  )
+}
+
+# Quick per-dataset method-of-moments phi guess, mirroring update_phi_prior()
+# (kept as a separate, self-contained copy rather than refactoring that
+# already-validated function, to avoid any risk of disturbing it).
+.mom_phi_guess <- function(d, dist_type, log_kappa_mean) {
+  dist_name <- c("1" = "lognormal", "2" = "gamma", "3" = "weibull",
+                 "4" = "burr12", "5" = "gengamma")[[as.character(dist_type)]]
+  kappa_val <- exp(log_kappa_mean)
+  mean_est <- sd_est <- NA_real_
+  if (!is.null(d$mean) && !is.null(d$sd)) { mean_est <- d$mean; sd_est <- d$sd
+  } else if (!is.null(d$median) && !is.null(d$Q1) && !is.null(d$Q3)) { mean_est <- d$median; sd_est <- (d$Q3 - d$Q1) / 1.35
+  } else if (!is.null(d$median) && !is.null(d$min) && !is.null(d$max)) { mean_est <- d$median; sd_est <- (d$max - d$min) / 4
+  }
+  if (is.na(mean_est) || is.na(sd_est) || sd_est <= 0) return(NA_real_)
+  tryCatch(switch(dist_name,
+    lognormal = sqrt(log(1 + (sd_est / mean_est)^2)),
+    weibull   = { cv <- sd_est / mean_est
+      stats::uniroot(function(k) sqrt(gamma(1 + 2/k) / gamma(1 + 1/k)^2 - 1) - cv, c(0.1, 200))$root },
+    gengamma  = { cv <- sd_est / mean_est; gs <- 1 / kappa_val^2
+      stats::uniroot(function(s) { a1 <- gs + s/kappa_val; a2 <- gs + 2*s/kappa_val
+        sqrt(max(exp(lgamma(a2) + lgamma(gs) - 2*lgamma(a1)) - 1, 0)) - cv }, c(1e-6, 20))$root },
+    burr12    = { cv <- sd_est / mean_est; lower_c <- 2/kappa_val + 1e-6
+      stats::uniroot(function(c_val) { lb1 <- lbeta(kappa_val - 1/c_val, 1 + 1/c_val); lb2 <- lbeta(kappa_val - 2/c_val, 1 + 2/c_val)
+        sqrt(exp(lb2 - log(kappa_val) - 2*lb1) - 1) - cv }, c(lower_c, 50))$root }
+  ), error = function(e) NA_real_)
+}
+
+# Per-order-statistic panel count. Falls back to the original fixed 24 (i.e.
+# never worse than before) whenever the MoM guess or density evaluation is
+# unavailable or non-finite.
+.order_stat_n_panels <- function(v, n, k, resolution, dist_type, phi_guess, kappa_guess) {
+  if (dist_type == 2L) return(24L)
+  if (is.na(phi_guess) || phi_guess <= 0 || is.na(v) || v <= 0) return(24L)
+
+  margin_phi <- switch(as.character(dist_type),
+    "1" = phi_guess * 0.6, "5" = phi_guess * 0.6,   # spread-type: danger = phi too LOW
+    "3" = phi_guess * 2.0, "4" = phi_guess * 2.0,   # concentration-type: danger = phi too HIGH
+    phi_guess
+  )
+  p <- k / (n + 1)
+  loc <- tryCatch(.solve_loc_for_quantile(v, p, dist_type, margin_phi, kappa_guess), error = function(e) NA_real_)
+  if (is.na(loc) || !is.finite(loc)) return(24L)
+  logf <- tryCatch(.dist_logpdf_r(v, dist_type, loc, margin_phi, kappa_guess), error = function(e) NA_real_)
+  if (is.na(logf) || !is.finite(logf)) return(24L)
+
+  se_asymp <- sqrt(p * (1 - p) / n) / exp(logf)
+  rho <- resolution / se_asymp
+  .panels_from_rho(rho)
 }
 
 
@@ -982,6 +1299,88 @@ should_attempt_gg <- function(datasets,
 }
 
 
+# Burr XII per-study phi_d reliability heuristic -------------------------------
+
+#' Check whether Burr XII's per-study dispersion hierarchy is safe to attempt
+#'
+#' Burr XII's mean+SD likelihood needs `kappa*phi_d[d] > 4` per dataset (see
+#' the Stan model's summary_type==3 branch); under the per-study phi_d
+#' hierarchy this becomes n simultaneous constraints instead of one, which
+#' can fragment the feasible region into separate modes. Detected here via a
+#' cheap empirical stress test (several random-init `optimizing()` calls)
+#' rather than a closed-form margin, which turned out unreliable in
+#' practice. 
+#'
+#' @param datasets A named list of datasets as accepted by
+#'   [prepare_stan_data_from_datasets()].
+#' @param stan_model The compiled hierarchical Burr XII model
+#'   (`dist_type = 4`), not the shared-phi variant.
+#' @param n_starts Number of random-init `rstan::optimizing()` calls.
+#' @param min_success_frac Minimum fraction of starts that must converge.
+#' @param lp_agreement_tol Max log-posterior spread across successful starts
+#'   before they're judged to be different modes.
+#' @param verbose Print a one-line verdict.
+#'
+#' @return `TRUE` if safe to attempt the per-study hierarchy, `FALSE` if it
+#'   should fall back to shared-phi. Always `TRUE` when there are no
+#'   mean+SD datasets (the constraint can't fire).
+#' @export
+burr_phid_reliable <- function(datasets, stan_model, n_starts = 10,
+                                min_success_frac = 0.3, lp_agreement_tol = 1.0,
+                                verbose = TRUE) {
+
+  n_type3 <- sum(vapply(datasets, function(d) !is.null(d$mean) && !is.null(d$sd), logical(1)))
+  if (n_type3 == 0) {
+    if (verbose) message("burr_phid_reliable: OK — no mean+SD datasets, the 4th-moment constraint never fires.")
+    return(TRUE)
+  }
+
+  stan_data <- tryCatch({
+    sd_ <- prepare_stan_data_from_datasets(datasets, dist_type = 4L)
+    update_phi_prior(sd_, datasets)
+  }, error = function(e) NULL)
+  if (is.null(stan_data)) {
+    if (verbose) message("burr_phid_reliable: SKIP — data prep failed; defaulting to shared phi to be safe.")
+    return(FALSE)
+  }
+
+  codes <- numeric(0); vals <- numeric(0)
+  for (i in seq_len(n_starts)) {
+    opt <- tryCatch(
+      rstan::optimizing(stan_model, data = stan_data, seed = 10000 + i, hessian = FALSE,
+                         as_vector = FALSE, init = "random"),
+      error = function(e) NULL
+    )
+    if (!is.null(opt)) { codes <- c(codes, opt$return_code); vals <- c(vals, opt$value) }
+  }
+
+  n_success     <- sum(codes == 0)
+  success_frac  <- n_success / n_starts
+  if (success_frac < min_success_frac) {
+    if (verbose) message(sprintf(
+      "burr_phid_reliable: SKIP — too many optimiser failures (%d/%d succeeded, need >= %.0f%%); ",
+      n_success, n_starts, 100 * min_success_frac),
+      sprintf("the kappa*phi_d>4 reject likely fragments the feasible region across %d mean+SD dataset(s).",
+              n_type3))
+    return(FALSE)
+  }
+
+  lp_success <- vals[codes == 0]
+  lp_range   <- if (length(lp_success) > 1) diff(range(lp_success)) else 0
+  if (lp_range > lp_agreement_tol) {
+    if (verbose) message(sprintf(
+      "burr_phid_reliable: SKIP — successful starts disagree (log-posterior range = %.2f > %.2f), multiple modes found.",
+      lp_range, lp_agreement_tol))
+    return(FALSE)
+  }
+
+  if (verbose) message(sprintf(
+    "burr_phid_reliable: OK — %d/%d optimiser starts succeeded and agree (log-posterior range = %.2e).",
+    n_success, n_starts, lp_range))
+  TRUE
+}
+
+
 # Gamma + type-2 reliability heuristic ----------------------------------------
 
 #' Check whether Gamma can be reliably fitted from median + IQR summary statistics
@@ -1109,6 +1508,181 @@ gamma_type2_reliable <- function(datasets,
 }
 
 
+# Gamma numerical-fragility heuristic (grad_reg_lower_inc_gamma) --------------
+
+#' Check whether a corpus is safe from gamma's slow-incomplete-gamma-series risk
+#'
+#' An extreme method-of-moments-implied gamma shape (often a small-n
+#' `(max-min)/4` artifact) can drive NUTS into Stan's slow
+#' `grad_reg_lower_inc_gamma` series during warmup, hanging for hours
+#' without erroring. Not caught by `pre_inference_checks()`'s lognormal-proxy
+#' filter. 
+#'
+#' @param datasets A named list of datasets as accepted by
+#'   [prepare_stan_data_from_datasets()].
+#' @param max_implied_phi Skip if any dataset's implied gamma shape exceeds
+#'   this.
+#' @param verbose Print a one-line verdict naming the offending dataset.
+#'
+#' @return `TRUE` if safe, `FALSE` if gamma should be skipped for this
+#'   pathogen/analysis (no fallback model exists, unlike Burr XII's
+#'   [burr_phid_reliable()]).
+#' @export
+gamma_phi_extreme_safe <- function(datasets, max_implied_phi = 60, verbose = TRUE) {
+
+  implied_phi <- vapply(datasets, function(d) {
+    mean_est <- sd_est <- NA_real_
+    if (!is.null(d$mean) && !is.null(d$sd)) {
+      mean_est <- d$mean; sd_est <- d$sd
+    } else if (!is.null(d$median) && !is.null(d$Q1) && !is.null(d$Q3)) {
+      mean_est <- d$median; sd_est <- (d$Q3 - d$Q1) / 1.35
+    } else if (!is.null(d$median) && !is.null(d$min) && !is.null(d$max)) {
+      mean_est <- d$median; sd_est <- (d$max - d$min) / 4
+    } else if (!is.null(d$freq_value) && !is.null(d$freq_count)) {
+      w <- d$freq_count / sum(d$freq_count)
+      mean_est <- sum(d$freq_value * w)
+      sd_est   <- sqrt(sum(w * (d$freq_value - mean_est)^2))
+    } else if (!is.null(d$freq_lower) && !is.null(d$freq_upper) && !is.null(d$freq_count)) {
+      mid <- (d$freq_lower + d$freq_upper) / 2
+      w   <- d$freq_count / sum(d$freq_count)
+      mean_est <- sum(mid * w)
+      sd_est   <- sqrt(sum(w * (mid - mean_est)^2))
+    }
+    if (is.na(mean_est) || is.na(sd_est) || mean_est <= 0 || sd_est <= 0) return(NA_real_)
+    (mean_est / sd_est)^2
+  }, numeric(1))
+
+  implied_phi_valid <- implied_phi[!is.na(implied_phi)]
+  if (length(implied_phi_valid) == 0) {
+    if (verbose) message("gamma_phi_extreme_safe: OK \u2014 no datasets with a computable implied shape.")
+    return(TRUE)
+  }
+
+  worst_val  <- max(implied_phi_valid)
+  worst_name <- names(implied_phi_valid)[which.max(implied_phi_valid)]
+  if (worst_val > max_implied_phi) {
+    if (verbose) message(sprintf(
+      "gamma_phi_extreme_safe: SKIP \u2014 dataset '%s' implies an extreme gamma shape (%.1f > %.0f); ",
+      worst_name, worst_val, max_implied_phi),
+      "extreme shape proposals during warmup risk grad_reg_lower_inc_gamma's slow-series regime.")
+    return(FALSE)
+  }
+
+  if (verbose) message(sprintf(
+    "gamma_phi_extreme_safe: OK \u2014 max implied shape = %.1f (threshold %.0f).", worst_val, max_implied_phi))
+  TRUE
+}
+
+
+# Gamma shared-phi weak-identifiability heuristic -----------------------------
+
+#' Check whether gamma's shared (mu0, tau, phi) surface is safe to attempt
+#'
+#' Diagnosed via `Zika/all/gamma` (2 datasets, mixed order-statistic and
+#' frequency-interval types): repeated MCMC escalation gave the same
+#' max_Rhat at both the cheap and moderate tiers - a genuinely
+#' weakly-identified surface, not a hard boundary wall like Burr XII's
+#' `kappa*phi_d>4` reject. Sample size alone does not predict this:
+#' `MVD/all/gamma` (also 2 datasets, but two *homogeneous* quantile-type
+#' datasets) has one clearly dominant mode and converges cleanly;
+#' `YFV/all/gamma` (3 datasets, homogeneous frequency-table types)
+#' converges to a single sharp optimum.
+#'
+#' Detected via repeated random-init `optimizing()` calls, matching
+#' [burr_phid_reliable()]'s existing methodology, but with two changes
+#' found necessary during calibration against the real corpus (not just
+#' Zika): (1) Stan's default `init="random"` turned out to be a poor init
+#' strategy for this model - it produced spurious optimiser failures even
+#' on `MVD/all/gamma`, a known-good case (0/10 successes), fixed by
+#' sampling each start from a generic wide normal instead. (2) requiring an
+#' exact `return_code==0` was too strict for the same reason (many
+#' known-good fits, e.g. `EVD/all/gamma`, only hit `return_code==0` on a
+#' minority of starts) and the *range* of successful log-posteriors was not
+#' robust - a single wild optimiser excursion (which happens even for
+#' clean cases, unrelated to real multimodality) inflates the range
+#' arbitrarily. The interquartile range (IQR) of all finite log-posteriors
+#' obtained (regardless of return code) is far more robust: every
+#' known-good case (MVD, YFV, SARS, Lassa, EVD) gives an IQR of exactly
+#' 0.000 across repeated calibration runs with different seeds - the
+#' central bulk of starts always finds the identical answer - while Zika's
+#' IQR is consistently, clearly nonzero (0.3-1.2 across two independent
+#' seed replications), and the already-known-bad Nipah/gamma and RVF/gamma
+#' (both separately caught by [gamma_phi_extreme_safe()]) give IQRs in the
+#' hundreds to thousands.
+#'
+#' @param datasets A named list of datasets as accepted by
+#'   [prepare_stan_data_from_datasets()].
+#' @param stan_model The compiled shared-phi model (`dist_type = 2`).
+#' @param n_starts Number of random-init `rstan::optimizing()` calls.
+#' @param min_success_frac Minimum fraction of starts that must return a
+#'   finite log-posterior (not error) at all.
+#' @param iqr_tol Maximum tolerated interquartile range of log-posteriors
+#'   across finite starts before they're judged to reflect more than one
+#'   mode.
+#' @param verbose Print a one-line verdict.
+#'
+#' @return `TRUE` if safe to attempt, `FALSE` if gamma should be skipped for
+#'   this pathogen/analysis (no fallback model exists, unlike Burr XII's
+#'   [burr_phid_reliable()]).
+#' @export
+gamma_shared_phi_reliable <- function(datasets, stan_model, n_starts = 20,
+                                       min_success_frac = 0.3, iqr_tol = 0.1,
+                                       verbose = TRUE) {
+
+  stan_data <- tryCatch({
+    sd_ <- prepare_stan_data_from_datasets(datasets, dist_type = 2L)
+    update_phi_prior(sd_, datasets)
+  }, error = function(e) NULL)
+  if (is.null(stan_data)) {
+    if (verbose) message("gamma_shared_phi_reliable: SKIP \u2014 data prep failed; treating gamma as unreliable to be safe.")
+    return(FALSE)
+  }
+
+  # Generic, moderately wide inits (not tied to each dataset's own,
+  # possibly very narrow, prior sd) so different starts genuinely explore
+  # different regions - see calibration notes above.
+  init_fun <- function() list(
+    mu0       = stats::rnorm(1, stan_data$mu0_mean, 1),
+    log_tau   = stats::rnorm(1, stan_data$log_tau_mean, 1),
+    log_phi   = stats::rnorm(1, stan_data$log_phi_mean, 1),
+    log_kappa = stats::rnorm(1, 0, 1),
+    loc_d_raw = as.array(stats::rnorm(stan_data$n_datasets, 0, 1))
+  )
+
+  vals <- numeric(0)
+  for (i in seq_len(n_starts)) {
+    opt <- tryCatch(
+      rstan::optimizing(stan_model, data = stan_data, seed = 20000 + i, hessian = FALSE,
+                         as_vector = FALSE, init = init_fun()),
+      error = function(e) NULL
+    )
+    if (!is.null(opt) && is.finite(opt$value)) vals <- c(vals, opt$value)
+  }
+
+  success_frac <- length(vals) / n_starts
+  if (success_frac < min_success_frac) {
+    if (verbose) message(sprintf(
+      "gamma_shared_phi_reliable: SKIP \u2014 too many optimiser failures (%d/%d returned a finite value, need >= %.0f%%); ",
+      length(vals), n_starts, 100 * min_success_frac),
+      "the shared (mu0, tau, phi) surface is likely too weakly identified from this data.")
+    return(FALSE)
+  }
+
+  iqr_val <- stats::IQR(vals)
+  if (iqr_val > iqr_tol) {
+    if (verbose) message(sprintf(
+      "gamma_shared_phi_reliable: SKIP \u2014 independent starts disagree (log-posterior IQR = %.3f > %.3f), no dominant mode.",
+      iqr_val, iqr_tol))
+    return(FALSE)
+  }
+
+  if (verbose) message(sprintf(
+    "gamma_shared_phi_reliable: OK \u2014 %d/%d starts returned a finite value with a single dominant mode (IQR = %.2e).",
+    length(vals), n_starts, iqr_val))
+  TRUE
+}
+
+
 # Compile Stan model -------------------------------------------------------
 
 #' Compile a ddsynth Stan model
@@ -1149,9 +1723,9 @@ compile_stan_model <- function(model = c("factorised", "joint")) {
 #' The five checks performed are:
 #' \describe{
 #'   \item{1. Method-of-moments consistency}{Estimates `phi` from each dataset
-#'     individually using moment-based approximations and flags any dataset
-#'     whose implied `phi` is more than `phi_outlier_threshold` times the
-#'     median of all implied values.}
+#'     individually (using `dist_type`'s own formula, all five families) and
+#'     flags a dataset if it's far from the median (`phi_outlier_threshold`)
+#'     or is the min/max of a set whose spread exceeds `phi_spread_threshold`.}
 #'   \item{2. Prior predictive compatibility}{Simulates summary statistics from
 #'     the prior and checks whether each observed value falls within the 95%
 #'     prior predictive interval. Datasets outside this range suggest a
@@ -1170,13 +1744,24 @@ compile_stan_model <- function(model = c("factorised", "joint")) {
 #' @param datasets A named list of datasets in the format accepted by
 #'   [prepare_stan_data_from_datasets()].
 #' @param stan_model A compiled Stan model object from [rstan::stan_model()].
+#'   Must be the hierarchical per-study `phi_d` model - Checks 3-5 assume
+#'   that parameterisation and will error on a shared-`phi` model like
+#'   gamma's. Use [gamma_phi_extreme_safe()] for gamma instead.
 #' @param dist_type Integer distribution code: `1` = log-normal, `2` = gamma,
-#'   `3` = Weibull. Defaults to `1`.
+#'   `3` = Weibull, `4` = Burr XII, `5` = generalised gamma. Defaults to `1`.
+#'   Checks 1-2 use `dist_type`'s own moment formulas; Checks 3-5 assume the
+#'   hierarchical model regardless.
 #' @param custom_priors Optional named list of prior overrides passed to
 #'   [prepare_stan_data_from_datasets()].
 #' @param phi_outlier_threshold Multiplier used in the method-of-moments check.
 #'   A dataset is flagged if its implied `phi` exceeds
 #'   `phi_outlier_threshold * median(implied_phi)`. Defaults to `5`.
+#' @param phi_spread_threshold Complementary criterion to
+#'   `phi_outlier_threshold`: flags the min/max datasets when
+#'   `max(implied_phi)/min(implied_phi)` exceeds this, catching two datasets
+#'   pulling toward opposite extremes (neither individually far enough from
+#'   the median to trip the other check). Calibrated on Weibull; 
+#'   
 #' @param phi_grid Numeric vector of `phi` values for the log-likelihood
 #'   surface scan. Defaults to `seq(0.5, 50, by = 0.5)`.
 #' @param n_sim Number of draws for the prior predictive check. Defaults to
@@ -1185,6 +1770,13 @@ compile_stan_model <- function(model = c("factorised", "joint")) {
 #'   single-dataset fits. Defaults to `4000`.
 #' @param loo_chains Number of chains for the leave-one-out fits. Defaults to
 #'   `2`.
+#' @param loo_timeout_secs Wall-clock ceiling per individual LOO fit in Check
+#'   5, forked via [parallel::mcparallel()] and killed with
+#'   `.kill_process_tree()` if it overruns. A normal fit takes a few seconds;
+#'   this guards against the rare dataset whose single-parameter posterior
+#'   lands in a genuinely slow numerical region and never returns. Default
+#'   `120` (2 min). A killed fit is recorded as `NA` in `loo_fits`, the same
+#'   as any other Check 5 failure.
 #' @param verbose Logical. If `TRUE` (default), prints a formatted summary of
 #'   all check results to the console.
 #' @param filter Logical. If `TRUE`, any dataset flagged by at least one
@@ -1213,14 +1805,17 @@ pre_inference_checks <- function(datasets,
                                  dist_type             = 1,
                                  custom_priors         = list(),
                                  phi_outlier_threshold = 5,
+                                 phi_spread_threshold  = 7,
                                  phi_grid              = seq(0.5, 50, by = 0.5),
                                  n_sim                 = 2000,
                                  loo_iter              = 4000,
                                  loo_chains            = 2,
+                                 loo_timeout_secs      = 120,
                                  verbose               = TRUE,
                                  filter                = FALSE) {
 
-  dist_name <- c("1" = "lognormal", "2" = "gamma", "3" = "weibull")[[as.character(dist_type)]]
+  dist_name <- c("1" = "lognormal", "2" = "gamma", "3" = "weibull",
+                 "4" = "burr12", "5" = "gengamma")[[as.character(dist_type)]]
   stan_data <- prepare_stan_data_from_datasets(datasets, dist_type = dist_type,
                                                custom_priors = custom_priors)
 
@@ -1264,7 +1859,10 @@ pre_inference_checks <- function(datasets,
           # CV^2 = Gamma(1+2/k)/Gamma(1+1/k)^2 - 1; solve for k
           obj <- function(k) sqrt(gamma(1 + 2/k) / gamma(1 + 1/k)^2 - 1) - cv
           tryCatch(stats::uniroot(obj, c(0.1, 200))$root, error = function(e) NA_real_)
-        }
+        },
+        # Reuse .mom_phi_guess() rather than duplicate its uniroot logic.
+        burr12   = .mom_phi_guess(d, dist_type, stan_data$log_kappa_mean),
+        gengamma = .mom_phi_guess(d, dist_type, stan_data$log_kappa_mean)
       )
     }
 
@@ -1275,9 +1873,21 @@ pre_inference_checks <- function(datasets,
   med_phi  <- stats::median(mom_df$implied_phi, na.rm = TRUE)
   mom_df   <- dplyr::mutate(
     mom_df,
-    is_outlier = !is.na(implied_phi) &
+    is_outlier_median = !is.na(implied_phi) &
       (implied_phi > phi_outlier_threshold * med_phi |
        implied_phi < med_phi / phi_outlier_threshold)
+  )
+
+  # Distance-from-median misses two datasets pulling toward opposite
+  # extremes at once (see Part E.10). OR-ing only adds flags, never removes.
+  phi_valid <- mom_df$implied_phi[!is.na(mom_df$implied_phi)]
+  spread    <- if (length(phi_valid) >= 2) max(phi_valid) / min(phi_valid) else NA_real_
+  mom_df    <- dplyr::mutate(
+    mom_df,
+    is_outlier_spread = !is.na(implied_phi) & !is.na(spread) &
+      spread > phi_spread_threshold &
+      (implied_phi == max(phi_valid) | implied_phi == min(phi_valid)),
+    is_outlier = is_outlier_median | is_outlier_spread
   )
   results$mom_consistency <- mom_df
 
@@ -1290,7 +1900,25 @@ pre_inference_checks <- function(datasets,
   sim_sd <- switch(dist_name,
     lognormal = exp(loc_draws) * sqrt(exp(phi_draws^2) - 1),
     gamma     = exp(loc_draws) / sqrt(phi_draws),
-    weibull   = exp(loc_draws) * sqrt(gamma(1 + 2/phi_draws) - gamma(1 + 1/phi_draws)^2)
+    weibull   = exp(loc_draws) * sqrt(gamma(1 + 2/phi_draws) - gamma(1 + 1/phi_draws)^2),
+    # Raw moments matching the Stan model's own formulas; kappa_draws is
+    # only needed here since the other three families lack a 3rd shape param.
+    burr12    = {
+      kappa_draws <- exp(stats::rnorm(n_sim, stan_data$log_kappa_mean, stan_data$log_kappa_sd))
+      lam <- exp(loc_draws)
+      m1  <- lam    * kappa_draws * exp(lbeta(kappa_draws - 1/phi_draws, 1 + 1/phi_draws))
+      m2  <- lam^2  * kappa_draws * exp(lbeta(kappa_draws - 2/phi_draws, 1 + 2/phi_draws))
+      sqrt(abs(m2 - m1^2))
+    },
+    gengamma  = {
+      kappa_draws <- exp(stats::rnorm(n_sim, stan_data$log_kappa_mean, stan_data$log_kappa_sd))
+      gamma_shape <- 1 / kappa_draws^2
+      m1 <- exp(loc_draws   + 2*phi_draws/kappa_draws * log(kappa_draws) +
+                  lgamma(gamma_shape +   phi_draws/kappa_draws) - lgamma(gamma_shape))
+      m2 <- exp(2*loc_draws + 4*phi_draws/kappa_draws * log(kappa_draws) +
+                  lgamma(gamma_shape + 2*phi_draws/kappa_draws) - lgamma(gamma_shape))
+      sqrt(abs(m2 - m1^2))
+    }
   )
 
   prior_pi <- stats::quantile(sim_sd, c(0.025, 0.975), na.rm = TRUE)
@@ -1305,10 +1933,12 @@ pre_inference_checks <- function(datasets,
   results$prior_predictive <- prior_df
 
   # ── Check 3: MAP optimisation probe ───────────────────────────────────────
+  # phi_map reads log_phi0 (population-mean dispersion), the point-4
+  # hierarchical model's analogue of the old shared scalar log_phi.
   map_result <- tryCatch({
     opt        <- rstan::optimizing(stan_model, data = stan_data, hessian = FALSE,
                                     refresh = 0)
-    phi_map    <- exp(opt$par[["log_phi"]])
+    phi_map    <- exp(opt$par[["log_phi0"]])
     list(phi_map = phi_map, map_converged = opt$return_code == 0,
          return_code = opt$return_code)
   }, error = function(e) {
@@ -1318,15 +1948,26 @@ pre_inference_checks <- function(datasets,
   results$map_probe <- map_result
 
   # ── Check 4: Log-likelihood surface scan ──────────────────────────────────
-  mu0_init      <- stan_data$mu0_mean
-  log_tau_init  <- stan_data$log_tau_mean
-  loc_d_raw_init <- rep(0, stan_data$n_datasets)
+  # unconstrain_pars() needs a value for every declared parameter, so this
+  # must list all of the point-4 hierarchical model's parameters (mu0,
+  # log_tau, log_phi0, log_omega, log_kappa, loc_d_raw, log_phi_d_raw), not
+  # just the ones this check varies. log_phi_d_raw is fixed at zero so each
+  # phi_val is evaluated at phi_d[d] == phi0 for every dataset (no
+  # between-study deviation), i.e. the population-mean surface.
+  mu0_init          <- stan_data$mu0_mean
+  log_tau_init      <- stan_data$log_tau_mean
+  log_kappa_init    <- stan_data$log_kappa_mean
+  loc_d_raw_init    <- rep(0, stan_data$n_datasets)
+  log_phi_d_raw_init <- rep(0, stan_data$n_datasets)
 
   ll_surface <- purrr::map_dfr(phi_grid, function(phi_val) {
-    pars <- list(mu0       = mu0_init,
-                 log_tau   = log_tau_init,
-                 log_phi   = log(phi_val),
-                 loc_d_raw = loc_d_raw_init)
+    pars <- list(mu0           = mu0_init,
+                 log_tau       = log_tau_init,
+                 log_phi0      = log(phi_val),
+                 log_omega     = stan_data$log_omega_mean,
+                 log_kappa     = log_kappa_init,
+                 loc_d_raw     = loc_d_raw_init,
+                 log_phi_d_raw = log_phi_d_raw_init)
     lp <- tryCatch({
       rstan::log_prob(stan_model,
                       rstan::unconstrain_pars(stan_model, data = stan_data, pars = pars),
@@ -1356,21 +1997,35 @@ pre_inference_checks <- function(datasets,
                             rhat = NA_real_,   n_eff = NA_real_))
     }
 
-    fit <- tryCatch(
-      suppressWarnings(
-        rstan::sampling(stan_model, data = single_data,
-                        iter = loo_iter, chains = loo_chains,
-                        refresh = 0, show_messages = FALSE)
-      ),
-      error = function(e) NULL
-    )
-    if (is.null(fit) || fit@mode != 0L) {
+    # Forked with a timeout (not a plain tryCatch): a fit stuck in a
+    # pathologically slow numerical region for this one dataset never
+    # errors on its own, so this is the only thing that reclaims it. Same
+    # mechanism as fit_corpus_parallel()'s task timeout, just scaled down -
+    # a single-dataset fit at fixed settings normally takes a few seconds.
+    fit <- tryCatch({
+      job <- parallel::mcparallel(
+        suppressWarnings(
+          rstan::sampling(stan_model, data = single_data,
+                          iter = loo_iter, chains = loo_chains,
+                          refresh = 0, show_messages = FALSE)
+        ),
+        silent = TRUE
+      )
+      collected <- parallel::mccollect(job, wait = FALSE, timeout = loo_timeout_secs)
+      result <- collected[[as.character(job$pid)]]
+      if (is.null(result)) .kill_process_tree(job$pid)
+      result
+    }, error = function(e) NULL)
+    if (is.null(fit) || !inherits(fit, "stanfit") || fit@mode != 0L) {
       return(tibble::tibble(dataset = name, phi_mean = NA_real_,
                             phi_lo = NA_real_, phi_hi = NA_real_,
                             rhat = NA_real_,   n_eff = NA_real_))
     }
 
-    s <- rstan::summary(fit, pars = "phi")$summary
+    # phi_d (not phi): the point-4 hierarchical model has no shared scalar
+    # phi. With n_datasets == 1 here, phi_d is a length-1 vector, giving the
+    # same single-dataset posterior the old shared phi used to.
+    s <- rstan::summary(fit, pars = "phi_d")$summary
     tibble::tibble(dataset  = name,
                    phi_mean = s[, "mean"],
                    phi_lo   = s[, "2.5%"],
@@ -1942,11 +2597,13 @@ generate_scenario_library <- function(include_homogeneous = TRUE,
 make_stan_init_fn <- function(stan_data) {
   function() {
     list(
-      mu0       = stan_data$mu0_mean,
-      log_tau   = stan_data$log_tau_mean,
-      log_phi   = stan_data$log_phi_mean,
-      log_kappa = stan_data$log_kappa_mean,
-      loc_d_raw = rep(0.0, stan_data$n_datasets)
+      mu0           = stan_data$mu0_mean,
+      log_tau       = stan_data$log_tau_mean,
+      log_phi0      = stan_data$log_phi_mean,
+      log_omega     = stan_data$log_omega_mean,
+      log_kappa     = stan_data$log_kappa_mean,
+      loc_d_raw     = rep(0.0, stan_data$n_datasets),
+      log_phi_d_raw = rep(0.0, stan_data$n_datasets)
     )
   }
 }
@@ -1982,6 +2639,319 @@ fit_model <- function(sim_data, stan_model,
     init    = make_stan_init_fn(od),
     ...
   )
+}
+
+#' Fit a Stan model with escalating settings, stopping once Rhat is acceptable
+#'
+#' @description
+#' Tries a sequence of increasingly conservative sampling settings, stopping
+#' at the first tier that achieves `max(Rhat) < rhat_target` with no
+#' divergent transitions. Falls all the way back to the original
+#' pre-lever-1 production settings (`iter=12000`, `adapt_delta=0.999`,
+#' `max_treedepth=12`) as the last tier if cheaper settings do not converge -
+#' those settings were originally chosen because some chains did not
+#' converge without them, so this is a floor, not just a starting point to relax.
+#'
+#' Most fits are expected to converge at the cheap first tier, especially
+#' now that lever 3 (`R/utils.R`'s `.order_stat_n_panels()`) has reduced
+#' per-iteration cost and point 4's family gating means gamma no longer needs a
+#' hierarchical `phi_d` funnel resolved. The escalation ladder exists for the
+#' cases that still need it, not as the expected path.
+#'
+#' @param stan_data Data list for `rstan::sampling()`.
+#' @param stan_model Compiled Stan model.
+#' @param rhat_target Escalate if `max(Rhat)` exceeds this. Default 1.05,
+#'   matching the target agreed for the point 1/4 checkpoint run.
+#' @param seed Passed to every tier for reproducibility.
+#' @param init Optional init argument passed to every tier (e.g.
+#'   `make_stan_init_fn(stan_data)`); default `NULL` uses Stan's own default.
+#' @param verbose If `TRUE` (default), reports which tier was used and why.
+#' @return A list: `fit` (the `stanfit` object from whichever tier
+#'   succeeded, or the last tier tried if none converged), `tier` (integer,
+#'   which tier succeeded or was last attempted), `max_rhat`, `divergences`,
+#'   `converged` (logical), and `runtime_secs` (total across all tiers
+#'   attempted).
+#' @export
+fit_with_escalation <- function(stan_data, stan_model, rhat_target = 1.05,
+                                 seed = 123, init = NULL, verbose = TRUE) {
+  tiers <- list(
+    list(label = "cheap",    chains = 4, iter = 4000,  warmup = 2000, control = list(adapt_delta = 0.9,  max_treedepth = 10)),
+    list(label = "moderate", chains = 4, iter = 6000,  warmup = 2000, control = list(adapt_delta = 0.95, max_treedepth = 11)),
+    # Original production settings (main_analysis.R, pre-lever-1): kept
+    # verbatim as the final fallback, not relaxed, because they were
+    # originally added after some chains failed to converge without them.
+    list(label = "production", chains = 4, iter = 12000, warmup = 2000, control = list(adapt_delta = 0.999, max_treedepth = 12))
+  )
+
+  t_total0 <- Sys.time()
+  result <- NULL
+  best <- NULL   # best-so-far by (max_rhat, div_rate), in case no tier fully converges
+  for (i in seq_along(tiers)) {
+    tier <- tiers[[i]]
+    if (verbose) message(sprintf("  [fit_with_escalation] trying tier %d/%d ('%s': iter=%d, adapt_delta=%.3f)...",
+                                  i, length(tiers), tier$label, tier$iter, tier$control$adapt_delta))
+    fit <- tryCatch(
+      rstan::sampling(stan_model, data = stan_data, chains = tier$chains, iter = tier$iter,
+                       warmup = tier$warmup, control = tier$control, seed = seed,
+                       init = if (is.null(init)) "random" else init, refresh = 0,
+                       show_messages = FALSE),
+      error = function(e) { if (verbose) message("    tier failed to run: ", conditionMessage(e)); NULL }
+    )
+    if (is.null(fit)) next
+
+    s <- rstan::summary(fit)$summary
+    max_rhat <- max(s[, "Rhat"], na.rm = TRUE)
+    sp <- rstan::get_sampler_params(fit, inc_warmup = FALSE)
+    div <- sum(sapply(sp, function(x) sum(x[, "divergent__"])))
+    n_draws <- sum(sapply(sp, nrow))
+    div_rate <- div / n_draws
+    # A handful of divergences out of thousands of draws is ordinary HMC
+    # noise, not a sign of a bad fit; requiring exactly zero caused endless,
+    # pointless escalation for datasets with a small structural divergence
+    # rate (e.g. Burr XII, already known from this session's diagnostics to
+    # run somewhat divergence-prone even at good settings). 1% mirrors
+    # common Stan-community practice for "acceptably rare, not ignorable"
+    # divergence rates.
+    converged <- is.finite(max_rhat) && max_rhat < rhat_target && div_rate < 0.01
+
+    if (verbose) message(sprintf("    max_Rhat=%.4f, divergences=%d/%d (%.2f%%) -> %s",
+                                  max_rhat, div, n_draws, 100 * div_rate, if (converged) "OK" else "escalating"))
+
+    result <- list(fit = fit, tier = i, tier_label = tier$label, max_rhat = max_rhat,
+                    divergences = div, div_rate = div_rate, converged = converged)
+    if (converged) break
+    # Track the best-so-far result (lower max_rhat wins; div_rate breaks ties)
+    # so that if no tier converges, we return the least-bad attempt rather
+    # than just whichever tier happened to run last.
+    if (is.null(best) || max_rhat < best$max_rhat ||
+        (max_rhat == best$max_rhat && div_rate < best$div_rate)) {
+      best <- result
+    }
+  }
+
+  if (is.null(result)) {
+    stop("fit_with_escalation: every tier failed to sample (see messages above).", call. = FALSE)
+  }
+  if (!result$converged && !is.null(best) && best$max_rhat <= result$max_rhat && best$tier != result$tier) {
+    result <- best
+  }
+  result$runtime_secs <- as.numeric(Sys.time() - t_total0, units = "secs")
+  if (verbose && !result$converged) {
+    message("  [fit_with_escalation] WARNING: did not reach Rhat<", rhat_target,
+            " even at the production tier (max_Rhat=", round(result$max_rhat, 4), ").")
+  }
+  result
+}
+
+#' Kill a process and every descendant it has forked
+#'
+#' `tools::pskill()` only kills the named PID. `rstan::sampling()` spawns its
+#' own PSOCK cluster underneath, which would otherwise survive as zombies.
+#' Walks `ps`'s process table to find and kill all descendants too.
+#'
+#' `pid` is assumed to be an `mcparallel()` job PID still registered in
+#' `parallel`'s internal job table, so after killing the whole tree we
+#' `mccollect()` on `pid` alone (not its descendants, which were never
+#' `parallel` jobs themselves) to reap it and avoid leaving a zombie.
+#'
+#' @param pid Integer or character process ID to kill, with its descendants.
+#' @return Invisibly, the PIDs killed (including `pid`).
+#' @noRd
+.kill_process_tree <- function(pid) {
+  pid <- as.integer(pid)
+  tab <- tryCatch({
+    lines <- system2("ps", c("-eo", "pid,ppid"), stdout = TRUE)[-1]
+    do.call(rbind, lapply(strsplit(trimws(lines), "\\s+"), function(x) as.integer(x[1:2])))
+  }, error = function(e) NULL)
+
+  all_pids <- pid
+  if (!is.null(tab) && nrow(tab) > 0) {
+    colnames(tab) <- c("pid", "ppid")
+    descendants_of <- function(root) {
+      kids <- tab[tab[, "ppid"] == root, "pid"]
+      if (length(kids) == 0) return(integer(0))
+      c(kids, unlist(lapply(kids, descendants_of), use.names = FALSE))
+    }
+    all_pids <- c(pid, descendants_of(pid))
+  }
+  for (p in all_pids) tryCatch(tools::pskill(p, signal = tools::SIGKILL), error = function(e) NULL)
+  # Bounded, not wait=TRUE: a SIGKILL'd process should reap almost instantly,
+  # but a process wedged in uninterruptible I/O sleep could block forever,
+  # which would turn this cleanup step into a new hang.
+  tryCatch(suppressWarnings(parallel::mccollect(pid, wait = FALSE, timeout = 5)),
+           error = function(e) NULL)
+  invisible(all_pids)
+}
+
+#' Fit a list of (dataset, family) tasks concurrently, leaving cores free
+#'
+#' @description
+#' Runs [fit_with_escalation()] over a list of independent fitting tasks with
+#' bounded concurrency (fork-based - Unix/macOS only), each task's chains
+#' still parallelised internally as usual. Deliberately caps total core
+#' usage well below the machine's full core count so the machine remains
+#' usable for other work while a corpus run is in progress - this is a hard
+#' requirement, not a tuning default: leave `reserve_cores` alone unless the
+#' person running this has explicitly said otherwise.
+#'
+#' Streams rather than batches: uses a manually-managed rolling pool
+#' (`parallel::mcparallel()`/`mccollect()`, not `mclapply()`) so a finished
+#' slot is immediately handed the next queued task instead of waiting for
+#' the whole set dispatched together to finish - this both keeps the core
+#' pool continuously busy (a straggler task no longer stalls an entire
+#' batch) and lets `on_complete` fire the moment *each* task finishes, not
+#' just at the end. Each task's result is still also written to its own
+#' file immediately on completion (`task$output_file`) regardless of
+#' `on_complete`, so a crash partway through loses only the tasks that
+#' hadn't finished yet, not everything; [merge_parallel_fit_results()] can
+#' assemble those files after the fact if `on_complete` wasn't used to do it
+#' incrementally.
+#'
+#' @param tasks A list of task specifications, each a list with:
+#'   `label` (character, for logging), `datasets` (named list, as passed to
+#'   [prepare_stan_data_from_datasets()]), `dist_name` (one of "lognormal",
+#'   "gamma", "weibull", "burr", "gengamma"), `stan_model` (compiled model to
+#'   use for this task - the caller decides hierarchical vs. shared-phi per
+#'   family, see `analysis/main_analysis.R`'s `SHARED_PHI_FAMILIES`), and
+#'   `output_file` (path to save this task's result to).
+#' @param chains_per_fit Chains used within each individual fit (passed to
+#'   [fit_with_escalation()] tiers implicitly - currently fixed at 4 within
+#'   that function; this argument only affects the core-budget arithmetic
+#'   below, so keep it in sync if that changes).
+#' @param reserve_cores Cores to leave free for other use on the machine.
+#'   Default 4 (out of this machine's 12), leaving meaningful headroom for
+#'   interactive use, not just background slack - do not reduce this without
+#'   explicit instruction.
+#' @param rhat_target Passed through to [fit_with_escalation()].
+#' @param on_complete Optional `function(task, result)`, called in the
+#'   parent process as soon as each task finishes (`result` is the same list
+#'   already saved to `task$output_file`, or `list(error=...)` on failure).
+#'   Intended for incremental merge-and-save into a caller-side results
+#'   object, e.g. via `<<-` from a top-level analysis script - see
+#'   `analysis/main_analysis.R` for the pattern. Errors inside the callback
+#'   are caught and reported, not allowed to take down the whole run.
+#' @param task_timeout_secs Wall-clock ceiling per task (all escalation tiers
+#'   combined), default 5400 (90 min). Guards against a chain wandering into
+#'   a genuinely slow numerical region and grinding forever without
+#'   erroring. Past this, the task is killed and recorded with
+#'   `error = "timed out after <n>s"`.
+#' @return Invisibly, a character vector of the `output_file` paths written
+#'   (some may be missing if a task errored - check before merging).
+#' @export
+fit_corpus_parallel <- function(tasks, chains_per_fit = 4, reserve_cores = 4,
+                                  rhat_target = 1.05, on_complete = NULL,
+                                  task_timeout_secs = 90 * 60) {
+  total_cores <- parallel::detectCores()
+  usable_cores <- max(total_cores - reserve_cores, chains_per_fit)
+  n_concurrent <- max(floor(usable_cores / chains_per_fit), 1)
+  message(sprintf(
+    "fit_corpus_parallel: %d cores detected, reserving %d, running up to %d fits concurrently (%d tasks total).",
+    total_cores, reserve_cores, n_concurrent, length(tasks)
+  ))
+
+  run_task <- function(task) {
+    dist_type <- c(lognormal = 1L, gamma = 2L, weibull = 3L, burr = 4L, gengamma = 5L)[[task$dist_name]]
+    stan_data <- tryCatch(
+      prepare_stan_data_from_datasets(task$datasets, dist_type = dist_type),
+      error = function(e) { message("  [", task$label, "] prepare_stan_data failed: ", conditionMessage(e)); NULL }
+    )
+    if (is.null(stan_data)) { saveRDS(list(error = "prepare_stan_data failed"), task$output_file); return(invisible(NULL)) }
+    stan_data <- update_phi_prior(stan_data, task$datasets)
+
+    res <- tryCatch(
+      fit_with_escalation(stan_data, task$stan_model, rhat_target = rhat_target, verbose = TRUE),
+      error = function(e) { message("  [", task$label, "] fit_with_escalation failed: ", conditionMessage(e)); NULL }
+    )
+    out <- if (is.null(res)) list(error = "fit_with_escalation failed") else
+      list(fit = res$fit, stan_data = stan_data, datasets = task$datasets, tier = res$tier_label,
+           max_rhat = res$max_rhat, divergences = res$divergences, converged = res$converged,
+           runtime_secs = res$runtime_secs)
+    saveRDS(out, task$output_file)
+    invisible(NULL)
+  }
+
+  pending      <- tasks
+  in_flight    <- list()  # keyed by PID (as character) -> task spec
+  started_at   <- list()  # keyed by PID (as character) -> Sys.time() at launch
+
+  launch_next <- function() {
+    if (length(pending) == 0) return(invisible(FALSE))
+    task <- pending[[1]]
+    pending <<- pending[-1]
+    job <- parallel::mcparallel(run_task(task), silent = TRUE)
+    pid <- as.character(job$pid)
+    in_flight[[pid]]  <<- task
+    started_at[[pid]] <<- Sys.time()
+    invisible(TRUE)
+  }
+
+  # Handles one task reaching a terminal state (normal completion or forced
+  # timeout) identically: bookkeeping, on_complete, and refilling the slot.
+  finish_task <- function(pid, result) {
+    task <- in_flight[[pid]]
+    in_flight[[pid]]  <<- NULL
+    started_at[[pid]] <<- NULL
+    n_done <<- n_done + 1L
+    message(sprintf("  [fit_corpus_parallel] completed %d/%d: %s", n_done, length(tasks), task$label))
+    if (!is.null(on_complete)) {
+      tryCatch(on_complete(task, result), error = function(e)
+        message("  [fit_corpus_parallel] on_complete callback failed for ", task$label, ": ", conditionMessage(e)))
+    }
+    launch_next()
+  }
+
+  while (length(pending) > 0 && length(in_flight) < n_concurrent) launch_next()
+
+  n_done <- 0L
+  while (length(in_flight) > 0) {
+    done <- parallel::mccollect(wait = FALSE)
+    for (pid in intersect(names(done), names(in_flight))) {
+      task <- in_flight[[pid]]
+      result <- if (file.exists(task$output_file)) readRDS(task$output_file) else list(error = "no output file written")
+      finish_task(pid, result)
+    }
+
+    # Kill anything that has overrun the wall-clock budget - a fit stuck in a
+    # pathologically slow numerical region never errors or returns on its
+    # own, so this is the only thing that reclaims the slot (see
+    # @param task_timeout_secs above for why this is necessary at all).
+    now <- Sys.time()
+    timed_out <- Filter(function(pid) as.numeric(now - started_at[[pid]], units = "secs") > task_timeout_secs,
+                         names(in_flight))
+    for (pid in timed_out) {
+      task <- in_flight[[pid]]
+      killed <- .kill_process_tree(pid)
+      message(sprintf("  [fit_corpus_parallel] TIMEOUT after %ds, killed pid %s and %d descendant(s): %s",
+                       task_timeout_secs, pid, length(killed) - 1L, task$label))
+      result <- list(error = sprintf("timed out after %ds", task_timeout_secs))
+      if (!file.exists(task$output_file)) saveRDS(result, task$output_file)
+      finish_task(pid, result)
+    }
+
+    if ((is.null(done) || length(done) == 0) && length(timed_out) == 0) Sys.sleep(1)
+  }
+
+  invisible(vapply(tasks, function(t) t$output_file, character(1)))
+}
+
+#' Assemble per-task .rds files from [fit_corpus_parallel()] into one list
+#'
+#' @param output_files Character vector of file paths (as returned by
+#'   [fit_corpus_parallel()]).
+#' @param labels Character vector, same length, used as names in the
+#'   returned list (typically `"<pathogen>.<family>"`).
+#' @return A named list of the per-task results; entries for missing files
+#'   are `NULL` with a message, not a hard error, so a partially-complete
+#'   run can still be assembled and inspected.
+#' @export
+merge_parallel_fit_results <- function(output_files, labels) {
+  stats::setNames(lapply(seq_along(output_files), function(i) {
+    if (!file.exists(output_files[i])) {
+      message("merge_parallel_fit_results: missing (not yet run or failed): ", labels[i])
+      return(NULL)
+    }
+    readRDS(output_files[i])
+  }), labels)
 }
 
 #' Compute coverage for a parameter
@@ -2912,6 +3882,15 @@ run_simulation_study_generalized_non_parallel <- function(n_sim,
 #'   (sample from types 1-3 with those probabilities), or a length-4 probability
 #'   vector (sample from types 1-4 with those probabilities). Type 4 produces a
 #'   frequency table of observations rounded to the nearest whole day.
+#' @param round_order_stats If `TRUE`, the median/min/max/Q1/Q3 reported for
+#'   summary types 1 and 2 are rounded to the nearest multiple of
+#'   `resolution` before being returned, matching how these statistics are
+#'   actually reported in the literature.
+#' @param resolution Rounding grid in days, used only when
+#'   `round_order_stats = TRUE`. Default `1` (nearest whole day); pass e.g.
+#'   `1/24` to simulate hour-resolution reporting. Recorded in the returned
+#'   `obs_data$resolution` field so the Stan model integrates over the same
+#'   window that was used to round the data.
 #' @return List containing true parameters and observed summary statistics
 generate_hierarchical_data_mixed <- function(n_datasets,
                                              n_obs,
@@ -2921,7 +3900,9 @@ generate_hierarchical_data_mixed <- function(n_datasets,
                                              tau,
                                              phi,
                                              kappa = 1.0,
-                                             summary_type = NULL) {
+                                             summary_type = NULL,
+                                             round_order_stats = FALSE,
+                                             resolution = 1) {
 
   dist_type <- match.arg(dist_type)
   
@@ -2956,10 +3937,11 @@ generate_hierarchical_data_mixed <- function(n_datasets,
   loc_d <- rnorm(n_datasets, mean = mu0, sd = tau)
   
   # Initialize storage
-  obs_stat1   <- numeric(n_datasets)
-  obs_stat2   <- numeric(n_datasets)
-  obs_stat3   <- numeric(n_datasets)
-  freq_tables <- vector("list", n_datasets)
+  obs_stat1      <- numeric(n_datasets)
+  obs_stat2      <- numeric(n_datasets)
+  obs_stat3      <- numeric(n_datasets)
+  resolution_vec <- rep(1, n_datasets)  # unused (placeholder) for non-type-1/2 datasets
+  freq_tables    <- vector("list", n_datasets)
   
   # Generate data for each dataset
   for (d in 1:n_datasets) {
@@ -3002,12 +3984,24 @@ generate_hierarchical_data_mixed <- function(n_datasets,
       obs_stat1[d] <- median(data_d)
       obs_stat2[d] <- min(data_d)
       obs_stat3[d] <- max(data_d)
-      
+      if (round_order_stats) {
+        obs_stat1[d] <- round(obs_stat1[d] / resolution) * resolution
+        obs_stat2[d] <- round(obs_stat2[d] / resolution) * resolution
+        obs_stat3[d] <- round(obs_stat3[d] / resolution) * resolution
+        resolution_vec[d] <- resolution
+      }
+
     } else if (st == 2) {  # median + IQR
       obs_stat1[d] <- median(data_d)
       obs_stat2[d] <- quantile(data_d, 0.25)
       obs_stat3[d] <- quantile(data_d, 0.75)
-      
+      if (round_order_stats) {
+        obs_stat1[d] <- round(obs_stat1[d] / resolution) * resolution
+        obs_stat2[d] <- round(obs_stat2[d] / resolution) * resolution
+        obs_stat3[d] <- round(obs_stat3[d] / resolution) * resolution
+        resolution_vec[d] <- resolution
+      }
+
     } else if (st == 3) {  # mean + sd
       obs_stat1[d] <- mean(data_d)
       obs_stat2[d] <- sd(data_d)
@@ -3044,6 +4038,35 @@ generate_hierarchical_data_mixed <- function(n_datasets,
     }
   }
 
+  # Per-order-statistic adaptive quadrature panel count (Lever 3; performance
+  # only, see prepare_stan_data_from_datasets() for the real-data version).
+  # Uses the known true phi/kappa directly rather than a method-of-moments
+  # guess, since ground truth is available here.
+  dist_type_int <- switch(dist_type,
+                          "lognormal" = 1L, "gamma" = 2L, "weibull" = 3L,
+                          "burr12"    = 4L, "gengamma" = 5L)
+  n_panels_stat1 <- integer(n_datasets)
+  n_panels_stat2 <- integer(n_datasets)
+  n_panels_stat3 <- integer(n_datasets)
+  for (d in seq_len(n_datasets)) {
+    n <- n_obs[d]
+    if (summary_type[d] == 1L) {
+      k_median <- (n + 1L) %/% 2L
+      n_panels_stat1[d] <- .order_stat_n_panels(obs_stat1[d], n, k_median, resolution_vec[d], dist_type_int, phi, kappa)
+      n_panels_stat2[d] <- .order_stat_n_panels(obs_stat2[d], n, 1L,       resolution_vec[d], dist_type_int, phi, kappa)
+      n_panels_stat3[d] <- .order_stat_n_panels(obs_stat3[d], n, n,        resolution_vec[d], dist_type_int, phi, kappa)
+    } else if (summary_type[d] == 2L) {
+      k_median <- (n + 1L) %/% 2L
+      k_q25 <- max((n + 1L) %/% 4L, 1L)
+      k_q75 <- min(max((3L * (n + 1L)) %/% 4L, k_q25 + 1L), n)
+      n_panels_stat1[d] <- .order_stat_n_panels(obs_stat1[d], n, k_median, resolution_vec[d], dist_type_int, phi, kappa)
+      n_panels_stat2[d] <- .order_stat_n_panels(obs_stat2[d], n, k_q25,    resolution_vec[d], dist_type_int, phi, kappa)
+      n_panels_stat3[d] <- .order_stat_n_panels(obs_stat3[d], n, k_q75,    resolution_vec[d], dist_type_int, phi, kappa)
+    } else {
+      n_panels_stat1[d] <- 24L; n_panels_stat2[d] <- 24L; n_panels_stat3[d] <- 24L
+    }
+  }
+
   list(
     true_params = list(
       mu0   = mu0,
@@ -3065,15 +4088,26 @@ generate_hierarchical_data_mixed <- function(n_datasets,
       obs_stat1    = as.array(obs_stat1),
       obs_stat2    = as.array(obs_stat2),
       obs_stat3    = as.array(obs_stat3),
+      resolution   = as.array(resolution_vec),
+      n_panels_stat1 = as.array(n_panels_stat1),
+      n_panels_stat2 = as.array(n_panels_stat2),
+      n_panels_stat3 = as.array(n_panels_stat3),
       # Frequency table fields (populated only when summary_type == 4)
       n_freq_total = length(freq_value_flat),
-      freq_value   = freq_value_flat,
-      freq_count   = freq_count_flat,
+      freq_value   = as.array(freq_value_flat),
+      freq_count   = as.array(freq_count_flat),
       freq_start   = as.array(freq_start_vec),
       freq_len     = as.array(freq_len_vec),
       # Frequency-table interval bounds (type-5 datasets only; zeros for types 1-4)
-      freq_lower   = rep(0.0, length(freq_value_flat)),
-      freq_upper   = rep(0.0, length(freq_value_flat)),
+      freq_lower   = as.array(rep(0.0, length(freq_value_flat))),
+      freq_upper   = as.array(rep(0.0, length(freq_value_flat))),
+      # Double-censoring fields (summary_type 6/7) - this generator never
+      # produces those types, so these are unused placeholders, matching
+      # prepare_stan_data_from_datasets()'s convention for the same case.
+      event_lower     = as.array(rep(0.0, length(freq_value_flat))),
+      event_upper     = as.array(rep(0.0, length(freq_value_flat))),
+      event_observed  = as.array(rep(1L, length(freq_value_flat))),
+      truncation_time = as.array(rep(0.0, n_datasets)),
       # Priors — calibrated defaults matching prepare_stan_data_from_datasets()
       mu0_mean     = 1.0,
       mu0_sd       = 1.0,
@@ -3083,6 +4117,12 @@ generate_hierarchical_data_mixed <- function(n_datasets,
         lognormal = -0.7, gamma = 2.5, weibull = 1.0,
         burr12    =  0.7, gengamma = -0.5),
       log_phi_sd   = 0.5,
+      # Between-study SD of log dispersion (point 4) - family-specific
+      # values matching update_phi_prior()'s dist_defaults table.
+      log_omega_mean = switch(dist_type,
+        lognormal = -0.9, gamma = -0.4, weibull = -0.8,
+        burr12    = -0.9, gengamma = -0.7),
+      log_omega_sd   = 0.5,
       log_kappa_mean = switch(dist_type,
         lognormal = 0.0, gamma = 0.0, weibull = 0.0,
         burr12    = 1.0, gengamma = 0.0),

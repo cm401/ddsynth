@@ -13,7 +13,7 @@ compute_predictive_cdf(
 )
 }
 \arguments{
-\item{fit}{A \code{stanfit} object returned by \code{\link[rstan:stanmodel-method-sampling]{rstan::sampling()}}.}
+\item{fit}{A \code{stanfit} object returned by \code{\link[rstan:sampling]{rstan::sampling()}}.}
 
 \item{dist_name}{Character string: \code{"lognormal"}, \code{"gamma"}, \code{"weibull"},
 \code{"burr12"} (Burr Type XII), or \code{"gengamma"} (Generalised Gamma, Prentice

@@ -1,4 +1,10 @@
-// hierarchical_data_synthesis_summary_stats_joint.stan
+// hierarchical_data_synthesis_summary_stats_joint_shared_phi.stan
+//
+// Pre-point-4 variant of the joint model, kept alongside the hierarchical
+// version for the same reason as hierarchical_data_synthesis_summary_stats_
+// shared_phi.stan: a single shared scalar `phi` per pathogen, used for gamma
+// (POINT4_LIKELIHOOD_MATHS.md Part E.5). See that file's header for the full
+// rationale.
 //
 // Identical to hierarchical_data_synthesis_summary_stats.stan except that
 // summary types 1 (median+range) and 2 (median+IQR) use the joint density of
@@ -472,16 +478,8 @@ data {
   real log_tau_mean;
   real<lower=0> log_tau_sd;
 
-  // log_phi0 is the population-mean log dispersion; per-study dispersion
-  // phi_d is hierarchical (see log_omega below), not a shared scalar.
   real log_phi_mean;
   real<lower=0> log_phi_sd;
-
-  // omega is the between-study SD of log dispersion (log_phi_d), analogous
-  // to tau for location. See hierarchical_data_synthesis_summary_stats.stan
-  // for the default value and how it was chosen.
-  real log_omega_mean;
-  real<lower=0> log_omega_sd;
 
   real log_kappa_mean;
   real<lower=0> log_kappa_sd;
@@ -558,38 +556,28 @@ transformed data {
 parameters {
   real mu0;
   real log_tau;
-  real log_phi0;
-  real log_omega;
+  real log_phi;
   real log_kappa;
   vector[n_datasets] loc_d_raw;
-  vector[n_datasets] log_phi_d_raw;
 }
 
 transformed parameters {
-  real<lower=0> tau    = exp(log_tau);
-  real<lower=0> phi0   = exp(log_phi0);
-  real<lower=0> omega  = exp(log_omega);
-  real<lower=0> kappa  = exp(log_kappa);
+  real<lower=0> tau   = exp(log_tau);
+  real<lower=0> phi   = exp(log_phi);
+  real<lower=0> kappa = exp(log_kappa);
   vector[n_datasets] loc_d = mu0 + tau * loc_d_raw;
-  // Per-study dispersion. kappa stays shared: see Appendix B of
-  // vignettes/gg_identifiability.Rmd (rank-1 type-3 profile Fisher
-  // information for the shape pair).
-  vector<lower=0>[n_datasets] phi_d = exp(log_phi0 + omega * log_phi_d_raw);
 }
 
 model {
-  mu0           ~ normal(mu0_mean, mu0_sd);
-  log_tau       ~ normal(log_tau_mean, log_tau_sd);
-  log_phi0      ~ normal(log_phi_mean, log_phi_sd);
-  log_omega     ~ normal(log_omega_mean, log_omega_sd);
-  log_kappa     ~ normal(log_kappa_mean, log_kappa_sd);
-  log_phi_d_raw ~ std_normal();
+  mu0       ~ normal(mu0_mean, mu0_sd);
+  log_tau   ~ normal(log_tau_mean, log_tau_sd);
+  log_phi   ~ normal(log_phi_mean, log_phi_sd);
+  log_kappa ~ normal(log_kappa_mean, log_kappa_sd);
 
   loc_d_raw ~ std_normal();
 
   for (d in 1:n_datasets) {
     real loc = loc_d[d];
-    real phi = phi_d[d];
     int n = n_obs[d];
 
     if (summary_type[d] == 1) {  // median + range: joint density of (min, median, max), rounded
@@ -621,12 +609,11 @@ model {
       int  moments_ok = 1;
 
       if (dist_type == 1) {  // lognormal
-        real w_ln = exp(phi^2);  // named w_ln, not omega, to avoid shadowing the
-                                  // model-level between-study dispersion SD
+        real omega = exp(phi^2);
         mean_d = exp(loc + phi^2 / 2);
-        var_d  = mean_d^2 * (w_ln - 1);
-        mu3    = (w_ln + 2) * (w_ln - 1)^2 * mean_d^3;
-        mu4    = (w_ln^4 + 2*w_ln^3 + 3*w_ln^2 - 3) * (w_ln - 1)^2 * mean_d^4;
+        var_d  = mean_d^2 * (omega - 1);
+        mu3    = (omega + 2) * (omega - 1)^2 * mean_d^3;
+        mu4    = (omega^4 + 2*omega^3 + 3*omega^2 - 3) * (omega - 1)^2 * mean_d^4;
 
       } else if (dist_type == 2) {  // gamma
         real shape = phi;
@@ -768,12 +755,7 @@ generated quantities {
   // idx+2 are set to 0, since the joint density cannot be decomposed per statistic).
   vector[n_datasets * 3] log_lik;
 
-  // TODO(point 4, task 17): phi is currently evaluated at the population
-  // mean phi0 only; these predictive quantities do not yet marginalize over
-  // between-study dispersion heterogeneity (omega). See the matching TODO
-  // in hierarchical_data_synthesis_summary_stats.stan.
   {
-    real phi = phi0;
     if (n_datasets < 5) {
       real loc_pred = mean(loc_d);
 
@@ -946,7 +928,6 @@ generated quantities {
 
     for (d in 1:n_datasets) {
       real loc = loc_d[d];
-      real phi = phi_d[d];
       int n = n_obs[d];
 
       if (summary_type[d] == 1) {  // joint density of (min, median, max), rounded
@@ -980,11 +961,11 @@ generated quantities {
         int  moments_ok = 1;
 
         if (dist_type == 1) {
-          real w_ln = exp(phi^2);  // named w_ln, not omega; see model block
+          real omega = exp(phi^2);
           mean_d = exp(loc + phi^2 / 2);
-          var_d  = mean_d^2 * (w_ln - 1);
-          mu3    = (w_ln + 2) * (w_ln - 1)^2 * mean_d^3;
-          mu4    = (w_ln^4 + 2*w_ln^3 + 3*w_ln^2 - 3) * (w_ln - 1)^2 * mean_d^4;
+          var_d  = mean_d^2 * (omega - 1);
+          mu3    = (omega + 2) * (omega - 1)^2 * mean_d^3;
+          mu4    = (omega^4 + 2*omega^3 + 3*omega^2 - 3) * (omega - 1)^2 * mean_d^4;
 
         } else if (dist_type == 2) {
           real shape = phi;

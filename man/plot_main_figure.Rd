@@ -45,7 +45,7 @@ a full set of pathogens).  Pre-compute and cache this object.}
 
 \item{ncol}{Integer.  Columns in the assembled figure (default 4).}
 
-\item{base_size}{Numeric.  Base font size for \code{\link[ggplot2:ggtheme]{ggplot2::theme_bw()}}
+\item{base_size}{Numeric.  Base font size for \code{\link[ggplot2:theme_bw]{ggplot2::theme_bw()}}
 (default 9).}
 }
 \value{
