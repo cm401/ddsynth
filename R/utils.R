@@ -2749,6 +2749,11 @@ fit_with_escalation <- function(stan_data, stan_model, rhat_target = 1.05,
 #' own PSOCK cluster underneath, which would otherwise survive as zombies.
 #' Walks `ps`'s process table to find and kill all descendants too.
 #'
+#' `pid` is assumed to be an `mcparallel()` job PID still registered in
+#' `parallel`'s internal job table, so after killing the whole tree we
+#' `mccollect()` on `pid` alone (not its descendants, which were never
+#' `parallel` jobs themselves) to reap it and avoid leaving a zombie.
+#'
 #' @param pid Integer or character process ID to kill, with its descendants.
 #' @return Invisibly, the PIDs killed (including `pid`).
 #' @noRd
@@ -2770,6 +2775,11 @@ fit_with_escalation <- function(stan_data, stan_model, rhat_target = 1.05,
     all_pids <- c(pid, descendants_of(pid))
   }
   for (p in all_pids) tryCatch(tools::pskill(p, signal = tools::SIGKILL), error = function(e) NULL)
+  # Bounded, not wait=TRUE: a SIGKILL'd process should reap almost instantly,
+  # but a process wedged in uninterruptible I/O sleep could block forever,
+  # which would turn this cleanup step into a new hang.
+  tryCatch(suppressWarnings(parallel::mccollect(pid, wait = FALSE, timeout = 5)),
+           error = function(e) NULL)
   invisible(all_pids)
 }
 
@@ -4028,6 +4038,35 @@ generate_hierarchical_data_mixed <- function(n_datasets,
     }
   }
 
+  # Per-order-statistic adaptive quadrature panel count (Lever 3; performance
+  # only, see prepare_stan_data_from_datasets() for the real-data version).
+  # Uses the known true phi/kappa directly rather than a method-of-moments
+  # guess, since ground truth is available here.
+  dist_type_int <- switch(dist_type,
+                          "lognormal" = 1L, "gamma" = 2L, "weibull" = 3L,
+                          "burr12"    = 4L, "gengamma" = 5L)
+  n_panels_stat1 <- integer(n_datasets)
+  n_panels_stat2 <- integer(n_datasets)
+  n_panels_stat3 <- integer(n_datasets)
+  for (d in seq_len(n_datasets)) {
+    n <- n_obs[d]
+    if (summary_type[d] == 1L) {
+      k_median <- (n + 1L) %/% 2L
+      n_panels_stat1[d] <- .order_stat_n_panels(obs_stat1[d], n, k_median, resolution_vec[d], dist_type_int, phi, kappa)
+      n_panels_stat2[d] <- .order_stat_n_panels(obs_stat2[d], n, 1L,       resolution_vec[d], dist_type_int, phi, kappa)
+      n_panels_stat3[d] <- .order_stat_n_panels(obs_stat3[d], n, n,        resolution_vec[d], dist_type_int, phi, kappa)
+    } else if (summary_type[d] == 2L) {
+      k_median <- (n + 1L) %/% 2L
+      k_q25 <- max((n + 1L) %/% 4L, 1L)
+      k_q75 <- min(max((3L * (n + 1L)) %/% 4L, k_q25 + 1L), n)
+      n_panels_stat1[d] <- .order_stat_n_panels(obs_stat1[d], n, k_median, resolution_vec[d], dist_type_int, phi, kappa)
+      n_panels_stat2[d] <- .order_stat_n_panels(obs_stat2[d], n, k_q25,    resolution_vec[d], dist_type_int, phi, kappa)
+      n_panels_stat3[d] <- .order_stat_n_panels(obs_stat3[d], n, k_q75,    resolution_vec[d], dist_type_int, phi, kappa)
+    } else {
+      n_panels_stat1[d] <- 24L; n_panels_stat2[d] <- 24L; n_panels_stat3[d] <- 24L
+    }
+  }
+
   list(
     true_params = list(
       mu0   = mu0,
@@ -4050,15 +4089,25 @@ generate_hierarchical_data_mixed <- function(n_datasets,
       obs_stat2    = as.array(obs_stat2),
       obs_stat3    = as.array(obs_stat3),
       resolution   = as.array(resolution_vec),
+      n_panels_stat1 = as.array(n_panels_stat1),
+      n_panels_stat2 = as.array(n_panels_stat2),
+      n_panels_stat3 = as.array(n_panels_stat3),
       # Frequency table fields (populated only when summary_type == 4)
       n_freq_total = length(freq_value_flat),
-      freq_value   = freq_value_flat,
-      freq_count   = freq_count_flat,
+      freq_value   = as.array(freq_value_flat),
+      freq_count   = as.array(freq_count_flat),
       freq_start   = as.array(freq_start_vec),
       freq_len     = as.array(freq_len_vec),
       # Frequency-table interval bounds (type-5 datasets only; zeros for types 1-4)
-      freq_lower   = rep(0.0, length(freq_value_flat)),
-      freq_upper   = rep(0.0, length(freq_value_flat)),
+      freq_lower   = as.array(rep(0.0, length(freq_value_flat))),
+      freq_upper   = as.array(rep(0.0, length(freq_value_flat))),
+      # Double-censoring fields (summary_type 6/7) - this generator never
+      # produces those types, so these are unused placeholders, matching
+      # prepare_stan_data_from_datasets()'s convention for the same case.
+      event_lower     = as.array(rep(0.0, length(freq_value_flat))),
+      event_upper     = as.array(rep(0.0, length(freq_value_flat))),
+      event_observed  = as.array(rep(1L, length(freq_value_flat))),
+      truncation_time = as.array(rep(0.0, n_datasets)),
       # Priors — calibrated defaults matching prepare_stan_data_from_datasets()
       mu0_mean     = 1.0,
       mu0_sd       = 1.0,
@@ -4068,6 +4117,12 @@ generate_hierarchical_data_mixed <- function(n_datasets,
         lognormal = -0.7, gamma = 2.5, weibull = 1.0,
         burr12    =  0.7, gengamma = -0.5),
       log_phi_sd   = 0.5,
+      # Between-study SD of log dispersion (point 4) - family-specific
+      # values matching update_phi_prior()'s dist_defaults table.
+      log_omega_mean = switch(dist_type,
+        lognormal = -0.9, gamma = -0.4, weibull = -0.8,
+        burr12    = -0.9, gengamma = -0.7),
+      log_omega_sd   = 0.5,
       log_kappa_mean = switch(dist_type,
         lognormal = 0.0, gamma = 0.0, weibull = 0.0,
         burr12    = 1.0, gengamma = 0.0),
